@@ -16,6 +16,14 @@ service_desk:
   - resolve_incident
   - list_incidents
   - get_incident_by_number
+  # Write Verification, Metadata Discovery, and Diagnostic Escalation
+  - verify_fields
+  - get_field_metadata
+  - get_field_choices
+  - get_data_lookup_rules
+  - get_business_rules
+  - get_data_policies
+  - get_ui_policies
   # User Lookup
   - get_user
   - list_users
@@ -60,6 +68,14 @@ change_coordinator:
   - submit_change_for_approval
   - approve_change
   - reject_change
+  # Write Verification, Metadata Discovery, and Diagnostic Escalation
+  - verify_fields
+  - get_field_metadata
+  - get_field_choices
+  - get_data_lookup_rules
+  - get_business_rules
+  - get_data_policies
+  - get_ui_policies
 
 knowledge_author:
   # KB Management
@@ -76,6 +92,14 @@ knowledge_author:
   - get_article
 
 platform_developer:
+  # Write Verification, Metadata Discovery, and Diagnostic Escalation
+  - verify_fields
+  - get_field_metadata
+  - get_field_choices
+  - get_data_lookup_rules
+  - get_business_rules
+  - get_data_policies
+  - get_ui_policies
   # Script Includes
   - list_script_includes
   - get_script_include
@@ -110,6 +134,14 @@ platform_developer:
   - add_file_to_changeset
 
 agile_management:
+  # Write Verification, Metadata Discovery, and Diagnostic Escalation
+  - verify_fields
+  - get_field_metadata
+  - get_field_choices
+  - get_data_lookup_rules
+  - get_business_rules
+  - get_data_policies
+  - get_ui_policies
   # Story Management
   - create_story
   - update_story
@@ -131,6 +163,14 @@ agile_management:
   - list_projects
 
 system_administrator:
+  # Write Verification, Metadata Discovery, and Diagnostic Escalation
+  - verify_fields
+  - get_field_metadata
+  - get_field_choices
+  - get_data_lookup_rules
+  - get_business_rules
+  - get_data_policies
+  - get_ui_policies
   # User Management
   - create_user
   - update_user
@@ -147,6 +187,14 @@ system_administrator:
   - get_syslog_entry
 
 full:
+  # Write Verification, Metadata Discovery, and Diagnostic Escalation
+  - verify_fields
+  - get_field_metadata
+  - get_field_choices
+  - get_data_lookup_rules
+  - get_business_rules
+  - get_data_policies
+  - get_ui_policies
   # Incident Management
   - create_incident
   - update_incident

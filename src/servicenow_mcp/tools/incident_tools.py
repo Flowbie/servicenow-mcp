@@ -32,7 +32,13 @@ class CreateIncidentParams(BaseModel):
 
 
 class UpdateIncidentParams(BaseModel):
-    """Parameters for updating an incident."""
+    """Parameters for updating an incident.
+
+    Note: 'priority' is not a writable field. It is derived from impact × urgency
+    via the instance priority matrix. To change priority, set impact and/or urgency
+    to the combination that produces the desired priority value, then use
+    verify_fields to confirm the resulting priority after the write.
+    """
 
     incident_id: str = Field(..., description="Incident ID or sys_id")
     short_description: Optional[str] = Field(None, description="Short description of the incident")
@@ -40,9 +46,8 @@ class UpdateIncidentParams(BaseModel):
     state: Optional[str] = Field(None, description="State of the incident")
     category: Optional[str] = Field(None, description="Category of the incident")
     subcategory: Optional[str] = Field(None, description="Subcategory of the incident")
-    priority: Optional[str] = Field(None, description="Priority of the incident")
-    impact: Optional[str] = Field(None, description="Impact of the incident")
-    urgency: Optional[str] = Field(None, description="Urgency of the incident")
+    impact: Optional[str] = Field(None, description="Impact of the incident (1=High, 2=Medium, 3=Low). Controls derived priority.")
+    urgency: Optional[str] = Field(None, description="Urgency of the incident (1=High, 2=Medium, 3=Low). Controls derived priority.")
     assigned_to: Optional[str] = Field(None, description="User assigned to the incident")
     assignment_group: Optional[str] = Field(None, description="Group assigned to the incident")
     work_notes: Optional[str] = Field(None, description="Work notes to add to the incident")
@@ -230,8 +235,6 @@ def update_incident(
         data["category"] = params.category
     if params.subcategory:
         data["subcategory"] = params.subcategory
-    if params.priority:
-        data["priority"] = params.priority
     if params.impact:
         data["impact"] = params.impact
     if params.urgency:

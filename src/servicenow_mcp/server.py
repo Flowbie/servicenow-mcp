@@ -180,24 +180,30 @@ class ServiceNowMCP:
         """Implementation for the list_tools MCP endpoint."""
         tool_list: List[types.Tool] = []
 
-        # Add the introspection tool if not 'none' package
-        if self.current_package_name != "none":
-            tool_list.append(
-                types.Tool(
-                    name="list_tool_packages",
-                    description="Lists available tool packages and the currently loaded one.",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "random_string": {
-                                "type": "string",
-                                "description": "Dummy parameter for no-parameter tools",
-                            }
-                        },
-                        "required": ["random_string"],
+        # Always add the introspection tool, regardless of package.
+        # list_tool_packages is available in all packages including 'none'
+        # so the AI layer can always discover which tools are loaded.
+        tool_list.append(
+            types.Tool(
+                name="list_tool_packages",
+                description=(
+                    "Returns the currently active tool package name, the list of tools "
+                    "it contains, and all available package names. Call this at the start "
+                    "of a session to confirm which protocol tools (verify_fields, "
+                    "get_field_metadata, etc.) are available before attempting a write."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "random_string": {
+                            "type": "string",
+                            "description": "Dummy parameter for no-parameter tools",
+                        }
                     },
-                )
+                    "required": ["random_string"],
+                },
             )
+        )
 
         # Iterate through defined tools and add enabled ones
         for tool_name, definition in self.tool_definitions.items():
@@ -236,12 +242,8 @@ class ServiceNowMCP:
             RuntimeError: If tool execution or serialization fails.
         """
         logger.info(f"Received call_tool request for tool '{name}'")
-        # Handle the introspection tool separately
+        # Handle the introspection tool separately — always available in all packages
         if name == "list_tool_packages":
-            if self.current_package_name == "none":
-                raise ValueError(
-                    "Tool 'list_tool_packages' is not available in the 'none' package."
-                )
             result_dict = self._list_tool_packages_impl()
             serialized_string = json.dumps(result_dict, indent=2)
             # Return a list with a TextContent object
@@ -292,6 +294,7 @@ class ServiceNowMCP:
         available_packages = list(self.package_definitions.keys())
         return {
             "current_package": self.current_package_name,
+            "current_package_tools": list(self.enabled_tool_names),
             "available_packages": available_packages,
             "message": (
                 f"Currently loaded package: '{self.current_package_name}'. "
