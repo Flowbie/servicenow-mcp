@@ -241,8 +241,9 @@ def list_workflows(
             "total": int(response.headers.get("X-Total-Count", 0)),
         }
     except requests.RequestException as e:
-        logger.error(f"Error listing workflows: {e}")
-        return {"error": str(e)}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Error listing workflows: {e}" + (f" | body={_body}" if _body else ""))
+        return {"error": str(e) + (f" | response: {_body}" if _body else "")}
     except Exception as e:
         logger.error(f"Unexpected error listing workflows: {e}")
         return {"error": str(e)}
@@ -290,8 +291,9 @@ def get_workflow_details(
             "workflow": result.get("result", {}),
         }
     except requests.RequestException as e:
-        logger.error(f"Error getting workflow details: {e}")
-        return {"error": str(e)}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Error getting workflow details: {e}" + (f" | body={_body}" if _body else ""))
+        return {"error": str(e) + (f" | response: {_body}" if _body else "")}
     except Exception as e:
         logger.error(f"Unexpected error getting workflow details: {e}")
         return {"error": str(e)}
@@ -350,8 +352,9 @@ def list_workflow_versions(
             "workflow_id": workflow_id,
         }
     except requests.RequestException as e:
-        logger.error(f"Error listing workflow versions: {e}")
-        return {"error": str(e)}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Error listing workflow versions: {e}" + (f" | body={_body}" if _body else ""))
+        return {"error": str(e) + (f" | response: {_body}" if _body else "")}
     except Exception as e:
         logger.error(f"Unexpected error listing workflow versions: {e}")
         return {"error": str(e)}
@@ -414,8 +417,9 @@ def get_workflow_activities(
             
             version_id = versions[0]["sys_id"]
         except requests.RequestException as e:
-            logger.error(f"Error getting workflow version: {e}")
-            return {"error": str(e)}
+            _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+            logger.error(f"Error getting workflow version: {e}" + (f" | body={_body}" if _body else ""))
+            return {"error": str(e) + (f" | response: {_body}" if _body else "")}
         except Exception as e:
             logger.error(f"Unexpected error getting workflow version: {e}")
             return {"error": str(e)}
@@ -440,8 +444,9 @@ def get_workflow_activities(
             "version_id": version_id,
         }
     except requests.RequestException as e:
-        logger.error(f"Error getting workflow activities: {e}")
-        return {"error": str(e)}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Error getting workflow activities: {e}" + (f" | body={_body}" if _body else ""))
+        return {"error": str(e) + (f" | response: {_body}" if _body else "")}
     except Exception as e:
         logger.error(f"Unexpected error getting workflow activities: {e}")
         return {"error": str(e)}
@@ -509,8 +514,9 @@ def create_workflow(
             "message": "Workflow created successfully",
         }
     except requests.RequestException as e:
-        logger.error(f"Error creating workflow: {e}")
-        return {"error": str(e)}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Error creating workflow: {e}" + (f" | body={_body}" if _body else ""))
+        return {"error": str(e) + (f" | response: {_body}" if _body else "")}
     except Exception as e:
         logger.error(f"Unexpected error creating workflow: {e}")
         return {"error": str(e)}
@@ -582,8 +588,9 @@ def update_workflow(
             "message": "Workflow updated successfully",
         }
     except requests.RequestException as e:
-        logger.error(f"Error updating workflow: {e}")
-        return {"error": str(e)}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Error updating workflow: {e}" + (f" | body={_body}" if _body else ""))
+        return {"error": str(e) + (f" | response: {_body}" if _body else "")}
     except Exception as e:
         logger.error(f"Unexpected error updating workflow: {e}")
         return {"error": str(e)}
@@ -638,8 +645,9 @@ def activate_workflow(
             "message": "Workflow activated successfully",
         }
     except requests.RequestException as e:
-        logger.error(f"Error activating workflow: {e}")
-        return {"error": str(e)}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Error activating workflow: {e}" + (f" | body={_body}" if _body else ""))
+        return {"error": str(e) + (f" | response: {_body}" if _body else "")}
     except Exception as e:
         logger.error(f"Unexpected error activating workflow: {e}")
         return {"error": str(e)}
@@ -694,8 +702,9 @@ def deactivate_workflow(
             "message": "Workflow deactivated successfully",
         }
     except requests.RequestException as e:
-        logger.error(f"Error deactivating workflow: {e}")
-        return {"error": str(e)}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Error deactivating workflow: {e}" + (f" | body={_body}" if _body else ""))
+        return {"error": str(e) + (f" | response: {_body}" if _body else "")}
     except Exception as e:
         logger.error(f"Unexpected error deactivating workflow: {e}")
         return {"error": str(e)}
@@ -766,8 +775,9 @@ def add_workflow_activity(
             "message": "Workflow activity added successfully",
         }
     except requests.RequestException as e:
-        logger.error(f"Error adding workflow activity: {e}")
-        return {"error": str(e)}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Error adding workflow activity: {e}" + (f" | body={_body}" if _body else ""))
+        return {"error": str(e) + (f" | response: {_body}" if _body else "")}
     except Exception as e:
         logger.error(f"Unexpected error adding workflow activity: {e}")
         return {"error": str(e)}
@@ -833,8 +843,9 @@ def update_workflow_activity(
             "message": "Activity updated successfully",
         }
     except requests.RequestException as e:
-        logger.error(f"Error updating workflow activity: {e}")
-        return {"error": str(e)}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Error updating workflow activity: {e}" + (f" | body={_body}" if _body else ""))
+        return {"error": str(e) + (f" | response: {_body}" if _body else "")}
     except Exception as e:
         logger.error(f"Unexpected error updating workflow activity: {e}")
         return {"error": str(e)}
@@ -883,8 +894,9 @@ def delete_workflow_activity(
             "activity_id": activity_id,
         }
     except requests.RequestException as e:
-        logger.error(f"Error deleting workflow activity: {e}")
-        return {"error": str(e)}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Error deleting workflow activity: {e}" + (f" | body={_body}" if _body else ""))
+        return {"error": str(e) + (f" | response: {_body}" if _body else "")}
     except Exception as e:
         logger.error(f"Unexpected error deleting workflow activity: {e}")
         return {"error": str(e)}
@@ -946,10 +958,11 @@ def reorder_workflow_activities(
                     "success": True,
                 })
             except requests.RequestException as e:
-                logger.error(f"Error updating activity order: {e}")
+                _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+                logger.error(f"Error updating activity order: {e}" + (f" | body={_body}" if _body else ""))
                 results.append({
                     "activity_id": activity_id,
-                    "error": str(e),
+                    "error": str(e) + (f" | response: {_body}" if _body else ""),
                     "success": False,
                 })
         
@@ -1006,8 +1019,9 @@ def delete_workflow(
             "workflow_id": workflow_id,
         }
     except requests.RequestException as e:
-        logger.error(f"Error deleting workflow: {e}")
-        return {"error": str(e)}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Error deleting workflow: {e}" + (f" | body={_body}" if _body else ""))
+        return {"error": str(e) + (f" | response: {_body}" if _body else "")}
     except Exception as e:
         logger.error(f"Unexpected error deleting workflow: {e}")
         return {"error": str(e)} 

@@ -353,6 +353,20 @@ from servicenow_mcp.tools.project_tools import (
     update_project as update_project_tool,
     list_projects as list_projects_tool,
 )
+from servicenow_mcp.tools.flow_tools import (
+    CreateFlowParams,
+    CreateFlowResponse,
+)
+from servicenow_mcp.tools.flow_tools import (
+    create_flow as create_flow_tool,
+)
+from servicenow_mcp.tools.script_tools import (
+    RunBackgroundScriptParams,
+    RunBackgroundScriptResult,
+)
+from servicenow_mcp.tools.script_tools import (
+    run_background_script as run_background_script_tool,
+)
 
 # Define a type alias for the Pydantic models or dataclasses used for params
 ParamsModel = Type[Any]  # Use Type[Any] for broader compatibility initially
@@ -749,6 +763,39 @@ def get_tool_definitions(
             str,
             "Reorder activities in a workflow",
             "str",  # Tool returns simple message
+        ),
+        # Background Script Execution
+        "run_background_script": (
+            run_background_script_tool,
+            RunBackgroundScriptParams,
+            RunBackgroundScriptResult,
+            (
+                "Execute a JavaScript server-side script on the ServiceNow instance "
+                "using the background script mechanism (sys.scripts.do — same as the "
+                "Background Script module in the ServiceNow UI). Requires admin "
+                "privileges. Returns direct gs.print() output and syslog entries from "
+                "the execution window. The variable __MFCP_RUN_ID is injected into "
+                "the script and can be included in gs.info() calls for filtering. "
+                "Use this tool to run diagnostic scripts, test API calls, and debug "
+                "server-side behaviour directly from the AI layer."
+            ),
+            "json",
+        ),
+        # Flow Designer Tools
+        "create_flow": (
+            create_flow_tool,
+            CreateFlowParams,
+            CreateFlowResponse,
+            (
+                "Create a new Flow Designer flow in ServiceNow using the internal "
+                "/api/now/processflow/ API. Supports flows with a trigger (record-based "
+                "or recurrence) and one or more action steps. The flow is created in "
+                "draft state and must be activated manually in Flow Designer. "
+                "Action inputs require exact parameter definition sys_ids — see the "
+                "flow-designer-api.md memory file for known IDs for Look Up Record and "
+                "Create Record."
+            ),
+            "json",
         ),
         # Changeset Management Tools
         "list_changesets": (

@@ -144,10 +144,11 @@ def create_catalog_item_variable(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to create catalog item variable: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to create catalog item variable: {e}" + (f" | body={_body}" if _body else ""))
         return CatalogItemVariableResponse(
             success=False,
-            message=f"Failed to create catalog item variable: {str(e)}",
+            message=f"Failed to create catalog item variable: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -206,10 +207,11 @@ def list_catalog_item_variables(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to list catalog item variables: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to list catalog item variables: {e}" + (f" | body={_body}" if _body else ""))
         return ListCatalogItemVariablesResponse(
             success=False,
-            message=f"Failed to list catalog item variables: {str(e)}",
+            message=f"Failed to list catalog item variables: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -282,8 +284,9 @@ def update_catalog_item_variable(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to update catalog item variable: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to update catalog item variable: {e}" + (f" | body={_body}" if _body else ""))
         return CatalogItemVariableResponse(
             success=False,
-            message=f"Failed to update catalog item variable: {str(e)}",
+            message=f"Failed to update catalog item variable: {str(e)}" + (f" | response: {_body}" if _body else ""),
         ) 

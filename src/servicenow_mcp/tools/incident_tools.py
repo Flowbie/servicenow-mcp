@@ -159,10 +159,11 @@ def create_incident(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to create incident: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to create incident: {e}" + (f" | body={_body}" if _body else ""))
         return IncidentResponse(
             success=False,
-            message=f"Failed to create incident: {str(e)}",
+            message=f"Failed to create incident: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -216,10 +217,11 @@ def update_incident(
             api_url = f"{config.api_url}/table/incident/{incident_id}"
 
         except requests.RequestException as e:
-            logger.error(f"Failed to find incident: {e}")
+            _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+            logger.error(f"Failed to find incident: {e}" + (f" | body={_body}" if _body else ""))
             return IncidentResponse(
                 success=False,
-                message=f"Failed to find incident: {str(e)}",
+                message=f"Failed to find incident: {str(e)}" + (f" | response: {_body}" if _body else ""),
             )
 
     # Build request data
@@ -270,10 +272,11 @@ def update_incident(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to update incident: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to update incident: {e}" + (f" | body={_body}" if _body else ""))
         return IncidentResponse(
             success=False,
-            message=f"Failed to update incident: {str(e)}",
+            message=f"Failed to update incident: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -327,10 +330,11 @@ def add_comment(
             api_url = f"{config.api_url}/table/incident/{incident_id}"
 
         except requests.RequestException as e:
-            logger.error(f"Failed to find incident: {e}")
+            _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+            logger.error(f"Failed to find incident: {e}" + (f" | body={_body}" if _body else ""))
             return IncidentResponse(
                 success=False,
-                message=f"Failed to find incident: {str(e)}",
+                message=f"Failed to find incident: {str(e)}" + (f" | response: {_body}" if _body else ""),
             )
 
     # Build request data
@@ -361,10 +365,11 @@ def add_comment(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to add comment: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to add comment: {e}" + (f" | body={_body}" if _body else ""))
         return IncidentResponse(
             success=False,
-            message=f"Failed to add comment: {str(e)}",
+            message=f"Failed to add comment: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -418,10 +423,11 @@ def resolve_incident(
             api_url = f"{config.api_url}/table/incident/{incident_id}"
 
         except requests.RequestException as e:
-            logger.error(f"Failed to find incident: {e}")
+            _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+            logger.error(f"Failed to find incident: {e}" + (f" | body={_body}" if _body else ""))
             return IncidentResponse(
                 success=False,
-                message=f"Failed to find incident: {str(e)}",
+                message=f"Failed to find incident: {str(e)}" + (f" | response: {_body}" if _body else ""),
             )
 
     # Build request data
@@ -452,10 +458,11 @@ def resolve_incident(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to resolve incident: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to resolve incident: {e}" + (f" | body={_body}" if _body else ""))
         return IncidentResponse(
             success=False,
-            message=f"Failed to resolve incident: {str(e)}",
+            message=f"Failed to resolve incident: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -540,10 +547,11 @@ def list_incidents(
         }
         
     except requests.RequestException as e:
-        logger.error(f"Failed to list incidents: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to list incidents: {e}" + (f" | body={_body}" if _body else ""))
         return {
             "success": False,
-            "message": f"Failed to list incidents: {str(e)}",
+            "message": f"Failed to list incidents: {str(e)}" + (f" | response: {_body}" if _body else ""),
             "incidents": []
         }
 
@@ -619,8 +627,9 @@ def get_incident_by_number(
         }
 
     except requests.RequestException as e:
-        logger.error(f"Failed to fetch incident: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to fetch incident: {e}" + (f" | body={_body}" if _body else ""))
         return {
             "success": False,
-            "message": f"Failed to fetch incident: {str(e)}",
+            "message": f"Failed to fetch incident: {str(e)}" + (f" | response: {_body}" if _body else ""),
         }

@@ -164,15 +164,17 @@ def verify_fields(
         )
         response.raise_for_status()
     except requests.RequestException as e:
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
         logger.error(
             f"verify_fields | fetch failed | table={params.table} "
             f"| record_id={params.record_id} | error={e}"
+            + (f" | body={_body}" if _body else "")
         )
         return VerifyFieldsResult(
             table=params.table,
             record_id=params.record_id,
             all_verified=False,
-            fetch_error=f"Failed to fetch record for verification: {str(e)}",
+            fetch_error=f"Failed to fetch record for verification: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
     # Extract the record dict from the response
@@ -470,12 +472,14 @@ def _query_sys_dictionary(
         )
         response.raise_for_status()
     except requests.RequestException as e:
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
         logger.error(
             f"get_field_metadata | sys_dictionary fetch failed "
             f"| table={table} | field={field} | error={e}"
+            + (f" | body={_body}" if _body else "")
         )
         # Return sentinel string so the caller can distinguish error from not-found
-        return f"sys_dictionary query failed: {str(e)}"  # type: ignore[return-value]
+        return f"sys_dictionary query failed: {str(e)}" + (f" | response: {_body}" if _body else "")  # type: ignore[return-value]
 
     results = response.json().get("result", [])
     if not results:
@@ -641,15 +645,17 @@ def get_field_choices(
         )
         response.raise_for_status()
     except requests.RequestException as e:
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
         logger.error(
             f"get_field_choices | fetch failed "
             f"| table={params.table} | field={params.field} | error={e}"
+            + (f" | body={_body}" if _body else "")
         )
         return FieldChoicesResult(
             table=params.table,
             field=params.field,
             choices_found=False,
-            fetch_error=f"sys_choice query failed: {str(e)}",
+            fetch_error=f"sys_choice query failed: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
     raw_results = response.json().get("result", [])
@@ -793,14 +799,16 @@ def get_data_lookup_rules(
         )
         response.raise_for_status()
     except requests.RequestException as e:
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
         logger.error(
             f"get_data_lookup_rules | fetch failed | table={params.table} | error={e}"
+            + (f" | body={_body}" if _body else "")
         )
         return DataLookupRulesResult(
             table=params.table,
             output_field_filter=params.output_field,
             rules_found=False,
-            fetch_error=f"dl_definition query failed: {str(e)}",
+            fetch_error=f"dl_definition query failed: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
     raw_results = response.json().get("result", [])
@@ -960,15 +968,17 @@ def get_business_rules(
         )
         response.raise_for_status()
     except requests.RequestException as e:
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
         logger.error(
             f"get_business_rules | fetch failed | table={params.table} "
             f"| field={params.field} | error={e}"
+            + (f" | body={_body}" if _body else "")
         )
         return BusinessRulesResult(
             table=params.table,
             field=params.field,
             rules_found=False,
-            fetch_error=f"sys_script query failed: {str(e)}",
+            fetch_error=f"sys_script query failed: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
     raw_results = response.json().get("result", [])
@@ -1122,15 +1132,17 @@ def get_data_policies(
         )
         response.raise_for_status()
     except requests.RequestException as e:
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
         logger.error(
             f"get_data_policies | fetch failed | table={params.table} "
             f"| field={params.field} | error={e}"
+            + (f" | body={_body}" if _body else "")
         )
         return DataPoliciesResult(
             table=params.table,
             field=params.field,
             rules_found=False,
-            fetch_error=f"sys_data_policy_rule query failed: {str(e)}",
+            fetch_error=f"sys_data_policy_rule query failed: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
     raw_results = response.json().get("result", [])
@@ -1301,15 +1313,17 @@ def get_ui_policies(
         )
         response.raise_for_status()
     except requests.RequestException as e:
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
         logger.error(
             f"get_ui_policies | fetch failed | table={params.table} "
             f"| field={params.field} | error={e}"
+            + (f" | body={_body}" if _body else "")
         )
         return UIPoliciesResult(
             table=params.table,
             field=params.field,
             actions_found=False,
-            fetch_error=f"sys_ui_policy_action query failed: {str(e)}",
+            fetch_error=f"sys_ui_policy_action query failed: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
     raw_results = response.json().get("result", [])

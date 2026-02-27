@@ -217,10 +217,11 @@ def create_user(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to create user: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to create user: {e}" + (f" | body={_body}" if _body else ""))
         return UserResponse(
             success=False,
-            message=f"Failed to create user: {str(e)}",
+            message=f"Failed to create user: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -293,10 +294,11 @@ def update_user(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to update user: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to update user: {e}" + (f" | body={_body}" if _body else ""))
         return UserResponse(
             success=False,
-            message=f"Failed to update user: {str(e)}",
+            message=f"Failed to update user: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -349,8 +351,9 @@ def get_user(
         return {"success": True, "message": "User found", "user": result[0]}
 
     except requests.RequestException as e:
-        logger.error(f"Failed to get user: {e}")
-        return {"success": False, "message": f"Failed to get user: {str(e)}"}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to get user: {e}" + (f" | body={_body}" if _body else ""))
+        return {"success": False, "message": f"Failed to get user: {str(e)}" + (f" | response: {_body}" if _body else "")}
 
 
 def list_users(
@@ -410,8 +413,9 @@ def list_users(
         }
 
     except requests.RequestException as e:
-        logger.error(f"Failed to list users: {e}")
-        return {"success": False, "message": f"Failed to list users: {str(e)}"}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to list users: {e}" + (f" | body={_body}" if _body else ""))
+        return {"success": False, "message": f"Failed to list users: {str(e)}" + (f" | response: {_body}" if _body else "")}
 
 
 def list_groups(
@@ -469,8 +473,9 @@ def list_groups(
         }
 
     except requests.RequestException as e:
-        logger.error(f"Failed to list groups: {e}")
-        return {"success": False, "message": f"Failed to list groups: {str(e)}"}
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to list groups: {e}" + (f" | body={_body}" if _body else ""))
+        return {"success": False, "message": f"Failed to list groups: {str(e)}" + (f" | response: {_body}" if _body else "")}
 
 
 def assign_roles_to_user(
@@ -522,7 +527,8 @@ def assign_roles_to_user(
             )
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.error(f"Failed to assign role '{role}' to user: {e}")
+            _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+            logger.error(f"Failed to assign role '{role}' to user: {e}" + (f" | body={_body}" if _body else ""))
             success = False
 
     return success
@@ -566,7 +572,8 @@ def get_role_id(
         return result[0].get("sys_id")
 
     except requests.RequestException as e:
-        logger.error(f"Failed to get role ID: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to get role ID: {e}" + (f" | body={_body}" if _body else ""))
         return None
 
 
@@ -607,7 +614,8 @@ def check_user_has_role(
         return len(result) > 0
 
     except requests.RequestException as e:
-        logger.error(f"Failed to check if user has role: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to check if user has role: {e}" + (f" | body={_body}" if _body else ""))
         return False
 
 
@@ -675,10 +683,11 @@ def create_group(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to create group: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to create group: {e}" + (f" | body={_body}" if _body else ""))
         return GroupResponse(
             success=False,
-            message=f"Failed to create group: {str(e)}",
+            message=f"Failed to create group: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -737,10 +746,11 @@ def update_group(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to update group: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to update group: {e}" + (f" | body={_body}" if _body else ""))
         return GroupResponse(
             success=False,
-            message=f"Failed to update group: {str(e)}",
+            message=f"Failed to update group: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -795,7 +805,8 @@ def add_group_members(
             )
             response.raise_for_status()
         except requests.RequestException as e:
-            logger.error(f"Failed to add member '{member}' to group: {e}")
+            _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+            logger.error(f"Failed to add member '{member}' to group: {e}" + (f" | body={_body}" if _body else ""))
             success = False
             failed_members.append(member)
 
@@ -880,7 +891,8 @@ def remove_group_members(
             response.raise_for_status()
 
         except requests.RequestException as e:
-            logger.error(f"Failed to remove member '{member}' from group: {e}")
+            _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+            logger.error(f"Failed to remove member '{member}' from group: {e}" + (f" | body={_body}" if _body else ""))
             success = False
             failed_members.append(member)
 

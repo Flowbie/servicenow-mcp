@@ -107,6 +107,10 @@ platform_developer:
   - update_script_include
   - delete_script_include
   - execute_script_include
+  # Background Script Execution
+  - run_background_script
+  # Flow Designer
+  - create_flow
   # Workflows
   - list_workflows
   - get_workflow_details
@@ -230,6 +234,10 @@ full:
   - submit_change_for_approval
   - approve_change
   - reject_change
+  # Background Script Execution
+  - run_background_script
+  # Flow Designer
+  - create_flow
   # Workflow
   - list_workflows
   - get_workflow_details
