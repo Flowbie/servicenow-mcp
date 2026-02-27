@@ -121,7 +121,9 @@ def _get_ui_session(
     Three-step login flow:
       1. GET /login.do — creates base session, returns initial CSRF token in form.
       2. POST /login.do — submits credentials, receives auth cookies.
-      3. GET /sys.scripts.do — retrieves the page-specific sysparm_ck for the POST.
+      3. GET /sys.scripts.do — guard-checks for login redirect, then extracts the
+         page-specific CSRF token via (a) hidden input, (b) var g_ck JS variable
+         (San Diego+), or (c) X-UserToken response header.
 
     Returns:
         (session, csrf_token, failure_reason): session is a requests.Session with
