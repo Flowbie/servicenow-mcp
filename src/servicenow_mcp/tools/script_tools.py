@@ -41,13 +41,12 @@ logger = logging.getLogger(__name__)
 
 _WRAPPER_TEMPLATE = """\
 var __MFCP_RUN_ID = '{run_id}';
-gs.print('=== MFCP_START [run_id=' + __MFCP_RUN_ID + '] ===');
+gs.info('MFCP | START | run_id=' + __MFCP_RUN_ID);
 try {{{user_script}
 }} catch (__mfcp_err) {{
-  gs.print('MFCP_EXCEPTION: ' + __mfcp_err);
+  gs.error('MFCP | EXCEPTION | error=' + __mfcp_err + ' | run_id=' + __MFCP_RUN_ID);
 }}
-gs.print('=== MFCP_END [run_id=' + __MFCP_RUN_ID + '] ===');
-gs.info('MFCP | script_complete | run_id=' + __MFCP_RUN_ID);
+gs.info('MFCP | END | run_id=' + __MFCP_RUN_ID);
 """
 
 
@@ -224,6 +223,85 @@ def _get_ui_session(
 
 
 # ---------------------------------------------------------------------------
+# Scripted REST API execution helper
+# ---------------------------------------------------------------------------
+
+
+def _run_via_scripted_api(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    wrapped_script: str,
+    run_id: str,
+) -> tuple:
+    """
+    Execute a wrapped script via the custom Scripted REST API endpoint.
+
+    Basic auth works for REST endpoints, so no UI session is required.
+    The endpoint receives the script as JSON, executes it via GlideEvaluator,
+    and returns success/error in the response body.
+
+    Args:
+        config: Server configuration (must have script_execution_api_resource_path set).
+        auth_manager: Authentication manager.
+        wrapped_script: MFCP-wrapped JavaScript to execute.
+        run_id: Correlation ID for this run.
+
+    Returns:
+        (success: bool, error: str | None, http_status: int)
+    """
+    url = f"{config.instance_url.rstrip('/')}{config.script_execution_api_resource_path}"
+    payload = {"script": wrapped_script, "run_id": run_id}
+
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            headers=auth_manager.get_headers(),
+            timeout=max(config.timeout, 120),
+        )
+    except requests.RequestException as e:
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(
+            f"run_background_script | scripted_api request failed | run_id={run_id} | error={e}"
+            + (f" | body={_body}" if _body else "")
+        )
+        return False, str(e), getattr(getattr(e, "response", None), "status_code", 0) or 0
+
+    http_status = response.status_code
+    logger.info(
+        f"run_background_script | scripted_api returned HTTP {http_status} | run_id={run_id}"
+    )
+
+    if not (200 <= http_status < 300):
+        _body = response.text[:2000] if response.text else "(empty)"
+        logger.error(
+            f"run_background_script | scripted_api non-2xx | run_id={run_id}"
+            f" | status={http_status} | body={_body}"
+        )
+        return False, f"HTTP {http_status}: {_body}", http_status
+
+    try:
+        data = response.json()
+    except Exception:
+        logger.warning(
+            f"run_background_script | scripted_api non-JSON response | run_id={run_id}"
+            f" | preview={response.text[:500]!r}"
+        )
+        # Treat as success if HTTP 2xx — the script ran even if the response body is malformed
+        return True, None, http_status
+
+    if not data.get("success", True):
+        error_msg = data.get("error") or "scripted API reported failure"
+        logger.error(
+            f"run_background_script | scripted_api execution error | run_id={run_id}"
+            f" | error={error_msg}"
+        )
+        return False, error_msg, http_status
+
+    return True, None, http_status
+
+
+# ---------------------------------------------------------------------------
 # Parameter and response models
 # ---------------------------------------------------------------------------
 
@@ -302,16 +380,59 @@ def run_background_script(
     indented = "\n".join("  " + line for line in params.script.splitlines())
     wrapped = _WRAPPER_TEMPLATE.format(run_id=run_id, user_script=indented)
 
-    # Establish an authenticated session for UI endpoint access.
-    # sys.scripts.do is a Jelly UI page — it silently rejects HTTP auth headers
-    # (Basic, OAuth) and requires session cookies established via /login.do.
-    ui_session, csrf_token, session_failure = _get_ui_session(config, auth_manager)
-
     start_time = datetime.now(timezone.utc)
     logger.info(
         f"run_background_script | START | run_id={run_id} | scope={params.scope}"
-        f" | session={'ready' if ui_session else 'unavailable'}"
+        f" | path={'scripted_api' if config.script_execution_api_resource_path else 'ui_session'}"
+    )
+
+    # ------------------------------------------------------------------
+    # Branch A: Scripted REST API (preferred — works with service accounts)
+    # ------------------------------------------------------------------
+    if config.script_execution_api_resource_path:
+        success, error, http_status = _run_via_scripted_api(
+            config, auth_manager, wrapped, run_id
+        )
+        syslog_entries = _query_syslog(config, auth_manager, start_time)
+        direct_output = _extract_syslog_output(syslog_entries, run_id)
+
+        if not success:
+            return RunBackgroundScriptResult(
+                success=False,
+                run_id=run_id,
+                http_status=http_status,
+                direct_output=direct_output,
+                syslog_entries=syslog_entries,
+                message=(
+                    f"Scripted REST API execution failed (run_id={run_id}). "
+                    f"HTTP {http_status}. Error: {error or 'none'}"
+                ),
+            )
+
+        return RunBackgroundScriptResult(
+            success=True,
+            run_id=run_id,
+            http_status=http_status,
+            direct_output=direct_output,
+            syslog_entries=syslog_entries,
+            message=(
+                f"Script executed via Scripted REST API (run_id={run_id}). "
+                f"{len(syslog_entries)} syslog entries captured. "
+                f"Include '__MFCP_RUN_ID' in gs.info() calls to tag entries for this run."
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Branch B: UI session via sys.scripts.do (fallback)
+    # ------------------------------------------------------------------
+
+    # sys.scripts.do is a Jelly UI page — it silently rejects HTTP auth headers
+    # (Basic, OAuth) and requires session cookies established via /login.do.
+    ui_session, csrf_token, session_failure = _get_ui_session(config, auth_manager)
+    logger.info(
+        f"run_background_script | ui_session={'ready' if ui_session else 'unavailable'}"
         f" | csrf_token={'present' if csrf_token else 'missing'}"
+        f" | run_id={run_id}"
     )
 
     if ui_session is None and session_failure and "session_not_authenticated" in session_failure:
@@ -422,7 +543,7 @@ def run_background_script(
         direct_output=direct_output,
         syslog_entries=syslog_entries,
         message=(
-            f"Script executed (run_id={run_id}). "
+            f"Script executed via sys.scripts.do (run_id={run_id}). "
             f"direct_output has gs.print() results. "
             f"{len(syslog_entries)} syslog entries captured in the execution window "
             f"(may include concurrent instance activity). "
@@ -513,3 +634,35 @@ def _query_syslog(
             + (f" | body={_resp_preview}" if _resp_preview else "")
         )
         return []
+
+
+def _extract_syslog_output(entries: List[SyslogEntry], run_id: str) -> str:
+    """
+    Extract user-visible output from syslog entries tagged with run_id.
+
+    Filters entries whose message contains 'run_id=<run_id>', then strips
+    MFCP infrastructure lines (START / END markers). The remainder is the
+    user's gs.info/warn/error output from this specific execution.
+
+    Args:
+        entries: Syslog entries returned by _query_syslog.
+        run_id: The run correlation ID injected into the wrapped script.
+
+    Returns:
+        Formatted string of user output lines, or a diagnostic message if
+        no matching entries were found.
+    """
+    tag = f"run_id={run_id}"
+    infrastructure = ("MFCP | START |", "MFCP | END |")
+
+    tagged = [e for e in entries if tag in e.message]
+
+    if not tagged:
+        return f"(no syslog entries for run_id={run_id})"
+
+    user_lines = [e for e in tagged if not any(e.message.startswith(m) for m in infrastructure)]
+
+    if not user_lines:
+        return "(script ran — no gs.info() output with run_id tag)"
+
+    return "\n".join(f"[{e.level.upper()}] {e.message}" for e in user_lines)
