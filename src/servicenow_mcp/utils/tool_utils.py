@@ -356,9 +356,12 @@ from servicenow_mcp.tools.project_tools import (
 from servicenow_mcp.tools.flow_tools import (
     CreateFlowParams,
     CreateFlowResponse,
+    ListTriggerTypesParams,
+    ListTriggerTypesResult,
 )
 from servicenow_mcp.tools.flow_tools import (
     create_flow as create_flow_tool,
+    list_trigger_types as list_trigger_types_tool,
 )
 from servicenow_mcp.tools.script_tools import (
     RunBackgroundScriptParams,
@@ -782,6 +785,18 @@ def get_tool_definitions(
             "json",
         ),
         # Flow Designer Tools
+        "list_trigger_types": (
+            list_trigger_types_tool,
+            ListTriggerTypesParams,
+            ListTriggerTypesResult,
+            (
+                "List all available Flow Designer trigger types from sys_hub_trigger_type. "
+                "Returns the sys_id and name for each trigger type on this instance. "
+                "Call this before create_flow to discover valid trigger_definition_id values, "
+                "or let create_flow resolve the sys_id automatically from the type string."
+            ),
+            "json",
+        ),
         "create_flow": (
             create_flow_tool,
             CreateFlowParams,
