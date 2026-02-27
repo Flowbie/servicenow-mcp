@@ -17,6 +17,7 @@ included in user log calls to tag entries for this specific run.
 """
 
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from html.parser import HTMLParser
@@ -176,14 +177,33 @@ def _get_ui_session(
             )
             return None, None, "login_failed: X-Is-Logged-In=false after POST"
 
-        # Step 3: GET /sys.scripts.do — get the page-specific sysparm_ck
+        # Step 3: GET /sys.scripts.do — extract the page-specific CSRF token
         scripts_resp = session.get(f"{base}/sys.scripts.do", timeout=config.timeout)
+
+        # Guard: detect redirect to login page — MUST be first, before any extraction
+        if "login.do" in scripts_resp.url or "sysparm_script" not in scripts_resp.text:
+            logger.warning(
+                "run_background_script | sys.scripts.do returned login page"
+                " — session not authenticated"
+            )
+            return None, None, "session_not_authenticated: sys.scripts.do redirected to login"
+
+        # Attempt 1: legacy hidden input (Jelly-only SN releases — harmless no-op on modern SN)
         scripts_parser = _HiddenInputParser()
         scripts_parser.feed(scripts_resp.text)
         scripts_ck = scripts_parser.get("sysparm_ck")
+
+        # Attempt 2: JS variable extraction (primary fix — San Diego+ SPA delivery)
         if not scripts_ck:
-            # Fall back to X-UserToken header from the authenticated GET
+            _ck_match = re.search(r"var\s+g_ck\s*=\s*'([^']+)'", scripts_resp.text)
+            if _ck_match:
+                scripts_ck = _ck_match.group(1)
+                logger.info("run_background_script | sysparm_ck extracted via g_ck JS regex")
+
+        # Attempt 3: X-UserToken response header (last resort — dead on UI pages, costs nothing)
+        if not scripts_ck:
             scripts_ck = scripts_resp.headers.get("X-UserToken")
+
         if scripts_ck:
             logger.info(
                 f"run_background_script | UI session ready"
@@ -292,13 +312,30 @@ def run_background_script(
         f" | csrf_token={'present' if csrf_token else 'missing'}"
     )
 
+    if ui_session is None and session_failure and "session_not_authenticated" in session_failure:
+        return RunBackgroundScriptResult(
+            success=False,
+            run_id=run_id,
+            http_status=0,
+            direct_output="",
+            syslog_entries=[],
+            message=(
+                f"Cannot execute script: ServiceNow session is not authenticated. "
+                f"sys.scripts.do redirected to the login page. "
+                f"Check instance URL and credentials. Details: {session_failure}"
+            ),
+        )
+
     form_data: dict = {
         "sysparm_track_flag": "true",
         "sysparm_script": wrapped,
         "sysparm_transaction_scope": params.scope,
+        # sysparm_ck intentionally absent — token sent as X-UserToken header below
     }
+
+    post_headers: dict = {}
     if csrf_token:
-        form_data["sysparm_ck"] = csrf_token
+        post_headers["X-UserToken"] = csrf_token
 
     try:
         if ui_session is not None:
@@ -307,6 +344,7 @@ def run_background_script(
             response = ui_session.post(
                 f"{config.instance_url.rstrip('/')}/sys.scripts.do",
                 data=form_data,
+                headers=post_headers,
                 timeout=max(config.timeout, 120),
             )
         else:
@@ -315,6 +353,7 @@ def run_background_script(
             fallback_headers = {}
             if "Authorization" in auth_headers:
                 fallback_headers["Authorization"] = auth_headers["Authorization"]
+            fallback_headers.update(post_headers)
             response = requests.post(
                 f"{config.instance_url.rstrip('/')}/sys.scripts.do",
                 data=form_data,
