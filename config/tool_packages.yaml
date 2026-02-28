@@ -16,14 +16,6 @@ service_desk:
   - resolve_incident
   - list_incidents
   - get_incident_by_number
-  # Write Verification, Metadata Discovery, and Diagnostic Escalation
-  - verify_fields
-  - get_field_metadata
-  - get_field_choices
-  - get_data_lookup_rules
-  - get_business_rules
-  - get_data_policies
-  - get_ui_policies
   # User Lookup
   - get_user
   - list_users
@@ -68,14 +60,6 @@ change_coordinator:
   - submit_change_for_approval
   - approve_change
   - reject_change
-  # Write Verification, Metadata Discovery, and Diagnostic Escalation
-  - verify_fields
-  - get_field_metadata
-  - get_field_choices
-  - get_data_lookup_rules
-  - get_business_rules
-  - get_data_policies
-  - get_ui_policies
 
 knowledge_author:
   # KB Management
@@ -100,6 +84,11 @@ platform_developer:
   - get_business_rules
   - get_data_policies
   - get_ui_policies
+  # Introspection (architecture blueprints)
+  - get_table_metadata
+  - list_table_fields
+  - list_table_relationships
+  - list_child_tables
   # Script Includes
   - list_script_includes
   - get_script_include
@@ -175,6 +164,11 @@ system_administrator:
   - get_business_rules
   - get_data_policies
   - get_ui_policies
+  # Introspection (architecture blueprints)
+  - get_table_metadata
+  - list_table_fields
+  - list_table_relationships
+  - list_child_tables
   # User Management
   - create_user
   - update_user
@@ -199,6 +193,11 @@ full:
   - get_business_rules
   - get_data_policies
   - get_ui_policies
+  # Introspection (architecture blueprints)
+  - get_table_metadata
+  - list_table_fields
+  - list_table_relationships
+  - list_child_tables
   # Incident Management
   - create_incident
   - update_incident

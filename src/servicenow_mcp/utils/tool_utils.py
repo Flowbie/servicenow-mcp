@@ -140,6 +140,16 @@ from servicenow_mcp.tools.metadata_tools import (
     get_ui_policies as get_ui_policies_tool,
     verify_fields as verify_fields_tool,
 )
+from servicenow_mcp.tools.introspection_tools import (
+    GetTableMetadataParams,
+    ListTableFieldsParams,
+    ListTableRelationshipsParams,
+    ListChildTablesParams,
+    get_table_metadata as get_table_metadata_tool,
+    list_table_fields as list_table_fields_tool,
+    list_table_relationships as list_table_relationships_tool,
+    list_child_tables as list_child_tables_tool,
+)
 from servicenow_mcp.tools.incident_tools import (
     add_comment as add_comment_tool,
 )
@@ -543,6 +553,48 @@ def get_tool_definitions(
                 "Call this as the final diagnostic step to provide supplemental context "
                 "about form behaviour. Never cite a UI Policy as the cause of an API write "
                 "mismatch — if only a UI policy is found, continue searching for the real cause."
+            ),
+            "json",
+        ),
+        # Introspection tools — sys_db_object / sys_dictionary for architecture blueprints
+        "get_table_metadata": (
+            get_table_metadata_tool,
+            GetTableMetadataParams,
+            dict,
+            (
+                "Query sys_db_object for a table's metadata: label, extends (parent table), scope. "
+                "Use for architecture blueprints and table hierarchy. Read-only."
+            ),
+            "json",
+        ),
+        "list_table_fields": (
+            list_table_fields_tool,
+            ListTableFieldsParams,
+            dict,
+            (
+                "Query sys_dictionary for all columns of a table. Returns field name, internal_type, "
+                "reference (target table for reference fields), read_only, calculated, mandatory, "
+                "default_value. Use for blueprint field lists and relationship discovery. Read-only."
+            ),
+            "json",
+        ),
+        "list_table_relationships": (
+            list_table_relationships_tool,
+            ListTableRelationshipsParams,
+            dict,
+            (
+                "Derive outbound reference relationships for a table from sys_dictionary. "
+                "Returns from_field and to_table for each reference. Use for relationship graphs. Read-only."
+            ),
+            "json",
+        ),
+        "list_child_tables": (
+            list_child_tables_tool,
+            ListChildTablesParams,
+            dict,
+            (
+                "Query sys_db_object for tables that extend (super_class) a parent table. "
+                "Returns list of child table names. Use for table hierarchy in blueprints. Read-only."
             ),
             "json",
         ),
