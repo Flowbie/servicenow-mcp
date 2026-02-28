@@ -375,6 +375,7 @@ def run_background_script(
         RunBackgroundScriptResult with direct output and syslog entries.
     """
     run_id = uuid.uuid4().hex[:12]
+    script_block = _format_script_code_block(params.script)
 
     # Indent user script and inject into wrapper
     indented = "\n".join("  " + line for line in params.script.splitlines())
@@ -405,7 +406,8 @@ def run_background_script(
                 syslog_entries=syslog_entries,
                 message=(
                     f"Scripted REST API execution failed (run_id={run_id}). "
-                    f"HTTP {http_status}. Error: {error or 'none'}"
+                    f"HTTP {http_status}. Error: {error or 'none'}\n"
+                    f"{script_block}"
                 ),
             )
 
@@ -418,7 +420,8 @@ def run_background_script(
             message=(
                 f"Script executed via Scripted REST API (run_id={run_id}). "
                 f"{len(syslog_entries)} syslog entries captured. "
-                f"Include '__MFCP_RUN_ID' in gs.info() calls to tag entries for this run."
+                f"Include '__MFCP_RUN_ID' in gs.info() calls to tag entries for this run.\n"
+                f"{script_block}"
             ),
         )
 
@@ -445,7 +448,8 @@ def run_background_script(
             message=(
                 f"Cannot execute script: ServiceNow session is not authenticated. "
                 f"sys.scripts.do redirected to the login page. "
-                f"Check instance URL and credentials. Details: {session_failure}"
+                f"Check instance URL and credentials. Details: {session_failure}\n"
+                f"{script_block}"
             ),
         )
 
@@ -498,6 +502,7 @@ def run_background_script(
             message=(
                 f"Request to sys.scripts.do failed: {str(e)}"
                 + (f" | body: {_body}" if _body else "")
+                + f"\n{script_block}"
             ),
         )
 
@@ -532,7 +537,8 @@ def run_background_script(
             syslog_entries=syslog_entries,
             message=(
                 f"sys.scripts.do returned HTTP {http_status} — script may not have "
-                f"executed. Raw response preview: {raw_preview}"
+                f"executed. Raw response preview: {raw_preview}\n"
+                f"{script_block}"
             ),
         )
 
@@ -547,7 +553,8 @@ def run_background_script(
             f"direct_output has gs.print() results. "
             f"{len(syslog_entries)} syslog entries captured in the execution window "
             f"(may include concurrent instance activity). "
-            f"Include '__MFCP_RUN_ID' in gs.info() calls to tag entries for this run."
+            f"Include '__MFCP_RUN_ID' in gs.info() calls to tag entries for this run.\n"
+            f"{script_block}"
         ),
     )
 
@@ -587,6 +594,18 @@ def _extract_direct_output(html: str, run_id: str) -> str:
     if stripped:
         return f"(MFCP markers missing — raw <pre> content follows)\n{stripped}"
     return f"(no output in HTML — markers missing | html_preview={html[:300]!r})"
+
+
+def _format_script_code_block(script: str) -> str:
+    """
+    Format the user-provided script as a fenced code block for easier review.
+
+    This is included in the RunBackgroundScriptResult.message so that callers
+    can see exactly what was executed without searching logs.
+    """
+    # Avoid trailing blank lines inside the fence
+    body = script.rstrip("\n")
+    return "Script:\n```javascript\n" + body + "\n```"
 
 
 def _query_syslog(
