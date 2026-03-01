@@ -75,6 +75,36 @@ knowledge_author:
   - list_articles
   - get_article
 
+executor:
+  # Minimum required tools for the Executor agent pattern.
+  # Always contains: pre-flight, write verification, and diagnostic escalation tools.
+  # Add write tools for the specific domain (e.g. script_include_tools, incident_tools)
+  # to the active package when the Executor is invoked for that domain.
+  #
+  # Read-only / protocol tools (always required by Executor):
+  - verify_fields
+  - get_field_metadata
+  - get_field_choices
+  - get_data_lookup_rules
+  - get_business_rules
+  - get_data_policies
+  - get_ui_policies
+  # Introspection (pre-flight blueprint check):
+  - get_table_metadata
+  - list_table_fields
+  - list_table_relationships
+  - list_child_tables
+  # Script Include writes (Executor default for scripting tasks):
+  - list_script_includes
+  - get_script_include
+  - create_script_include
+  - update_script_include
+  # Changeset (update set management):
+  - list_changesets
+  - create_changeset
+  - update_changeset
+  - commit_changeset
+
 platform_developer:
   # Write Verification, Metadata Discovery, and Diagnostic Escalation
   - verify_fields
