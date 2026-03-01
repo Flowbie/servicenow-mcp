@@ -6,19 +6,24 @@ only mechanism capable of writing trigger instances and action instances (the st
 Table API cannot write sys_hub_flow_snapshot, which has sys_policy=read).
 
 API sequence for create_flow:
-  1. POST /api/now/processflow/flow          — create flow shell
-  2. POST /api/now/processflow/versioning/create_version  — initial autosave
-  3. PUT  /api/now/processflow/flow          — save trigger + action instances
-  4. POST /api/now/processflow/versioning/create_version  — final autosave
+  1. POST /api/now/processflow/flow                         — create flow shell
+  2. POST /api/now/processflow/versioning/create_version    — initial autosave
+  3. Resolve trigger_definition_id (if not supplied)
+  4. Build trigger + action instance payloads
+  5. PUT  /api/now/processflow/flow                         — save trigger + action instances
+  6. POST /api/now/processflow/versioning/create_version    — final Save version
+  7. PATCH /api/now/table/sys_hub_flow_version              — set fTriggerType='Record' in payload
+  8. DELETE /api/now/table/sys_hub_flow_safe_edit           — release Flow Designer edit lock
 """
 
 import json
 import logging
+import time
 import uuid
-from typing import List, Optional
+from typing import Literal
 
 import requests
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.config import ServerConfig
@@ -32,7 +37,11 @@ logger = logging.getLogger(__name__)
 
 
 class TriggerInputParam(BaseModel):
-    """A single trigger input name/value pair."""
+    """A single trigger input name/value pair.
+
+    All values must be strings — the ServiceNow processflow API serialises
+    every input value as a string, including booleans ('0'/'1') and integers.
+    """
 
     name: str = Field(..., description="Trigger input name (e.g. 'table', 'condition')")
     value: str = Field(..., description="Trigger input value (all values are strings)")
@@ -43,6 +52,8 @@ class TriggerInstanceParam(BaseModel):
 
     Convenience fields 'table' and 'condition' are converted to trigger inputs
     automatically. Provide 'inputs' directly to override all trigger inputs.
+    Note: 'inputs' must be a non-empty list to take effect — an empty list is
+    treated the same as None (convenience fields are used instead).
     """
 
     type: str = Field(
@@ -53,7 +64,7 @@ class TriggerInstanceParam(BaseModel):
             "Verify available types via GET /api/now/hub/triggerpicker/basic on the instance."
         ),
     )
-    trigger_definition_id: Optional[str] = Field(
+    trigger_definition_id: str | None = Field(
         None,
         description=(
             "sys_id of the trigger type definition (sys_hub_trigger_type). "
@@ -62,14 +73,14 @@ class TriggerInstanceParam(BaseModel):
             "Call list_trigger_types to discover available sys_ids explicitly."
         ),
     )
-    name: Optional[str] = Field(
+    name: str | None = Field(
         None,
         description=(
             "Display name for the trigger (e.g. 'Created', 'Created or Updated'). "
             "Defaults to the type value if omitted."
         ),
     )
-    table: Optional[str] = Field(
+    table: str | None = Field(
         None,
         description=(
             "Table name to trigger on (e.g. 'incident'). "
@@ -77,7 +88,7 @@ class TriggerInstanceParam(BaseModel):
             "Ignored if 'inputs' is provided."
         ),
     )
-    condition: Optional[str] = Field(
+    condition: str | None = Field(
         None,
         description=(
             "Encoded query condition (e.g. 'active=true'). "
@@ -85,13 +96,25 @@ class TriggerInstanceParam(BaseModel):
             "Ignored if 'inputs' is provided."
         ),
     )
-    inputs: Optional[List[TriggerInputParam]] = Field(
+    inputs: list[TriggerInputParam] | None = Field(
         None,
         description=(
-            "Full trigger input list. If provided, overrides 'table' and 'condition'. "
+            "Full trigger input list. If provided and non-empty, overrides 'table' and 'condition'. "
+            "An empty list ([]) is treated as None — convenience fields are used instead. "
             "Only 'table' is mandatory for record triggers."
         ),
     )
+
+    @field_validator("inputs")
+    @classmethod
+    def normalize_empty_inputs(cls, v: list[TriggerInputParam] | None) -> list[TriggerInputParam] | None:
+        """Treat an explicitly empty inputs list the same as None.
+
+        Prevents inputs=[] from silently discarding table and condition convenience fields.
+        """
+        if v is not None and len(v) == 0:
+            return None
+        return v
 
 
 class ActionInputParam(BaseModel):
@@ -122,12 +145,21 @@ class ActionInstanceParam(BaseModel):
         ),
     )
     name: str = Field(..., description="Display name for this action step (e.g. 'Look Up Record')")
-    order: int = Field(1, description="Execution order, 1-based integer")
-    internal_name: Optional[str] = Field(
-        None,
-        description="Internal name of the action type (e.g. 'look_up_record'). Optional — used for display only.",
+    order: int = Field(
+        1,
+        description=(
+            "Execution order, 1-based integer. Must be unique across all actions in the flow — "
+            "duplicate order values will result in undefined rendering order in the UI."
+        ),
     )
-    parent_action_type_id: Optional[str] = Field(
+    internal_name: str | None = Field(
+        None,
+        description=(
+            "Internal name of the action type (e.g. 'look_up_record'). "
+            "Written into the PUT payload; leave None if unknown."
+        ),
+    )
+    parent_action_type_id: str | None = Field(
         None,
         description=(
             "Parent action type sys_id. "
@@ -135,7 +167,7 @@ class ActionInstanceParam(BaseModel):
             "Leave empty if unknown — the platform will resolve it."
         ),
     )
-    inputs: List[ActionInputParam] = Field(
+    inputs: list[ActionInputParam] = Field(
         default_factory=list,
         description=(
             "Input parameters for this action. Each input requires the exact parameter "
@@ -146,7 +178,10 @@ class ActionInstanceParam(BaseModel):
 
 
 class ListTriggerTypesParams(BaseModel):
-    """Parameters for list_trigger_types (no required inputs)."""
+    """Parameters for list_trigger_types (no required inputs).
+
+    Kept for interface consistency with the (config, auth_manager, params) tool signature.
+    """
     pass
 
 
@@ -154,12 +189,15 @@ class TriggerTypeInfo(BaseModel):
     """One trigger type definition from sys_hub_trigger_type."""
     sys_id: str
     name: str
-    type_string: Optional[str] = None
+    type_string: str | None = None
+    """Mapped type string (e.g. 'record_create') for use as create_flow trigger.type.
+    May be None for non-standard or scoped-app trigger types not in the built-in map.
+    """
 
 
 class ListTriggerTypesResult(BaseModel):
     """Result from list_trigger_types."""
-    trigger_types: List[TriggerTypeInfo]
+    trigger_types: list[TriggerTypeInfo]
     message: str
 
 
@@ -167,32 +205,32 @@ class CreateFlowParams(BaseModel):
     """Parameters for creating a Flow Designer flow."""
 
     name: str = Field(..., description="Flow name as it will appear in Flow Designer")
-    description: Optional[str] = Field(None, description="Flow description")
+    description: str | None = Field(None, description="Flow description")
     scope: str = Field(
         "global",
-        description="Application scope. Use 'global' for global scope or a scope sys_id.",
+        description="Application scope. Use 'global' for global scope or provide a scope sys_id.",
     )
-    run_as: str = Field(
+    run_as: Literal["user", "system"] = Field(
         "user",
         description="Execution context: 'user' (runs as the triggering user) or 'system'.",
     )
-    access: str = Field(
+    access: Literal["public", "package_private", "private"] = Field(
         "public",
         description="Access level: 'public', 'package_private', or 'private'.",
     )
-    flow_priority: str = Field(
+    flow_priority: Literal["LOW", "MEDIUM", "HIGH"] = Field(
         "MEDIUM",
         description="Flow priority: 'LOW', 'MEDIUM', or 'HIGH'.",
     )
-    trigger: Optional[TriggerInstanceParam] = Field(
+    trigger: TriggerInstanceParam | None = Field(
         None,
         description=(
             "Trigger configuration. If omitted the flow is created as a subflow "
             "(no trigger, callable by other flows or the REST API)."
         ),
     )
-    actions: Optional[List[ActionInstanceParam]] = Field(
-        None,
+    actions: list[ActionInstanceParam] = Field(
+        default_factory=list,
         description=(
             "Action steps to add to the flow. Each action requires exact parameter "
             "definition sys_ids for its inputs — these are instance-specific values "
@@ -208,13 +246,17 @@ class CreateFlowParams(BaseModel):
 
 
 class CreateFlowResponse(BaseModel):
-    """Response from create_flow."""
+    """Response from create_flow.
+
+    When success=False but flow_sys_id is populated, the flow shell was partially
+    created. The caller should inspect flow_sys_id to clean up or retry in Flow Designer.
+    """
 
     success: bool = Field(..., description="Whether the flow was created successfully")
     message: str = Field(..., description="Human-readable result description")
-    flow_sys_id: Optional[str] = Field(None, description="sys_id of the created flow (sys_hub_flow)")
-    flow_name: Optional[str] = Field(None, description="Name of the created flow")
-    flow_internal_name: Optional[str] = Field(None, description="Auto-generated internal name of the flow")
+    flow_sys_id: str | None = Field(None, description="sys_id of the created flow (sys_hub_flow)")
+    flow_name: str | None = Field(None, description="Name of the created flow")
+    flow_internal_name: str | None = Field(None, description="Auto-generated internal name of the flow")
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +271,23 @@ _TRIGGER_TYPE_NAME_MAP = {
     "recurrence": "Recurrence",
 }
 
+_TRUNCATE_BODY_AT = 2000
+_TRUNCATE_SUFFIX = "...[truncated]"
+
+
+def _truncate_body(text: str) -> str:
+    """Truncate an error response body with a visible marker."""
+    if len(text) > _TRUNCATE_BODY_AT:
+        return text[:_TRUNCATE_BODY_AT] + _TRUNCATE_SUFFIX
+    return text
+
+
+def _err_body(e: requests.RequestException) -> str:
+    """Extract and truncate the response body from a RequestException, or ''."""
+    if e.response is not None:
+        return _truncate_body(e.response.text)
+    return ""
+
 
 # ---------------------------------------------------------------------------
 # Record trigger input parameter definitions
@@ -236,6 +295,12 @@ _TRIGGER_TYPE_NAME_MAP = {
 # Each dict is a parameter definition object used by the Flow Designer renderInput
 # component. Values extracted from sys_hub_flow_version.payload of a manually-created
 # flow on dev296536 (2026-02-27). These are core platform config, stable within a release.
+#
+# Ordering note on choices vs defaultChoices:
+#   'choices' uses 0-based 'order' values.
+#   'defaultChoices' uses 1-based 'order' values for the same entries.
+#   This mirrors the exact values observed in the instance payload and is intentional —
+#   do not "fix" the 1-based defaultChoices to 0-based.
 
 
 def _param(
@@ -249,15 +314,17 @@ def _param(
     reference: str = "",
     dependent_on: str = "",
     default_value: str = "",
-    attributes: Optional[dict] = None,
-    choices: Optional[list] = None,
-    default_choices: Optional[list] = None,
+    attributes: dict[str, str] | None = None,
+    choices: list[dict] | None = None,
+    default_choices: list[dict] | None = None,
+    extended: bool = False,
 ) -> dict:
     """Build a full parameter definition dict matching the Flow Designer payload schema.
 
     choices and default_choices are required for 'choice' type inputs so Flow Designer
     renders display labels instead of raw values. Values are confirmed from instance
     payload (sys_hub_flow_version) of a manually-created flow on dev296536 (2026-02-27).
+    extended=True places the input under the Advanced Options dropdown in Flow Designer.
     """
     return {
         "children": [],
@@ -266,7 +333,7 @@ def _param(
         "name": name,
         "type": ptype,
         "order": order,
-        "extended": False,
+        "extended": extended,
         "mandatory": mandatory,
         "readOnly": False,
         "hint": "",
@@ -289,38 +356,16 @@ def _param(
 
 
 # Ordered list of all 7 standard record trigger inputs.
-# Must be sent in this order to match what Flow Designer produces manually.
-_RECORD_TRIGGER_INPUTS: List[dict] = [
-    _param("cfca92e0c31322002841b63b12d3ae00", "Table",                 "table",                 "table_name", order=1,   mandatory=True,  maxsize=80,   attributes={"filter_table_source": "RECORD_WATCHER_RESTRICTED"}),
-    _param("66aadea0c31322002841b63b12d3aebf", "Condition",             "condition",             "conditions", order=100, mandatory=False, maxsize=4000, dependent_on="table"),
-    _param(
-        "11ffbef2072200103bf10705afd300c2", "run_on_extended", "run_on_extended", "choice",
-        order=100, mandatory=False, maxsize=40, default_value="false",
-        choices=[
-            {"label": "Run only on current table",         "value": "false", "order": 0},
-            {"label": "Run on current and extended tables", "value": "true",  "order": 1},
-        ],
-        default_choices=[
-            {"label": "Run only on current table",         "value": "false", "order": 1},
-            {"label": "Run on current and extended tables", "value": "true",  "order": 2},
-        ],
-    ),
-    _param(
-        "3f1b9e4e0f103300b599bca2ff767e21", "run_flow_in", "run_flow_in", "choice",
-        order=100, mandatory=False, maxsize=40, default_value="any",
-        choices=[
-            {"label": "Run flow in background (default)", "value": "background", "order": 0},
-            {"label": "Run flow in foreground",           "value": "foreground", "order": 1},
-        ],
-        default_choices=[
-            {"label": "Run flow in background (default)", "value": "background", "order": 1},
-            {"label": "Run flow in foreground",           "value": "foreground", "order": 2},
-        ],
-    ),
-    _param("f89c5177c7002300f4eba1425a976385", "run_when_user_list",    "run_when_user_list",    "glide_list", order=100, mandatory=False, maxsize=4000, reference="sys_user"),
+# Order matches Flow Designer UI: table, condition (always visible),
+# then advanced options: run_when_setting, run_when_user_setting,
+# run_when_user_list (conditional), run_on_extended, run_flow_in.
+_RECORD_TRIGGER_INPUTS: list[dict] = [
+    _param("cfca92e0c31322002841b63b12d3ae00", "Table",     "table",     "table_name", order=1,   mandatory=True,  maxsize=80,   attributes={"filter_table_source": "RECORD_WATCHER_RESTRICTED"}),
+    _param("66aadea0c31322002841b63b12d3aebf", "Condition", "condition", "conditions", order=100, mandatory=False, maxsize=4000, dependent_on="table", attributes={"modelDependent": "trigger_inputs", "wants_to_add_conditions": "true"}),
     _param(
         "1e4859f3c7002300f4eba1425a9763f9", "run_when_setting", "run_when_setting", "choice",
-        order=100, mandatory=False, maxsize=40, default_value="both",
+        order=200, mandatory=False, maxsize=40, default_value="both",
+        extended=True, attributes={"advanced": "true"},
         choices=[
             {"label": "Only Run for Non-Interactive Session",                 "value": "non_interactive", "order": 0},
             {"label": "Only Run for User Interactive Session",                "value": "interactive",     "order": 1},
@@ -334,7 +379,8 @@ _RECORD_TRIGGER_INPUTS: List[dict] = [
     ),
     _param(
         "ed7a5537c7002300f4eba1425a976391", "run_when_user_setting", "run_when_user_setting", "choice",
-        order=100, mandatory=False, maxsize=40, default_value="any",
+        order=300, mandatory=False, maxsize=40, default_value="any",
+        extended=True, attributes={"advanced": "true"},
         choices=[
             {"label": "Do not run if triggered by the following users", "value": "not_one_of", "order": 0},
             {"label": "Only Run if triggered by the following users",   "value": "one_of",     "order": 1},
@@ -344,6 +390,33 @@ _RECORD_TRIGGER_INPUTS: List[dict] = [
             {"label": "Do not run if triggered by the following users", "value": "not_one_of", "order": 1},
             {"label": "Only Run if triggered by the following users",   "value": "one_of",     "order": 2},
             {"label": "Run for any user",                               "value": "any",        "order": 3},
+        ],
+    ),
+    _param("f89c5177c7002300f4eba1425a976385", "run_when_user_list", "run_when_user_list", "glide_list", order=400, mandatory=False, maxsize=4000, reference="sys_user", dependent_on="run_when_user_setting", extended=True, attributes={"advanced": "true"}),
+    _param(
+        "11ffbef2072200103bf10705afd300c2", "run_on_extended", "run_on_extended", "choice",
+        order=500, mandatory=False, maxsize=40, default_value="false",
+        extended=True, attributes={"advanced": "true"},
+        choices=[
+            {"label": "Run only on current table",         "value": "false", "order": 0},
+            {"label": "Run on current and extended tables", "value": "true",  "order": 1},
+        ],
+        default_choices=[
+            {"label": "Run only on current table",         "value": "false", "order": 1},
+            {"label": "Run on current and extended tables", "value": "true",  "order": 2},
+        ],
+    ),
+    _param(
+        "3f1b9e4e0f103300b599bca2ff767e21", "run_flow_in", "run_flow_in", "choice",
+        order=600, mandatory=False, maxsize=40, default_value="background",
+        extended=True, attributes={"advanced": "true"},
+        choices=[
+            {"label": "Run flow in background (default)", "value": "background", "order": 0},
+            {"label": "Run flow in foreground",           "value": "foreground", "order": 1},
+        ],
+        default_choices=[
+            {"label": "Run flow in background (default)", "value": "background", "order": 1},
+            {"label": "Run flow in foreground",           "value": "foreground", "order": 2},
         ],
     ),
 ]
@@ -373,14 +446,14 @@ def _lookup_table_label(config: ServerConfig, auth_manager: AuthManager, table_n
             if label:
                 return label
     except requests.RequestException as e:
-        logger.warning(f"_lookup_table_label | failed | table={table_name} | error={e}")
+        logger.warning("_lookup_table_label | failed | table=%s | error=%s", table_name, e)
     return table_name.replace("_", " ").title()
 
 
 def list_trigger_types(
     config: ServerConfig,
     auth_manager: AuthManager,
-    params: ListTriggerTypesParams,
+    _params: ListTriggerTypesParams,
 ) -> ListTriggerTypesResult:
     """
     List all available Flow Designer trigger types from sys_hub_trigger_type.
@@ -388,13 +461,16 @@ def list_trigger_types(
     Use this to discover the sys_id values needed for create_flow's
     trigger_definition_id field, or to verify which triggers are active
     on the instance.
+
+    Returns up to 200 trigger types. If your instance has more, use
+    list_trigger_types with a direct Table API query and sysparm_offset to paginate.
     """
     try:
         response = requests.get(
             f"{config.api_url}/table/sys_hub_trigger_type",
             params={
                 "sysparm_fields": "sys_id,name,internal_name",
-                "sysparm_limit": 50,
+                "sysparm_limit": 200,
                 "sysparm_orderby": "name",
             },
             headers=auth_manager.get_headers(),
@@ -402,11 +478,11 @@ def list_trigger_types(
         )
         response.raise_for_status()
     except requests.RequestException as e:
-        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
-        logger.error(f"list_trigger_types | request failed | error={e}" + (f" | body={_body}" if _body else ""))
+        _body = _err_body(e)
+        logger.error("list_trigger_types | request failed | error=%s%s", e, f" | body={_body}" if _body else "")
         return ListTriggerTypesResult(
             trigger_types=[],
-            message=f"Failed to fetch trigger types: {str(e)}" + (f" | response: {_body}" if _body else ""),
+            message=f"Failed to fetch trigger types: {e}" + (f" | response: {_body}" if _body else ""),
         )
 
     records = response.json().get("result", [])
@@ -421,10 +497,11 @@ def list_trigger_types(
         )
         for r in records
     ]
-    logger.info(f"list_trigger_types | found {len(trigger_types)} trigger types")
+    logger.info("list_trigger_types | found %d trigger types", len(trigger_types))
+    truncation_note = " (result capped at 200 — instance may have more)" if len(trigger_types) == 200 else ""
     return ListTriggerTypesResult(
         trigger_types=trigger_types,
-        message=f"Found {len(trigger_types)} trigger type(s). Use sys_id as trigger_definition_id in create_flow.",
+        message=f"Found {len(trigger_types)} trigger type(s){truncation_note}. Use sys_id as trigger_definition_id in create_flow.",
     )
 
 
@@ -432,16 +509,20 @@ def _resolve_trigger_definition_id(
     config: ServerConfig,
     auth_manager: AuthManager,
     type_str: str,
-) -> tuple:
+) -> tuple[str | None, str | None]:
     """
     Resolve a trigger type string (e.g. 'record_create') to its sys_id on this instance.
 
-    Returns (sys_id: str | None, error_message: str | None).
+    Queries sys_hub_trigger_type by display name (e.g. 'Created' for 'record_create').
+    The sys_id returned is used as triggerDefinitionId in the processflow PUT body.
+
+    Returns (sys_id, None) on success, or (None, error_message) on failure.
     """
     display_name = _TRIGGER_TYPE_NAME_MAP.get(type_str.lower())
     if not display_name:
-        # Try passing the type_str as the display name directly (e.g. user said "Created")
-        display_name = type_str
+        # Caller may have passed the display name directly (e.g. "Created").
+        # Normalise to title-case so "CREATED" or "created" also resolve correctly.
+        display_name = type_str.strip().title()
 
     try:
         response = requests.get(
@@ -456,8 +537,8 @@ def _resolve_trigger_definition_id(
         )
         response.raise_for_status()
     except requests.RequestException as e:
-        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
-        return None, f"Failed to query sys_hub_trigger_type: {str(e)}" + (f" | body: {_body}" if _body else "")
+        _body = _err_body(e)
+        return None, f"Failed to query sys_hub_trigger_type: {e}" + (f" | body: {_body}" if _body else "")
 
     records = response.json().get("result", [])
     if not records:
@@ -467,7 +548,7 @@ def _resolve_trigger_definition_id(
         )
 
     sys_id = records[0]["sys_id"]
-    logger.info(f"_resolve_trigger_definition_id | type={type_str} | name={display_name} | sys_id={sys_id}")
+    logger.info("_resolve_trigger_definition_id | type=%s | name=%s | sys_id=%s", type_str, display_name, sys_id)
     return sys_id, None
 
 
@@ -484,10 +565,16 @@ def create_flow(
     sys_hub_flow_snapshot table is read-only via the Table API.
 
     Sequence:
-      1. POST /processflow/flow            — create the flow shell
-      2. POST /processflow/versioning/...  — initial autosave
-      3. PUT  /processflow/flow            — attach trigger and actions
-      4. POST /processflow/versioning/...  — final autosave
+      1. POST /processflow/flow                      — create the flow shell
+      2. POST /processflow/versioning/create_version — initial autosave
+      3. Resolve trigger_definition_id via sys_hub_trigger_type (if not supplied)
+      4. Build trigger + action instance payloads
+      5. PUT  /processflow/flow                      — attach trigger and actions
+      6. POST /processflow/versioning/create_version — final Save version (type='Save',
+         not 'Autosave', so Flow Designer reads advanced options from the saved version)
+      7. PATCH sys_hub_flow_version                  — set fTriggerType='Record' in payload
+         (a Business Rule overwrites it; patching the serialised payload is the only fix)
+      8. DELETE sys_hub_flow_safe_edit               — release the Flow Designer edit lock
 
     Args:
         config: Server configuration (instance_url, auth, timeout).
@@ -496,6 +583,7 @@ def create_flow(
 
     Returns:
         CreateFlowResponse with success flag, message, and flow identifiers.
+        When success=False but flow_sys_id is set, a partial shell was created.
     """
     processflow_base = f"{config.api_url}/processflow"
     headers = auth_manager.get_headers()
@@ -535,11 +623,11 @@ def create_flow(
         )
         shell_response.raise_for_status()
     except requests.RequestException as e:
-        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
-        logger.error(f"create_flow | shell POST failed | error={e}" + (f" | body={_body}" if _body else ""))
+        _body = _err_body(e)
+        logger.error("create_flow | shell POST failed | error=%s%s", e, f" | body={_body}" if _body else "")
         return CreateFlowResponse(
             success=False,
-            message=f"Failed to create flow shell: {str(e)}" + (f" | response: {_body}" if _body else ""),
+            message=f"Failed to create flow shell: {e}" + (f" | response: {_body}" if _body else ""),
         )
 
     shell_result = shell_response.json()
@@ -549,8 +637,8 @@ def create_flow(
 
     if not flow_sys_id:
         logger.error(
-            f"create_flow | shell POST succeeded but no id in response | "
-            f"response={shell_result}"
+            "create_flow | shell POST succeeded but no id in response | response=%s",
+            shell_result,
         )
         return CreateFlowResponse(
             success=False,
@@ -560,62 +648,69 @@ def create_flow(
             ),
         )
 
-    logger.info(f"create_flow | shell created | flow_sys_id={flow_sys_id}")
+    logger.info("create_flow | shell created | flow_sys_id=%s", flow_sys_id)
 
     # ------------------------------------------------------------------
     # Step 2: Initial autosave version
     # ------------------------------------------------------------------
-    version_body = {
+    autosave_body = {
         "item_sys_id": flow_sys_id,
         "type": "Autosave",
         "annotation": "",
         "favorite": False,
     }
-    version_params = {"sysparm_transaction_scope": "global"}
+    version_query_params = {"sysparm_transaction_scope": "global"}
 
     try:
         requests.post(
             f"{processflow_base}/versioning/create_version",
-            params=version_params,
-            json=version_body,
+            params=version_query_params,
+            json=autosave_body,
             headers=headers,
             timeout=config.timeout,
         ).raise_for_status()
-        logger.info(f"create_flow | initial autosave created | flow_sys_id={flow_sys_id}")
+        logger.info("create_flow | initial autosave created | flow_sys_id=%s", flow_sys_id)
     except requests.RequestException as e:
-        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
-        # Autosave failure is non-fatal — the shell exists and the PUT can still proceed
+        _body = _err_body(e)
+        # Non-fatal: the shell exists and the PUT can still proceed.
+        # Surface the failure in a warning so it is visible if the subsequent PUT fails.
         logger.warning(
-            f"create_flow | initial autosave failed (non-fatal) | "
-            f"flow_sys_id={flow_sys_id} | error={e}"
-            + (f" | body={_body}" if _body else "")
+            "create_flow | initial autosave failed (non-fatal) | flow_sys_id=%s | error=%s%s",
+            flow_sys_id, e, f" | body={_body}" if _body else "",
         )
 
     # ------------------------------------------------------------------
-    # Step 3: Resolve trigger_definition_id if not provided, then build payloads
+    # Steps 3–4: Resolve trigger_definition_id, build payloads
     # ------------------------------------------------------------------
-    if params.trigger and not params.trigger.trigger_definition_id:
-        resolved_id, resolve_err = _resolve_trigger_definition_id(
-            config, auth_manager, params.trigger.type
-        )
-        if resolve_err:
-            return CreateFlowResponse(
-                success=False,
-                message=(
-                    f"Flow shell was created (sys_id={flow_sys_id}) but trigger type "
-                    f"could not be resolved: {resolve_err}. The draft shell exists in Flow Designer."
-                ),
-                flow_sys_id=flow_sys_id,
-                flow_name=params.name,
-                flow_internal_name=flow_internal_name,
+    # Resolve the trigger definition id into a local variable — do NOT mutate
+    # params.trigger in place, as that would modify the caller's model object.
+    trigger_definition_id: str | None = None
+    if params.trigger:
+        trigger_definition_id = params.trigger.trigger_definition_id
+        if not trigger_definition_id:
+            resolved_id, resolve_err = _resolve_trigger_definition_id(
+                config, auth_manager, params.trigger.type
             )
-        params.trigger.trigger_definition_id = resolved_id
+            if resolve_err:
+                return CreateFlowResponse(
+                    success=False,
+                    message=(
+                        f"Flow shell was created (sys_id={flow_sys_id}) but trigger type "
+                        f"could not be resolved: {resolve_err}. The draft shell exists in Flow Designer."
+                    ),
+                    flow_sys_id=flow_sys_id,
+                    flow_name=params.name,
+                    flow_internal_name=flow_internal_name,
+                )
+            trigger_definition_id = resolved_id
 
-    trigger_instances = _build_trigger_instances(config, auth_manager, params.trigger, flow_sys_id)
+    trigger_instances = _build_trigger_instances(
+        config, auth_manager, params.trigger, flow_sys_id, trigger_definition_id
+    )
     action_instances = _build_action_instances(flow_sys_id, params.actions)
 
     # ------------------------------------------------------------------
-    # Step 4: PUT to save trigger + actions onto the flow
+    # Step 5: PUT to save trigger + actions onto the flow
     # ------------------------------------------------------------------
     put_body = dict(flow_data)
     put_body["triggerInstances"] = trigger_instances
@@ -631,20 +726,20 @@ def create_flow(
         )
         put_response.raise_for_status()
         logger.info(
-            f"create_flow | PUT saved | flow_sys_id={flow_sys_id} | "
-            f"triggers={len(trigger_instances)} | actions={len(action_instances)}"
+            "create_flow | PUT saved | flow_sys_id=%s | triggers=%d | actions=%d",
+            flow_sys_id, len(trigger_instances), len(action_instances),
         )
     except requests.RequestException as e:
-        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        _body = _err_body(e)
         logger.error(
-            f"create_flow | PUT failed | flow_sys_id={flow_sys_id} | error={e}"
-            + (f" | body={_body}" if _body else "")
+            "create_flow | PUT failed | flow_sys_id=%s | error=%s%s",
+            flow_sys_id, e, f" | body={_body}" if _body else "",
         )
         return CreateFlowResponse(
             success=False,
             message=(
                 f"Flow shell was created (sys_id={flow_sys_id}) but the PUT to attach "
-                f"trigger/actions failed: {str(e)}. The draft shell exists in Flow Designer."
+                f"trigger/actions failed: {e}. The draft shell exists in Flow Designer."
                 + (f" | response: {_body}" if _body else "")
             ),
             flow_sys_id=flow_sys_id,
@@ -653,27 +748,35 @@ def create_flow(
         )
 
     # ------------------------------------------------------------------
-    # Step 5: Final autosave version
+    # Step 6: Final Save version
     # ------------------------------------------------------------------
+    # Use type="Save" (not "Autosave") so Flow Designer reads the trigger's
+    # advanced options from a proper saved version. Autosave versions cause
+    # the advanced options dropdown to render incorrectly (5 items vs 4).
+    final_version_body = {
+        "item_sys_id": flow_sys_id,
+        "type": "Save",
+        "annotation": "",
+        "favorite": False,
+    }
     try:
         requests.post(
             f"{processflow_base}/versioning/create_version",
-            params=version_params,
-            json=version_body,
+            params=version_query_params,
+            json=final_version_body,
             headers=headers,
             timeout=config.timeout,
         ).raise_for_status()
-        logger.info(f"create_flow | final autosave created | flow_sys_id={flow_sys_id}")
+        logger.info("create_flow | final Save version created | flow_sys_id=%s", flow_sys_id)
     except requests.RequestException as e:
-        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        _body = _err_body(e)
         logger.warning(
-            f"create_flow | final autosave failed (non-fatal) | "
-            f"flow_sys_id={flow_sys_id} | error={e}"
-            + (f" | body={_body}" if _body else "")
+            "create_flow | final Save version failed (non-fatal) | flow_sys_id=%s | error=%s%s",
+            flow_sys_id, e, f" | body={_body}" if _body else "",
         )
 
     # ------------------------------------------------------------------
-    # Step 6: Patch fTriggerType='Record' in the saved version payload
+    # Step 7: Patch fTriggerType='Record' in the saved version payload
     # ------------------------------------------------------------------
     # The processflow PUT cannot set fTriggerType reliably — a Business Rule overwrites
     # it using a sys_hub_trigger_type field the service account cannot read. Patching the
@@ -683,9 +786,23 @@ def create_flow(
         patch_err = _patch_flow_version_trigger_type(config, auth_manager, flow_sys_id)
         if patch_err:
             logger.warning(
-                f"create_flow | fTriggerType patch failed (non-fatal) | "
-                f"flow_sys_id={flow_sys_id} | error={patch_err}"
+                "create_flow | fTriggerType patch failed (non-fatal) | flow_sys_id=%s | error=%s",
+                flow_sys_id, patch_err,
             )
+
+    # ------------------------------------------------------------------
+    # Step 8: Release Flow Designer edit lock
+    # ------------------------------------------------------------------
+    # The processflow API writes a sys_hub_flow_safe_edit record that makes the flow
+    # appear locked ('being edited by <user>') in the UI. Deleting it via the Table
+    # API releases the lock. GraphQL safeEdit does not work for service accounts.
+    # Non-fatal: log a warning but do not fail the overall creation response.
+    lock_err = _release_flow_edit_lock(config, auth_manager, flow_sys_id)
+    if lock_err:
+        logger.warning(
+            "create_flow | safeEdit lock release failed (non-fatal) | flow_sys_id=%s | error=%s",
+            flow_sys_id, lock_err,
+        )
 
     return CreateFlowResponse(
         success=True,
@@ -708,24 +825,35 @@ def create_flow(
 def _build_trigger_instances(
     config: ServerConfig,
     auth_manager: AuthManager,
-    trigger: Optional[TriggerInstanceParam],
+    trigger: TriggerInstanceParam | None,
     flow_sys_id: str,
-) -> list:
+    trigger_definition_id: str | None,
+) -> list[dict]:
     """Convert a TriggerInstanceParam into the triggerInstances array for the PUT body.
 
-    For record-based triggers all 7 standard inputs are always included (with empty
-    values for the 5 system inputs). Each input carries a full 'parameter' sub-object
+    For record-based triggers all 7 standard inputs are always included (with default
+    values for the 5 advanced inputs). Each input carries a full 'parameter' sub-object
     required by the Flow Designer renderInput component — omitting it causes a
     TypeError crash in the UI.
 
+    A shallow copy of each param_def dict is used to avoid aliasing the module-level
+    _RECORD_TRIGGER_INPUTS entries.
+
     The table input additionally carries displayValue (e.g. 'Incident') and
-    displayField ('number') so Flow Designer renders the correct label and data pill
-    reference instead of showing 'undefined record' / 'undefined table'.
+    displayField so Flow Designer renders the correct label and data pill reference.
+    Note: displayField defaults to 'number' which is correct for task-derived tables
+    (incident, problem, change, etc.). For non-task tables (sys_user, cmdb_ci, custom)
+    this field does not exist and Flow Designer may show an empty data pill reference.
+
+    Args:
+        trigger_definition_id: Resolved sys_id for the trigger type. Passed explicitly
+            to avoid mutating the caller's TriggerInstanceParam model in place.
     """
     if trigger is None:
         return []
 
-    # Resolve name→value from explicit inputs or convenience fields
+    # Resolve name→value from explicit inputs or convenience fields.
+    # TriggerInstanceParam.normalize_empty_inputs ensures inputs=[] is treated as None.
     if trigger.inputs is not None:
         input_values = {i.name: i.value for i in trigger.inputs}
     else:
@@ -743,6 +871,7 @@ def _build_trigger_instances(
 
         # Always emit all 7 standard inputs in the required order.
         # User-supplied values override the empty default; system inputs default to "".
+        # Shallow-copy each param_def to prevent aliasing the module-level list entries.
         built_inputs = []
         for param_def in _RECORD_TRIGGER_INPUTS:
             name = param_def["name"]
@@ -756,14 +885,14 @@ def _build_trigger_instances(
                 "name": name,
                 "value": input_values.get(name, param_def.get("defaultValue", "")),
                 "children": [],
-                "parameter": param_def,
+                "parameter": dict(param_def),  # shallow copy to avoid aliasing module-level dict
                 "scriptActive": False,
             }
             # The table input needs displayValue and displayField for Flow Designer
-            # to resolve the correct table label and number field data pill.
+            # to resolve the correct table label and data pill reference.
             if name == "table" and table_label:
                 input_obj["displayValue"] = table_label
-                input_obj["displayField"] = "number"
+                input_obj["displayField"] = "number"  # correct for task-derived tables
             built_inputs.append(input_obj)
         # Append any caller-supplied inputs not in the standard set
         for name, value in input_values.items():
@@ -783,7 +912,7 @@ def _build_trigger_instances(
             "remoteSysId": "",
             "name": trigger.name or _TRIGGER_TYPE_NAME_MAP.get(trigger.type, trigger.type),
             "type": trigger.type,
-            "triggerDefinitionId": trigger.trigger_definition_id,
+            "triggerDefinitionId": trigger_definition_id,
             "fTriggerType": "Record" if trigger.type in _RECORD_TRIGGER_TYPES else "",
             "deleted": False,
             "comment": "",
@@ -792,7 +921,7 @@ def _build_trigger_instances(
     ]
 
 
-def _minimal_trigger_input(name: str, value: str, param_def: Optional[dict] = None) -> dict:
+def _minimal_trigger_input(name: str, value: str, param_def: dict | None = None) -> dict:
     """Build a trigger input object with a minimal parameter stub for unknown input types."""
     p = param_def or _param("", name, name, "string", order=200, maxsize=4000)
     return {
@@ -805,7 +934,7 @@ def _minimal_trigger_input(name: str, value: str, param_def: Optional[dict] = No
         "name": name,
         "value": value,
         "children": [],
-        "parameter": p,
+        "parameter": dict(p),  # shallow copy to avoid aliasing module-level dict
         "scriptActive": False,
     }
 
@@ -814,7 +943,7 @@ def _patch_flow_version_trigger_type(
     config: ServerConfig,
     auth_manager: AuthManager,
     flow_sys_id: str,
-) -> Optional[str]:
+) -> str | None:
     """Set fTriggerType='Record' on all trigger instances in the latest flow version payload.
 
     The processflow PUT cannot reliably set fTriggerType — a Business Rule overwrites it
@@ -823,29 +952,40 @@ def _patch_flow_version_trigger_type(
 
     Returns None on success, or an error message string on failure.
     """
-    try:
-        ver_response = requests.get(
-            f"{config.api_url}/table/sys_hub_flow_version",
-            params={
-                "sysparm_query": f"flow={flow_sys_id}^ORDERBYDESCsys_created_on",
-                "sysparm_fields": "sys_id,payload",
-                "sysparm_limit": 1,
-            },
-            headers=auth_manager.get_headers(),
-            timeout=config.timeout,
-        )
-        ver_response.raise_for_status()
-    except requests.RequestException as e:
-        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
-        return f"GET sys_hub_flow_version failed: {str(e)}" + (f" | body: {_body}" if _body else "")
+    _MAX_ATTEMPTS = 3
+    records: list = []
+    for _attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            ver_response = requests.get(
+                f"{config.api_url}/table/sys_hub_flow_version",
+                params={
+                    "sysparm_query": f"flow={flow_sys_id}^ORDERBYDESCsys_created_on",
+                    "sysparm_fields": "sys_id,payload",
+                    "sysparm_limit": 1,
+                },
+                headers=auth_manager.get_headers(),
+                timeout=config.timeout,
+            )
+            ver_response.raise_for_status()
+            records = ver_response.json().get("result", [])
+            if records:
+                break
+            logger.info(
+                "_patch_flow_version_trigger_type | no version yet, retrying (%d/%d) | flow_sys_id=%s",
+                _attempt, _MAX_ATTEMPTS, flow_sys_id,
+            )
+            if _attempt < _MAX_ATTEMPTS:
+                time.sleep(1)
+        except requests.RequestException as e:
+            _body = _err_body(e)
+            return f"GET sys_hub_flow_version failed: {e}" + (f" | body: {_body}" if _body else "")
 
-    records = ver_response.json().get("result", [])
     if not records:
-        return f"No sys_hub_flow_version found for flow_sys_id={flow_sys_id}"
+        return f"No sys_hub_flow_version found for flow_sys_id={flow_sys_id} after {_MAX_ATTEMPTS} attempts"
 
     version_sys_id = records[0]["sys_id"]
-    payload_str = records[0].get("payload", "")
-    if not payload_str:
+    payload_str = records[0].get("payload")
+    if payload_str is None or payload_str == "":
         return f"sys_hub_flow_version {version_sys_id} has an empty payload — nothing to patch"
 
     try:
@@ -856,21 +996,23 @@ def _patch_flow_version_trigger_type(
     trigger_instances = payload.get("triggerInstances", [])
     if not trigger_instances:
         logger.info(
-            f"_patch_flow_version_trigger_type | no triggerInstances in payload — skipping | "
-            f"version_sys_id={version_sys_id}"
+            "_patch_flow_version_trigger_type | no triggerInstances in payload — skipping | version_sys_id=%s",
+            version_sys_id,
         )
         return None
 
     patched_any = False
     for ti in trigger_instances:
+        # ti is a dict reference into payload — mutating it updates payload in place,
+        # which is then serialised below. This is intentional, not an aliasing bug.
         if ti.get("fTriggerType") != "Record":
             ti["fTriggerType"] = "Record"
             patched_any = True
 
     if not patched_any:
         logger.info(
-            f"_patch_flow_version_trigger_type | fTriggerType already 'Record' — skipping | "
-            f"version_sys_id={version_sys_id}"
+            "_patch_flow_version_trigger_type | fTriggerType already 'Record' — skipping | version_sys_id=%s",
+            version_sys_id,
         )
         return None
 
@@ -883,21 +1025,92 @@ def _patch_flow_version_trigger_type(
         )
         patch_response.raise_for_status()
     except requests.RequestException as e:
-        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        _body = _err_body(e)
         return (
-            f"PATCH sys_hub_flow_version/{version_sys_id} failed: {str(e)}"
+            f"PATCH sys_hub_flow_version/{version_sys_id} failed: {e}"
             + (f" | body: {_body}" if _body else "")
         )
 
     logger.info(
-        f"_patch_flow_version_trigger_type | patched fTriggerType=Record | "
-        f"version_sys_id={version_sys_id}"
+        "_patch_flow_version_trigger_type | patched fTriggerType=Record | version_sys_id=%s",
+        version_sys_id,
     )
     return None
 
 
-def _build_action_instances(flow_sys_id: str, actions: Optional[List[ActionInstanceParam]]) -> list:
-    """Convert ActionInstanceParam list into the actionInstances array for the PUT body."""
+def _release_flow_edit_lock(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    flow_sys_id: str,
+) -> str | None:
+    """Release the Flow Designer edit lock by deleting the sys_hub_flow_safe_edit record.
+
+    Flow Designer writes a lock record to sys_hub_flow_safe_edit when a flow is opened
+    for editing (including programmatic creation via processflow). Without deletion the
+    flow appears locked ('being edited by <user>') in the UI and cannot be modified.
+
+    GraphQL safeEdit does not work for service accounts (returns data:null). Table API
+    DELETE is the reliable alternative, confirmed on dev296536.
+
+    Returns None on success, or an error message string on failure.
+    """
+    # Step 1: Find the lock record for this flow
+    try:
+        get_response = requests.get(
+            f"{config.api_url}/table/sys_hub_flow_safe_edit",
+            params={
+                "sysparm_query": f"flow={flow_sys_id}",
+                "sysparm_fields": "sys_id",
+                "sysparm_limit": 1,
+            },
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        get_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        return f"GET sys_hub_flow_safe_edit failed: {e}" + (f" | body: {_body}" if _body else "")
+
+    records = get_response.json().get("result", [])
+    if not records:
+        # No lock record — nothing to delete (may already be absent)
+        logger.info("_release_flow_edit_lock | no lock record found | flow_sys_id=%s", flow_sys_id)
+        return None
+
+    lock_sys_id = records[0]["sys_id"]
+
+    # Step 2: DELETE the lock record
+    try:
+        del_response = requests.delete(
+            f"{config.api_url}/table/sys_hub_flow_safe_edit/{lock_sys_id}",
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        del_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        return (
+            f"DELETE sys_hub_flow_safe_edit/{lock_sys_id} failed: {e}"
+            + (f" | body: {_body}" if _body else "")
+        )
+
+    logger.info(
+        "_release_flow_edit_lock | lock deleted | flow_sys_id=%s | lock_sys_id=%s",
+        flow_sys_id, lock_sys_id,
+    )
+    return None
+
+
+def _build_action_instances(flow_sys_id: str, actions: list[ActionInstanceParam] | None) -> list[dict]:
+    """Convert ActionInstanceParam list into the actionInstances array for the PUT body.
+
+    Note on order serialisation: 'order' is cast to str to match the processflow API's
+    expected type for this field. uiComponentIndex stays as int — the asymmetry is
+    intentional and mirrors the instance-captured payload schema.
+
+    Note on UUID format: both 'id' and 'uiUniqueIdentifier' use uuid4().hex (32 hex
+    chars, no dashes) to match the format observed in manually-created flow payloads.
+    """
     if not actions:
         return []
 
@@ -907,13 +1120,13 @@ def _build_action_instances(flow_sys_id: str, actions: Optional[List[ActionInsta
             {
                 "id": uuid.uuid4().hex,
                 "flowSysId": flow_sys_id,
-                "order": str(action.order),
-                "uiUniqueIdentifier": str(uuid.uuid4()),
+                "order": str(action.order),          # API expects string; see docstring
+                "uiUniqueIdentifier": uuid.uuid4().hex,
                 "deleted": False,
                 "parent": "",
                 "comment": "",
                 "generationSource": "",
-                "uiComponentIndex": 0,
+                "uiComponentIndex": 0,               # API expects int; see docstring
                 "actionTypeSysId": action.action_type_sys_id,
                 "inputs": [
                     {"id": i.id, "name": i.name, "value": i.value}

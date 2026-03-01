@@ -13,30 +13,81 @@ These tools are powerful and can cause data loss or instance instability if misu
 
 ## Background Script Execution
 
+### Prerequisites
+
+`run_background_script` supports two execution paths. The path used depends on whether
+`script_execution_api_resource_path` is set in your MCP server config.
+
+#### Path A — UI session (`sys.scripts.do`)
+
+The MCP server logs in via `/login.do` and submits the script to `/sys.scripts.do`.
+**This path silently fails for service accounts** — if the account cannot complete
+the browser login flow, the tool returns `success: true` with empty output and no
+error. There is no warning that execution was skipped.
+
+Use this path only for personal dev accounts with browser-based login. It is not
+suitable for automated or service-account-based use.
+
+#### Path B — Scripted REST API (required for service accounts)
+
+The MCP server calls a Scripted REST endpoint on the instance that executes the script
+server-side. This path works for service accounts with OAuth or Basic auth.
+
+**One-time instance setup required:**
+
+1. In ServiceNow, navigate to **Scripted REST APIs** → **New**.
+2. Create an API named `mcp_script_runner` (or any name you choose).
+3. Add a resource:
+   - **HTTP Method:** POST
+   - **Relative path:** `/execute` (or any path you choose — must match your config)
+   - **Script:**
+     ```javascript
+     (function process(request, response) {
+         var body = JSON.parse(request.body.dataString);
+         var script = body.script || '';
+         var runner = new GlideScriptRunner();
+         runner.run(script);
+         response.setContentType('application/json');
+         response.setBody(JSON.stringify({ status: 'ok' }));
+     })(request, response);
+     ```
+   - **Requires authentication:** Yes
+   - **Required roles:** admin (or a custom role with `background_script_runner` rights)
+4. Set `script_execution_api_resource_path` in your `.mcp.json` to the full resource path,
+   e.g. `"/api/x_mcp/mcp_script_runner/execute"`.
+
+**Output capture on Path B:**
+
+- `gs.info()`, `gs.warn()`, `gs.error()` → captured in `syslog_entries` (always available)
+- `gs.print()` → NOT captured on Path B. `direct_output` will be empty.
+  Use `gs.info()` for all diagnostic output when using the Scripted REST path.
+
+---
+
 ### Tool: run_background_script
 
-Executes a JavaScript background script in the instance and returns both **direct output** (from `gs.print`) and **syslog entries** (from `gs.info` / `gs.warn` / `gs.error`).
+Executes a JavaScript background script in the instance and returns both **direct output** (from `gs.print`, Path A only) and **syslog entries** (from `gs.info` / `gs.warn` / `gs.error`).
 
 **Tool Name:** `run_background_script`
 
 **Parameters (RunBackgroundScriptParams):**
 
-- `script` (string, required):  
-  JavaScript server-side script to execute. Runs in admin context via `sys.scripts.do` or an optional scripted REST API, depending on server configuration.
-  - Use `gs.print()` for text you want in `direct_output`.
-  - Use `gs.info()`, `gs.warn()`, `gs.error()` for structured log output captured in `syslog_entries`.
-  - The variable `__MFCP_RUN_ID` is injected at the top of every script; include it in log messages to tag log entries for this run, e.g.  
+- `script` (string, required):
+  JavaScript server-side script to execute.
+  - Use `gs.info()`, `gs.warn()`, `gs.error()` for output captured in `syslog_entries` (works on both paths).
+  - Use `gs.print()` only if you are certain the UI session path (Path A) is active — output is empty on Path B.
+  - The variable `__MFCP_RUN_ID` is injected at the top of every script; include it in log messages to tag log entries for this run, e.g.
     `gs.info('MyModule | value=' + result + ' | run_id=' + __MFCP_RUN_ID);`
 
-- `scope` (string, optional, default: `"global"`):  
+- `scope` (string, optional, default: `"global"`):
   Transaction scope for script execution.
 
 **Returns (RunBackgroundScriptResult):**
 
-- `success` (bool): Whether the script was executed successfully according to the transport layer.
+- `success` (bool): Whether the script was executed successfully according to the transport layer. Note: on Path A (UI session), this can be `true` even if execution was silently skipped due to login failure.
 - `run_id` (string): Correlation ID for this run; also stored in the script as `__MFCP_RUN_ID`.
 - `http_status` (int): HTTP status code from the underlying request.
-- `direct_output` (string): Text output captured from `gs.print()` calls, extracted from the HTML response.
+- `direct_output` (string): Text output captured from `gs.print()` calls. Only populated on Path A (UI session). Empty on Path B (Scripted REST).
 - `syslog_entries` (list of SyslogEntry): Each entry includes:
   - `level` (string): Log level (e.g. `INFO`, `WARN`, `ERROR`).
   - `source` (string, optional): Source of the log entry.
@@ -44,10 +95,10 @@ Executes a JavaScript background script in the instance and returns both **direc
   - `created_on` (string): Timestamp (UTC).
 - `message` (string): Human-readable summary, including errors if present.
 
-**Execution paths:**
+**Execution paths (summary):**
 
-- If `ServerConfig.script_execution_api_resource_path` is set, the tool uses a **Scripted REST API** for execution (preferred for service accounts).
-- Otherwise, it uses a **UI session** with `/login.do` and `/sys.scripts.do` to emulate the Background Script module.
+- If `ServerConfig.script_execution_api_resource_path` is set → **Path B (Scripted REST API)**: works for service accounts; use `gs.info()` for all output.
+- Otherwise → **Path A (UI session, `/sys.scripts.do`)**: works only for personal accounts with browser login; `gs.print()` output available; silently fails for service accounts.
 
 ### Example: Safe read-only background script
 
