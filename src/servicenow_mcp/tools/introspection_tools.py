@@ -118,7 +118,7 @@ def get_table_metadata(
             scope = (sys_scope.get("display_value") or sys_scope.get("value") or "").strip()
         elif isinstance(sys_scope, str):
             scope = sys_scope.strip()
-        label = (rec.get("label") or "").strip() or params.table.replace("_", " ").title()
+        label = _extract_display_or_value(rec.get("label")) or params.table.replace("_", " ").title()
         return GetTableMetadataResult(
             table=params.table,
             table_found=True,
@@ -196,10 +196,19 @@ class ListTableFieldsResult(BaseModel):
 
 
 def _parse_snow_bool(value: Any) -> bool:
-    """Normalize ServiceNow boolean to Python bool."""
+    """Normalize ServiceNow boolean to Python bool.
+
+    Handles both plain strings and the {'display_value': ..., 'value': ...}
+    dicts that ServiceNow returns when sysparm_display_value=all is set.
+    """
     if value is None:
         return False
-    s = str(value).strip().lower()
+    if isinstance(value, dict):
+        # Prefer the raw stored value over the display value for boolean accuracy
+        raw = value.get("value") or value.get("display_value") or ""
+        s = str(raw).strip().lower()
+    else:
+        s = str(value).strip().lower()
     return s in ("true", "1", "yes")
 
 
@@ -250,7 +259,7 @@ def list_table_fields(
         results = response.json().get("result", [])
         fields: List[TableFieldInfo] = []
         for rec in results:
-            element = _extract_display_or_value(rec.get("element")) or rec.get("element")
+            element = _extract_display_or_value(rec.get("element"))
             if not element:
                 continue
             if not params.include_system and str(element).startswith("sys_"):
