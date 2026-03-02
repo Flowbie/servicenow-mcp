@@ -227,7 +227,7 @@ class TestRunBackgroundScriptAuthGuard(unittest.TestCase):
         )
         config = _make_config()
         auth_manager = _make_auth_manager()
-        params = RunBackgroundScriptParams(script="gs.print('hello');")
+        params = RunBackgroundScriptParams(description="Test script.", script="gs.print('hello');")
 
         # After the fix, run_background_script must return early with success=False
         # without making any network calls when session_failure contains "session_not_authenticated"
@@ -290,7 +290,7 @@ class TestRunBackgroundScriptTokenPlacement(unittest.TestCase):
 
         config = _make_config()
         auth_manager = _make_auth_manager()
-        params = RunBackgroundScriptParams(script="gs.print('hello world');")
+        params = RunBackgroundScriptParams(description="Test script.", script="gs.print('hello world');")
 
         result = run_background_script(config, auth_manager, params)
 
@@ -352,7 +352,7 @@ class TestRunBackgroundScriptTokenPlacement(unittest.TestCase):
 
         config = _make_config()
         auth_manager = _make_auth_manager()
-        params = RunBackgroundScriptParams(script="gs.print('output');")
+        params = RunBackgroundScriptParams(description="Test script.", script="gs.print('output');")
 
         run_background_script(config, auth_manager, params)
 
@@ -403,7 +403,7 @@ class TestRunBackgroundScriptDirectOutput(unittest.TestCase):
 
         config = _make_config()
         auth_manager = _make_auth_manager()
-        params = RunBackgroundScriptParams(script="gs.print('hello from gs.print');")
+        params = RunBackgroundScriptParams(description="Test script.", script="gs.print('hello from gs.print');")
 
         result = run_background_script(config, auth_manager, params)
 

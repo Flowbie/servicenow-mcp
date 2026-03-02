@@ -309,6 +309,16 @@ def _run_via_scripted_api(
 class RunBackgroundScriptParams(BaseModel):
     """Parameters for run_background_script."""
 
+    description: str = Field(
+        ...,
+        description=(
+            "1-3 sentence summary of what this script does, what it reads or modifies, "
+            "and why it is being run. Shown in the Claude Code tool call display and "
+            "prepended to the result so both the invocation and output are self-documenting. "
+            "Example: 'Queries sys_hub_flow_version for flow sys_id X to inspect its trigger "
+            "payload. Reads payload field only — no writes.'"
+        ),
+    )
     script: str = Field(
         ...,
         description=(
@@ -405,6 +415,7 @@ def run_background_script(
                 direct_output=direct_output,
                 syslog_entries=syslog_entries,
                 message=(
+                    f"{params.description}\n"
                     f"Scripted REST API execution failed (run_id={run_id}). "
                     f"HTTP {http_status}. Error: {error or 'none'}\n"
                     f"{script_block}"
@@ -418,6 +429,7 @@ def run_background_script(
             direct_output=direct_output,
             syslog_entries=syslog_entries,
             message=(
+                f"{params.description}\n"
                 f"Script executed via Scripted REST API (run_id={run_id}). "
                 f"{len(syslog_entries)} syslog entries captured. "
                 f"Include '__MFCP_RUN_ID' in gs.info() calls to tag entries for this run.\n"
@@ -446,6 +458,7 @@ def run_background_script(
             direct_output="",
             syslog_entries=[],
             message=(
+                f"{params.description}\n"
                 f"Cannot execute script: ServiceNow session is not authenticated. "
                 f"sys.scripts.do redirected to the login page. "
                 f"Check instance URL and credentials. Details: {session_failure}\n"
@@ -500,6 +513,7 @@ def run_background_script(
             direct_output="",
             syslog_entries=[],
             message=(
+                f"{params.description}\n"
                 f"Request to sys.scripts.do failed: {str(e)}"
                 + (f" | body: {_body}" if _body else "")
                 + f"\n{script_block}"
@@ -536,6 +550,7 @@ def run_background_script(
             direct_output=direct_output,
             syslog_entries=syslog_entries,
             message=(
+                f"{params.description}\n"
                 f"sys.scripts.do returned HTTP {http_status} — script may not have "
                 f"executed. Raw response preview: {raw_preview}\n"
                 f"{script_block}"
@@ -549,6 +564,7 @@ def run_background_script(
         direct_output=direct_output,
         syslog_entries=syslog_entries,
         message=(
+            f"{params.description}\n"
             f"Script executed via sys.scripts.do (run_id={run_id}). "
             f"direct_output has gs.print() results. "
             f"{len(syslog_entries)} syslog entries captured in the execution window "
