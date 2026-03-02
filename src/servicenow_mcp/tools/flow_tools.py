@@ -947,7 +947,7 @@ def _build_trigger_instances(
         {
             "id": uuid.uuid4().hex,
             "flowSysId": flow_sys_id,
-            "remoteSysId": "",
+            "remoteSysId": trigger_definition_id or "",
             "name": trigger.name or _TRIGGER_TYPE_NAME_MAP.get(trigger.type, trigger.type),
             "type": trigger.type,
             "triggerDefinitionId": trigger_definition_id,
