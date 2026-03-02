@@ -94,6 +94,13 @@ executor:
   - list_table_fields
   - list_table_relationships
   - list_child_tables
+  # Customization discovery (table-centric, for blueprint research):
+  - list_business_rules
+  - list_ui_policies
+  - list_client_scripts
+  - list_notifications
+  - list_ui_actions
+  - list_access_controls
   # Script Include writes (Executor default for scripting tasks):
   - list_script_includes
   - get_script_include
@@ -119,6 +126,13 @@ platform_developer:
   - list_table_fields
   - list_table_relationships
   - list_child_tables
+  # Customization discovery (table-centric, for blueprint research)
+  - list_business_rules
+  - list_ui_policies
+  - list_client_scripts
+  - list_notifications
+  - list_ui_actions
+  - list_access_controls
   # Script Includes
   - list_script_includes
   - get_script_include
@@ -199,6 +213,13 @@ system_administrator:
   - list_table_fields
   - list_table_relationships
   - list_child_tables
+  # Customization discovery (table-centric, for blueprint research)
+  - list_business_rules
+  - list_ui_policies
+  - list_client_scripts
+  - list_notifications
+  - list_ui_actions
+  - list_access_controls
   # User Management
   - create_user
   - update_user
@@ -228,6 +249,13 @@ full:
   - list_table_fields
   - list_table_relationships
   - list_child_tables
+  # Customization discovery (table-centric, for blueprint research)
+  - list_business_rules
+  - list_ui_policies
+  - list_client_scripts
+  - list_notifications
+  - list_ui_actions
+  - list_access_controls
   # Incident Management
   - create_incident
   - update_incident

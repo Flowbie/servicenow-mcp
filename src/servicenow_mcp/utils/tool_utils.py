@@ -150,6 +150,20 @@ from servicenow_mcp.tools.introspection_tools import (
     list_table_relationships as list_table_relationships_tool,
     list_child_tables as list_child_tables_tool,
 )
+from servicenow_mcp.tools.customization_tools import (
+    ListBusinessRulesParams,
+    ListUIPoliciesParams,
+    ListClientScriptsParams,
+    ListNotificationsParams,
+    ListUIActionsParams,
+    ListAccessControlsParams,
+    list_business_rules as list_business_rules_tool,
+    list_ui_policies as list_ui_policies_tool,
+    list_client_scripts as list_client_scripts_tool,
+    list_notifications as list_notifications_tool,
+    list_ui_actions as list_ui_actions_tool,
+    list_access_controls as list_access_controls_tool,
+)
 from servicenow_mcp.tools.incident_tools import (
     add_comment as add_comment_tool,
 )
@@ -595,6 +609,86 @@ def get_tool_definitions(
             (
                 "Query sys_db_object for tables that extend (super_class) a parent table. "
                 "Returns list of child table names. Use for table hierarchy in blueprints. Read-only."
+            ),
+            "json",
+        ),
+        # Customization discovery tools — table-centric, read-only.
+        # Use these for architecture blueprints and pre-implementation research.
+        # Contrast with the field-centric diagnostic tools above (get_business_rules,
+        # get_ui_policies) which require a field name and are used during write-mismatch
+        # escalation.
+        "list_business_rules": (
+            list_business_rules_tool,
+            ListBusinessRulesParams,
+            dict,
+            (
+                "Query sys_script for all Business Rules on a table. Returns name, timing "
+                "(before/after/async), trigger flags (insert/update/delete/query), condition, "
+                "and a 500-character script preview for every rule. Use this for architecture "
+                "blueprints to understand what server-side automation exists on the table. "
+                "For diagnosing a specific field write mismatch, use get_business_rules instead "
+                "(it filters by field name). Read-only."
+            ),
+            "json",
+        ),
+        "list_ui_policies": (
+            list_ui_policies_tool,
+            ListUIPoliciesParams,
+            dict,
+            (
+                "Query sys_ui_policy for all UI Policies on a table. Returns policy name, "
+                "active state, run_scripts flag, and short description. "
+                "UI Policies are browser-form-only and have no effect on REST API writes. "
+                "For checking a specific field's form behaviour use get_ui_policies instead. "
+                "Read-only."
+            ),
+            "json",
+        ),
+        "list_client_scripts": (
+            list_client_scripts_tool,
+            ListClientScriptsParams,
+            dict,
+            (
+                "Query sys_script_client for all Client Scripts on a table. Returns name, "
+                "script type (onChange/onLoad/onSubmit), watched field (for onChange scripts), "
+                "active state, and a script preview. Client scripts run in the browser only "
+                "and do not affect server-side API behaviour. Read-only."
+            ),
+            "json",
+        ),
+        "list_notifications": (
+            list_notifications_tool,
+            ListNotificationsParams,
+            dict,
+            (
+                "Query sysevent_email_action for all Notifications configured for a table. "
+                "Returns notification name, triggering event (blank for condition-based), "
+                "email subject template, and filter condition. Use for architecture blueprints "
+                "to understand what outbound communications fire on record changes. Read-only."
+            ),
+            "json",
+        ),
+        "list_ui_actions": (
+            list_ui_actions_tool,
+            ListUIActionsParams,
+            dict,
+            (
+                "Query sys_ui_action for all UI Actions on a table. Returns name, action type "
+                "(form button / context menu / list choice), visibility condition, and script "
+                "preview. Use to understand what user-initiated actions and their server-side "
+                "scripts exist on the table. Read-only."
+            ),
+            "json",
+        ),
+        "list_access_controls": (
+            list_access_controls_tool,
+            ListAccessControlsParams,
+            dict,
+            (
+                "Query sys_security_acl for all Access Control rules for a table. Returns both "
+                "record-level ACLs (e.g., 'incident.read') and field-level ACLs "
+                "(e.g., 'incident.caller_id.write') with operation, required roles, condition, "
+                "and script preview. Use for architecture blueprints and security reviews. Read-only."
             ),
             "json",
         ),
