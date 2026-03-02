@@ -12,7 +12,7 @@ API sequence for create_flow:
   4. Build trigger + action instance payloads
   5. PUT  /api/now/processflow/flow                         — save trigger + action instances
   6. POST /api/now/processflow/versioning/create_version    — final Save version
-  7. PATCH /api/now/table/sys_hub_flow_version              — set fTriggerType='Record' in payload
+  7. PATCH /api/now/table/sys_hub_flow_version              — set fTriggerType='Record' and inject choices into version payload
   8. DELETE /api/now/table/sys_hub_flow_safe_edit           — release Flow Designer edit lock
 """
 
@@ -982,12 +982,19 @@ def _patch_flow_version_trigger_type(
     auth_manager: AuthManager,
     flow_sys_id: str,
 ) -> str | None:
-    """Set fTriggerType='Record' on all trigger instances in the latest flow version payload.
+    """Patch the latest flow version payload to fix fTriggerType and trigger input choices.
 
-    The processflow PUT cannot reliably set fTriggerType — a Business Rule overwrites it
-    using a sys_hub_trigger_type (V1 catalog) field the service account cannot read.
-    Patching the serialised payload directly via the Table API after autosave is the only
-    reliable fix.
+    Two issues are corrected here:
+    1. fTriggerType='Record' — the processflow PUT cannot reliably set this field because
+       a Business Rule overwrites it using a sys_hub_trigger_type (V1 catalog) lookup the
+       service account cannot read.
+    2. choices/defaultChoices — the processflow create_version call with a minimal request
+       body does not persist choice arrays into the version payload. The Flow Designer UI
+       sends full trigger state when it saves; our minimal call does not. This causes the
+       advanced options dropdowns to render with no options in the UI.
+
+    Both are patched by reading the latest sys_hub_flow_version.payload, mutating the
+    trigger instance data in-place, and writing the corrected payload back via Table API.
 
     Returns None on success, or an error message string on failure.
     """
@@ -1048,9 +1055,28 @@ def _patch_flow_version_trigger_type(
             ti["fTriggerType"] = "Record"
             patched_any = True
 
+        # Inject choices/defaultChoices into choice-type trigger inputs that have empty
+        # choice arrays. The processflow create_version call with a minimal body does not
+        # write choices into the version payload — only the UI does. Without this patch
+        # Flow Designer renders the advanced options dropdowns with no selectable options.
+        for inp in ti.get("inputs", []):
+            param = inp.get("parameter")
+            if not isinstance(param, dict) or param.get("type") != "choice":
+                continue
+            input_name = inp.get("name") or param.get("name", "")
+            known_def = _RECORD_TRIGGER_INPUT_BY_NAME.get(input_name)
+            if not known_def:
+                continue
+            if not param.get("choices"):
+                param["choices"] = known_def["choices"]
+                patched_any = True
+            if not param.get("defaultChoices"):
+                param["defaultChoices"] = known_def["defaultChoices"]
+                patched_any = True
+
     if not patched_any:
         logger.info(
-            "_patch_flow_version_trigger_type | fTriggerType already 'Record' — skipping | version_sys_id=%s",
+            "_patch_flow_version_trigger_type | payload already up-to-date — skipping | version_sys_id=%s",
             version_sys_id,
         )
         return None
@@ -1071,7 +1097,7 @@ def _patch_flow_version_trigger_type(
         )
 
     logger.info(
-        "_patch_flow_version_trigger_type | patched fTriggerType=Record | version_sys_id=%s",
+        "_patch_flow_version_trigger_type | patched version payload (fTriggerType + choices) | version_sys_id=%s",
         version_sys_id,
     )
     return None
