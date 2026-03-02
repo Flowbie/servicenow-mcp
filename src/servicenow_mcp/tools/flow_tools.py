@@ -67,9 +67,9 @@ class TriggerInstanceParam(BaseModel):
     trigger_definition_id: str | None = Field(
         None,
         description=(
-            "sys_id of the trigger type definition (sys_hub_trigger_type). "
+            "sys_id of the trigger type definition (sys_hub_trigger_definition — V2 trigger catalog). "
             "If omitted, create_flow will resolve it automatically from the 'type' field "
-            "by querying sys_hub_trigger_type on the instance. "
+            "by querying sys_hub_trigger_type.base_trigger on the instance. "
             "Call list_trigger_types to discover available sys_ids explicitly."
         ),
     )
@@ -123,8 +123,8 @@ class ActionInputParam(BaseModel):
     id: str = Field(
         ...,
         description=(
-            "Parameter definition sys_id (sys_hub_action_type_base_element.sys_id). "
-            "Must exactly match the action type's parameter definition. "
+            "Parameter definition sys_id (sys_hub_action_input.sys_id). "
+            "Must exactly match the action type's input parameter definition. "
             "Example — Look Up Record 'table' input: 'd909f99587003300663ca1bb36cb0ba4'."
         ),
     )
@@ -186,7 +186,12 @@ class ListTriggerTypesParams(BaseModel):
 
 
 class TriggerTypeInfo(BaseModel):
-    """One trigger type definition from sys_hub_trigger_type."""
+    """One trigger type definition.
+
+    sys_id is the sys_hub_trigger_definition sys_id (V2 trigger catalog), obtained
+    by traversing sys_hub_trigger_type.base_trigger. Use this value as
+    trigger_definition_id in create_flow.
+    """
     sys_id: str
     name: str
     type_string: str | None = None
@@ -234,7 +239,7 @@ class CreateFlowParams(BaseModel):
         description=(
             "Action steps to add to the flow. Each action requires exact parameter "
             "definition sys_ids for its inputs — these are instance-specific values "
-            "from sys_hub_action_type_base_element. See flow-designer-api.md memory "
+            "from sys_hub_action_input. See flow-designer-api.md memory "
             "for confirmed IDs for Look Up Record and Create Record."
         ),
     )
@@ -263,7 +268,7 @@ class CreateFlowResponse(BaseModel):
 # Implementation
 # ---------------------------------------------------------------------------
 
-# Maps the user-facing type string to the display name stored in sys_hub_trigger_type.name
+# Maps the user-facing type string to the display name stored in sys_hub_trigger_type.name (V1 catalog)
 _TRIGGER_TYPE_NAME_MAP = {
     "record_create": "Created",
     "record_create_or_update": "Created or Updated",
@@ -458,9 +463,10 @@ def list_trigger_types(
     """
     List all available Flow Designer trigger types from sys_hub_trigger_type.
 
-    Use this to discover the sys_id values needed for create_flow's
-    trigger_definition_id field, or to verify which triggers are active
-    on the instance.
+    Returns sys_hub_trigger_definition sys_ids (V2 trigger catalog) by traversing
+    sys_hub_trigger_type.base_trigger. These are the correct ids for create_flow's
+    trigger_definition_id field — sys_hub_trigger_instance.trigger_definition references
+    sys_hub_trigger_definition, not sys_hub_trigger_type.
 
     Returns up to 200 trigger types. If your instance has more, use
     list_trigger_types with a direct Table API query and sysparm_offset to paginate.
@@ -469,7 +475,7 @@ def list_trigger_types(
         response = requests.get(
             f"{config.api_url}/table/sys_hub_trigger_type",
             params={
-                "sysparm_fields": "sys_id,name,internal_name",
+                "sysparm_fields": "sys_id,name,internal_name,base_trigger",
                 "sysparm_limit": 200,
                 "sysparm_orderby": "name",
             },
@@ -489,14 +495,23 @@ def list_trigger_types(
     # Build a reverse map from display name → type string for annotation
     _name_to_type = {v: k for k, v in _TRIGGER_TYPE_NAME_MAP.items()}
 
-    trigger_types = [
-        TriggerTypeInfo(
-            sys_id=r["sys_id"],
+    trigger_types = []
+    for r in records:
+        # base_trigger references sys_hub_trigger_definition — extract its sys_id.
+        # The Table API returns reference fields as {value, display_value, link} objects.
+        raw_base = r.get("base_trigger")
+        trigger_def_id = raw_base.get("value") if isinstance(raw_base, dict) else (raw_base or None)
+        if not trigger_def_id:
+            logger.warning(
+                "list_trigger_types | base_trigger empty for '%s', sys_hub_trigger_type.sys_id used as fallback",
+                r.get("name", ""),
+            )
+        trigger_types.append(TriggerTypeInfo(
+            sys_id=trigger_def_id or r["sys_id"],
             name=r.get("name", ""),
             type_string=r.get("internal_name") or _name_to_type.get(r.get("name", "")),
-        )
-        for r in records
-    ]
+        ))
+
     logger.info("list_trigger_types | found %d trigger types", len(trigger_types))
     truncation_note = " (result capped at 200 — instance may have more)" if len(trigger_types) == 200 else ""
     return ListTriggerTypesResult(
@@ -511,12 +526,17 @@ def _resolve_trigger_definition_id(
     type_str: str,
 ) -> tuple[str | None, str | None]:
     """
-    Resolve a trigger type string (e.g. 'record_create') to its sys_id on this instance.
+    Resolve a trigger type string (e.g. 'record_create') to its sys_hub_trigger_definition
+    sys_id on this instance.
 
-    Queries sys_hub_trigger_type by display name (e.g. 'Created' for 'record_create').
-    The sys_id returned is used as triggerDefinitionId in the processflow PUT body.
+    Queries sys_hub_trigger_type by display name (e.g. 'Created' for 'record_create'),
+    then traverses base_trigger to get the sys_hub_trigger_definition sys_id. That is the
+    correct value for triggerDefinitionId in the processflow PUT body, since
+    sys_hub_trigger_instance.trigger_definition references sys_hub_trigger_definition.
 
-    Returns (sys_id, None) on success, or (None, error_message) on failure.
+    Returns (sys_hub_trigger_definition_sys_id, None) on success, or (None, error_message)
+    on failure. Falls back to sys_hub_trigger_type.sys_id with a warning if base_trigger
+    is absent.
     """
     display_name = _TRIGGER_TYPE_NAME_MAP.get(type_str.lower())
     if not display_name:
@@ -529,7 +549,7 @@ def _resolve_trigger_definition_id(
             f"{config.api_url}/table/sys_hub_trigger_type",
             params={
                 "sysparm_query": f"name={display_name}",
-                "sysparm_fields": "sys_id,name",
+                "sysparm_fields": "sys_id,name,base_trigger",
                 "sysparm_limit": 1,
             },
             headers=auth_manager.get_headers(),
@@ -547,9 +567,27 @@ def _resolve_trigger_definition_id(
             f"Call list_trigger_types to see available options."
         )
 
-    sys_id = records[0]["sys_id"]
-    logger.info("_resolve_trigger_definition_id | type=%s | name=%s | sys_id=%s", type_str, display_name, sys_id)
-    return sys_id, None
+    rec = records[0]
+    # base_trigger references sys_hub_trigger_definition — that sys_id is what the
+    # processflow PUT body needs as triggerDefinitionId.
+    raw_base = rec.get("base_trigger")
+    trigger_def_id = raw_base.get("value") if isinstance(raw_base, dict) else (raw_base or None)
+
+    if trigger_def_id:
+        logger.info(
+            "_resolve_trigger_definition_id | type=%s | name=%s | trigger_def_id=%s",
+            type_str, display_name, trigger_def_id,
+        )
+        return trigger_def_id, None
+
+    # base_trigger was absent — fall back to sys_hub_trigger_type.sys_id with a warning.
+    fallback_id = rec["sys_id"]
+    logger.warning(
+        "_resolve_trigger_definition_id | base_trigger empty for type=%s name=%s, "
+        "using sys_hub_trigger_type.sys_id=%s as fallback — trigger may not attach correctly",
+        type_str, display_name, fallback_id,
+    )
+    return fallback_id, None
 
 
 def create_flow(
@@ -567,7 +605,7 @@ def create_flow(
     Sequence:
       1. POST /processflow/flow                      — create the flow shell
       2. POST /processflow/versioning/create_version — initial autosave
-      3. Resolve trigger_definition_id via sys_hub_trigger_type (if not supplied)
+      3. Resolve trigger_definition_id via sys_hub_trigger_type.base_trigger → sys_hub_trigger_definition (if not supplied)
       4. Build trigger + action instance payloads
       5. PUT  /processflow/flow                      — attach trigger and actions
       6. POST /processflow/versioning/create_version — final Save version (type='Save',
@@ -779,8 +817,8 @@ def create_flow(
     # Step 7: Patch fTriggerType='Record' in the saved version payload
     # ------------------------------------------------------------------
     # The processflow PUT cannot set fTriggerType reliably — a Business Rule overwrites
-    # it using a sys_hub_trigger_type field the service account cannot read. Patching the
-    # serialised payload via the Table API is the only reliable fix.
+    # it using a sys_hub_trigger_type (V1 catalog) field the service account cannot read.
+    # Patching the serialised payload via the Table API is the only reliable fix.
     # Non-fatal: the flow functions correctly; only the trigger label in the UI is affected.
     if params.trigger and params.trigger.type in _RECORD_TRIGGER_TYPES:
         patch_err = _patch_flow_version_trigger_type(config, auth_manager, flow_sys_id)
@@ -947,8 +985,9 @@ def _patch_flow_version_trigger_type(
     """Set fTriggerType='Record' on all trigger instances in the latest flow version payload.
 
     The processflow PUT cannot reliably set fTriggerType — a Business Rule overwrites it
-    using a sys_hub_trigger_type field the service account cannot read. Patching the
-    serialised payload directly via the Table API after autosave is the only reliable fix.
+    using a sys_hub_trigger_type (V1 catalog) field the service account cannot read.
+    Patching the serialised payload directly via the Table API after autosave is the only
+    reliable fix.
 
     Returns None on success, or an error message string on failure.
     """
