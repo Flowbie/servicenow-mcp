@@ -315,12 +315,12 @@ class RunBackgroundScriptParams(BaseModel):
             "JavaScript server-side script to execute on the ServiceNow instance. "
             "Runs in admin context via sys.scripts.do (same as the Background Script "
             "module in the ServiceNow UI). "
-            "Use gs.print() for direct output — it appears in the direct_output field. "
-            "Use gs.info()/gs.warn()/gs.error() for structured log output — these are "
-            "captured in syslog_entries via a timestamp-window query after execution. "
-            "The variable __MFCP_RUN_ID is injected at the top of your script. Include "
-            "it in your log calls to tag entries for this run: "
-            "gs.info('MyModule | value=' + result + ' | run_id=' + __MFCP_RUN_ID)."
+            "OUTPUT — always use gs.info() with the __MFCP_RUN_ID tag for reliable capture: "
+            "gs.info('MyModule | value=' + result + ' | run_id=' + __MFCP_RUN_ID). "
+            "Tagged entries are extracted from syslog and returned in direct_output. "
+            "Do NOT use gs.print() — it is only captured via the sys.scripts.do UI path "
+            "and returns no output when the Scripted REST API execution path is active. "
+            "The variable __MFCP_RUN_ID is injected at the top of every script automatically."
         ),
     )
     scope: str = Field(
