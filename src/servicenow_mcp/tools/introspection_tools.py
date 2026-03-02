@@ -250,7 +250,7 @@ def list_table_fields(
         results = response.json().get("result", [])
         fields: List[TableFieldInfo] = []
         for rec in results:
-            element = _extract_display_or_value(rec.get("element")) or rec.get("element")
+            element = _extract_display_or_value(rec.get("element"))
             if not element:
                 continue
             if not params.include_system and str(element).startswith("sys_"):
