@@ -317,12 +317,16 @@ def _param(
     mandatory: bool = False,
     maxsize: int = 4000,
     reference: str = "",
+    reference_display: str = "",
     dependent_on: str = "",
     default_value: str = "",
+    default_display_value: str | None = None,
     attributes: dict[str, str] | None = None,
     choices: list[dict] | None = None,
     default_choices: list[dict] | None = None,
     extended: bool = False,
+    choice_option: str = "",
+    use_dependent: bool = False,
 ) -> dict:
     """Build a full parameter definition dict matching the Flow Designer payload schema.
 
@@ -330,8 +334,10 @@ def _param(
     renders display labels instead of raw values. Values are confirmed from instance
     payload (sys_hub_flow_version) of a manually-created flow on dev296536 (2026-02-27).
     extended=True places the input under the Advanced Options dropdown in Flow Designer.
+    choice_option="3" tells Flow Designer to render the field as a dropdown using choices.
+    default_display_value is the human-readable label for the default value shown in the UI.
     """
-    return {
+    d = {
         "children": [],
         "id": param_id,
         "label": label,
@@ -344,12 +350,12 @@ def _param(
         "hint": "",
         "maxsize": maxsize,
         "reference": reference,
-        "reference_display": "",
-        "choiceOption": "",
+        "reference_display": reference_display,
+        "choiceOption": choice_option,
         "table": "",
         "columnName": "",
         "defaultValue": default_value,
-        "use_dependent": False,
+        "use_dependent": use_dependent,
         "fShowReferenceFinder": False,
         "local": False,
         "attributes": attributes if attributes is not None else {},
@@ -358,19 +364,23 @@ def _param(
         "choices": choices if choices is not None else [],
         "defaultChoices": default_choices if default_choices is not None else [],
     }
+    if default_display_value is not None:
+        d["defaultDisplayValue"] = default_display_value
+    return d
 
 
-# Ordered list of all 7 standard record trigger inputs.
+# Ordered list of all 8 standard record trigger inputs.
 # Order matches Flow Designer UI: table, condition (always visible),
 # then advanced options: run_when_setting, run_when_user_setting,
-# run_when_user_list (conditional), run_on_extended, run_flow_in.
+# run_when_user_list (conditional), run_on_extended, run_flow_in, trigger_strategy.
 _RECORD_TRIGGER_INPUTS: list[dict] = [
     _param("cfca92e0c31322002841b63b12d3ae00", "Table",     "table",     "table_name", order=1,   mandatory=True,  maxsize=80,   attributes={"filter_table_source": "RECORD_WATCHER_RESTRICTED"}),
-    _param("66aadea0c31322002841b63b12d3aebf", "Condition", "condition", "conditions", order=100, mandatory=False, maxsize=4000, dependent_on="table", attributes={"modelDependent": "trigger_inputs", "wants_to_add_conditions": "true"}),
+    _param("66aadea0c31322002841b63b12d3aebf", "Condition", "condition", "conditions", order=100, mandatory=False, maxsize=4000, dependent_on="table", use_dependent=True, attributes={"modelDependent": "trigger_inputs", "wants_to_add_conditions": "true"}),
     _param(
         "1e4859f3c7002300f4eba1425a9763f9", "run_when_setting", "run_when_setting", "choice",
         order=200, mandatory=False, maxsize=40, default_value="both",
-        extended=True, attributes={"advanced": "true"},
+        extended=True, attributes={"advanced": "true"}, choice_option="3",
+        default_display_value="Run for Both Interactive and Non-Interactive Sessions",
         choices=[
             {"label": "Only Run for Non-Interactive Session",                 "value": "non_interactive", "order": 0},
             {"label": "Only Run for User Interactive Session",                "value": "interactive",     "order": 1},
@@ -385,7 +395,8 @@ _RECORD_TRIGGER_INPUTS: list[dict] = [
     _param(
         "ed7a5537c7002300f4eba1425a976391", "run_when_user_setting", "run_when_user_setting", "choice",
         order=300, mandatory=False, maxsize=40, default_value="any",
-        extended=True, attributes={"advanced": "true"},
+        extended=True, attributes={"advanced": "true"}, choice_option="3",
+        default_display_value="Run for any user",
         choices=[
             {"label": "Do not run if triggered by the following users", "value": "not_one_of", "order": 0},
             {"label": "Only Run if triggered by the following users",   "value": "one_of",     "order": 1},
@@ -397,11 +408,12 @@ _RECORD_TRIGGER_INPUTS: list[dict] = [
             {"label": "Run for any user",                               "value": "any",        "order": 3},
         ],
     ),
-    _param("f89c5177c7002300f4eba1425a976385", "run_when_user_list", "run_when_user_list", "glide_list", order=400, mandatory=False, maxsize=4000, reference="sys_user", dependent_on="run_when_user_setting", extended=True, attributes={"advanced": "true"}),
+    _param("f89c5177c7002300f4eba1425a976385", "run_when_user_list", "run_when_user_list", "glide_list", order=400, mandatory=False, maxsize=4000, reference="sys_user", reference_display="User", dependent_on="run_when_user_setting", extended=True, attributes={"advanced": "true"}),
     _param(
         "11ffbef2072200103bf10705afd300c2", "run_on_extended", "run_on_extended", "choice",
         order=500, mandatory=False, maxsize=40, default_value="false",
-        extended=True, attributes={"advanced": "true"},
+        extended=True, attributes={"advanced": "true"}, choice_option="3",
+        default_display_value="Run only on current table",
         choices=[
             {"label": "Run only on current table",         "value": "false", "order": 0},
             {"label": "Run on current and extended tables", "value": "true",  "order": 1},
@@ -414,7 +426,8 @@ _RECORD_TRIGGER_INPUTS: list[dict] = [
     _param(
         "3f1b9e4e0f103300b599bca2ff767e21", "run_flow_in", "run_flow_in", "choice",
         order=600, mandatory=False, maxsize=40, default_value="background",
-        extended=True, attributes={"advanced": "true"},
+        extended=True, attributes={"advanced": "true"}, choice_option="3",
+        default_display_value="Run flow in background (default)",
         choices=[
             {"label": "Run flow in background (default)", "value": "background", "order": 0},
             {"label": "Run flow in foreground",           "value": "foreground", "order": 1},
@@ -422,6 +435,28 @@ _RECORD_TRIGGER_INPUTS: list[dict] = [
         default_choices=[
             {"label": "Run flow in background (default)", "value": "background", "order": 1},
             {"label": "Run flow in foreground",           "value": "foreground", "order": 2},
+        ],
+    ),
+    # "Run Trigger" — controls how often the flow fires per record lifecycle.
+    # sys_id confirmed from sys_hub_trigger_input on dev296536 (2026-02-28).
+    # Appears as the 8th input in saved flow version payloads; platform injects it
+    # with default "once" if omitted, but including it ensures correct Advanced Options rendering.
+    _param(
+        "2b9def50c31132002841b63b12d3ae5b", "Run Trigger", "trigger_strategy", "choice",
+        order=700, mandatory=False, maxsize=40, default_value="once",
+        extended=True, attributes={"advanced": "true"}, choice_option="3",
+        default_display_value="Once",
+        choices=[
+            {"label": "Once",                          "value": "once",           "order": 1},
+            {"label": "For each unique change",        "value": "unique_changes", "order": 2},
+            {"label": "Only if not currently running", "value": "always",         "order": 3},
+            {"label": "For every update",              "value": "every",          "order": 4},
+        ],
+        default_choices=[
+            {"label": "Once",                          "value": "once",           "order": 1},
+            {"label": "For each unique change",        "value": "unique_changes", "order": 2},
+            {"label": "Only if not currently running", "value": "always",         "order": 3},
+            {"label": "For every update",              "value": "every",          "order": 4},
         ],
     ),
 ]
@@ -869,8 +904,8 @@ def _build_trigger_instances(
 ) -> list[dict]:
     """Convert a TriggerInstanceParam into the triggerInstances array for the PUT body.
 
-    For record-based triggers all 7 standard inputs are always included (with default
-    values for the 5 advanced inputs). Each input carries a full 'parameter' sub-object
+    For record-based triggers all 8 standard inputs are always included (with default
+    values for the 6 advanced inputs). Each input carries a full 'parameter' sub-object
     required by the Flow Designer renderInput component — omitting it causes a
     TypeError crash in the UI.
 
@@ -931,6 +966,13 @@ def _build_trigger_instances(
             if name == "table" and table_label:
                 input_obj["displayValue"] = table_label
                 input_obj["displayField"] = "number"  # correct for task-derived tables
+            # condition and run_when_setting carry displayField="" in the reference payload.
+            elif name in ("condition", "run_when_setting"):
+                input_obj["displayField"] = ""
+            # All other non-table inputs carry displayValue="" in the reference payload.
+            # Required for Flow Designer to render the Advanced Options section correctly.
+            else:
+                input_obj["displayValue"] = ""
             built_inputs.append(input_obj)
         # Append any caller-supplied inputs not in the standard set
         for name, value in input_values.items():
@@ -1055,10 +1097,10 @@ def _patch_flow_version_trigger_type(
             ti["fTriggerType"] = "Record"
             patched_any = True
 
-        # Inject choices/defaultChoices into choice-type trigger inputs that have empty
-        # choice arrays. The processflow create_version call with a minimal body does not
-        # write choices into the version payload — only the UI does. Without this patch
-        # Flow Designer renders the advanced options dropdowns with no selectable options.
+        # Inject choices/defaultChoices/choiceOption/defaultDisplayValue into choice-type
+        # trigger inputs that are missing them. The processflow PUT does not reliably write
+        # these into the version payload — only the UI does. Without this patch Flow Designer
+        # renders the advanced options dropdowns with no selectable options and no defaults.
         for inp in ti.get("inputs", []):
             param = inp.get("parameter")
             if not isinstance(param, dict) or param.get("type") != "choice":
@@ -1072,6 +1114,12 @@ def _patch_flow_version_trigger_type(
                 patched_any = True
             if not param.get("defaultChoices"):
                 param["defaultChoices"] = known_def["defaultChoices"]
+                patched_any = True
+            if not param.get("choiceOption") and known_def.get("choiceOption"):
+                param["choiceOption"] = known_def["choiceOption"]
+                patched_any = True
+            if "defaultDisplayValue" not in param and "defaultDisplayValue" in known_def:
+                param["defaultDisplayValue"] = known_def["defaultDisplayValue"]
                 patched_any = True
 
     if not patched_any:
