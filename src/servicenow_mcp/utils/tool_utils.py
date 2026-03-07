@@ -394,6 +394,46 @@ from servicenow_mcp.tools.script_tools import (
 from servicenow_mcp.tools.script_tools import (
     run_background_script as run_background_script_tool,
 )
+from servicenow_mcp.tools.table_tools import (
+    CreateRecordParams,
+    DeleteRecordParams,
+    GetRecordParams,
+    QueryRecordsParams,
+    UpdateRecordParams,
+)
+from servicenow_mcp.tools.table_tools import (
+    create_record as create_record_tool,
+    delete_record as delete_record_tool,
+    get_record as get_record_tool,
+    query_records as query_records_tool,
+    update_record as update_record_tool,
+)
+from servicenow_mcp.tools.cmdb_tools import (
+    CreateCIParams,
+    GetCIParams,
+    GetCIRelationshipsParams,
+    ListCIParams,
+    UpdateCIParams,
+)
+from servicenow_mcp.tools.cmdb_tools import (
+    create_ci as create_ci_tool,
+    get_ci as get_ci_tool,
+    get_ci_relationships as get_ci_relationships_tool,
+    list_ci as list_ci_tool,
+    update_ci as update_ci_tool,
+)
+from servicenow_mcp.tools.system_tools import (
+    GetCurrentUserParams,
+    GetSystemPropertiesParams,
+)
+from servicenow_mcp.tools.system_tools import (
+    get_current_user as get_current_user_tool,
+    get_system_properties as get_system_properties_tool,
+)
+from servicenow_mcp.tools.changeset_tools import (
+    SetCurrentUpdateSetParams,
+    set_current_update_set as set_current_update_set_tool,
+)
 
 # Define a type alias for the Pydantic models or dataclasses used for params
 ParamsModel = Type[Any]  # Use Type[Any] for broader compatibility initially
@@ -1282,6 +1322,166 @@ def get_tool_definitions(
             str,  # Expects JSON string
             "List projects from ServiceNow",
             "json",  # Tool returns list/dict
+        ),
+        # Generic Table API Tools
+        "query_records": (
+            query_records_tool,
+            QueryRecordsParams,
+            dict,
+            (
+                "Query records from any ServiceNow table using the Table REST API. "
+                "Use this when no domain-specific tool exists for the target table. "
+                "Supports encoded query strings, field selection, pagination, and ordering. "
+                "Returns a list of matching records. Read-only."
+            ),
+            "json",
+        ),
+        "get_record": (
+            get_record_tool,
+            GetRecordParams,
+            dict,
+            (
+                "Retrieve a single record from any ServiceNow table by sys_id. "
+                "Use this when no domain-specific tool exists for the target table. "
+                "Optionally filter to specific fields. Read-only."
+            ),
+            "json",
+        ),
+        "create_record": (
+            create_record_tool,
+            CreateRecordParams,
+            dict,
+            (
+                "Create a new record in any ServiceNow table. "
+                "Use this when no domain-specific create tool exists for the target table. "
+                "Pass field key-value pairs; returns the generated sys_id and full record. "
+                "Use verify_fields after creation to confirm values persisted."
+            ),
+            "json",
+        ),
+        "update_record": (
+            update_record_tool,
+            UpdateRecordParams,
+            dict,
+            (
+                "Update an existing record in any ServiceNow table via PATCH. "
+                "Use this when no domain-specific update tool exists for the target table. "
+                "Only provided fields are modified. "
+                "Use verify_fields after the update to confirm values persisted."
+            ),
+            "json",
+        ),
+        "delete_record": (
+            delete_record_tool,
+            DeleteRecordParams,
+            dict,
+            (
+                "Delete a record from any ServiceNow table by sys_id. "
+                "This is destructive — confirm the sys_id and table before calling. "
+                "Use this when no domain-specific delete tool exists for the target table."
+            ),
+            "json",
+        ),
+        # CMDB Tools
+        "list_ci": (
+            list_ci_tool,
+            ListCIParams,
+            dict,
+            (
+                "List Configuration Items from the ServiceNow CMDB. "
+                "Specify ci_class to target a type (e.g., cmdb_ci_server, cmdb_ci_appl). "
+                "Supports encoded query filtering (e.g., install_status=1), field selection, "
+                "and pagination. Returns count and list of CI records. Read-only."
+            ),
+            "json",
+        ),
+        "get_ci": (
+            get_ci_tool,
+            GetCIParams,
+            dict,
+            (
+                "Retrieve a single CMDB Configuration Item by sys_id. "
+                "Specify the exact ci_class subtype (e.g., cmdb_ci_server) for complete "
+                "class-specific field data. Read-only."
+            ),
+            "json",
+        ),
+        "create_ci": (
+            create_ci_tool,
+            CreateCIParams,
+            dict,
+            (
+                "Create a new Configuration Item in the ServiceNow CMDB. "
+                "Always use the most specific CI subclass (e.g., cmdb_ci_server). "
+                "Returns the sys_id and full record of the created CI. "
+                "Use verify_fields after creation to confirm attribute values."
+            ),
+            "json",
+        ),
+        "update_ci": (
+            update_ci_tool,
+            UpdateCIParams,
+            dict,
+            (
+                "Update an existing CMDB Configuration Item via PATCH. "
+                "Only provided fields are modified. "
+                "Use verify_fields after the update — Discovery and other mechanisms "
+                "may override written values."
+            ),
+            "json",
+        ),
+        "get_ci_relationships": (
+            get_ci_relationships_tool,
+            GetCIRelationshipsParams,
+            dict,
+            (
+                "Get relationships for a CMDB CI from cmdb_rel_ci. "
+                "Returns parent (CIs this one depends on), child (CIs that depend on this one), "
+                "or both directions. Optionally filter by relationship type. "
+                "Use to map service dependencies, infrastructure topology, and impact chains. "
+                "Read-only."
+            ),
+            "json",
+        ),
+        # System Tools
+        "get_system_properties": (
+            get_system_properties_tool,
+            GetSystemPropertiesParams,
+            dict,
+            (
+                "Query sys_properties for ServiceNow instance configuration values. "
+                "Use to inspect instance settings, confirm feature flags, or look up "
+                "configuration values before making environment-dependent decisions. "
+                "Supports encoded query filtering (e.g., nameLIKEglide.email). Read-only."
+            ),
+            "json",
+        ),
+        "get_current_user": (
+            get_current_user_tool,
+            GetCurrentUserParams,
+            dict,
+            (
+                "Retrieve information about the currently authenticated API user. "
+                "Returns sys_id, user_name, display_name, and email. "
+                "Optionally includes the user's active roles (include_roles=true, costs an extra API call). "
+                "Use to confirm which account the MCP server is acting as, verify role "
+                "assignments, or retrieve the sys_id for assigning records. Read-only."
+            ),
+            "json",
+        ),
+        # Update Set activation
+        "set_current_update_set": (
+            set_current_update_set_tool,
+            SetCurrentUpdateSetParams,
+            dict,
+            (
+                "Activate an update set as the current working set for the authenticated user. "
+                "Validates the update set is in 'in progress' state, then sets it as current "
+                "so all subsequent platform changes are captured in it. "
+                "Call this before scripting or configuration work to ensure changes land in the "
+                "correct update set. Use list_changesets to find available update set sys_ids."
+            ),
+            "json",
         ),
     }
     return tool_definitions

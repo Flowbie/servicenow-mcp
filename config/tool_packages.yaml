@@ -101,6 +101,13 @@ executor:
   - list_notifications
   - list_ui_actions
   - list_access_controls
+  # Generic Table API (escape hatch for any table without a domain-specific tool):
+  - query_records
+  - get_record
+  - create_record
+  - update_record
+  # System:
+  - get_current_user
   # Script Include writes (Executor default for scripting tasks):
   - list_script_includes
   - get_script_include
@@ -111,6 +118,7 @@ executor:
   - create_changeset
   - update_changeset
   - commit_changeset
+  - set_current_update_set
 
 platform_developer:
   # Write Verification, Metadata Discovery, and Diagnostic Escalation
@@ -133,6 +141,15 @@ platform_developer:
   - list_notifications
   - list_ui_actions
   - list_access_controls
+  # Generic Table API
+  - query_records
+  - get_record
+  - create_record
+  - update_record
+  - delete_record
+  # System
+  - get_system_properties
+  - get_current_user
   # Script Includes
   - list_script_includes
   - get_script_include
@@ -169,6 +186,7 @@ platform_developer:
   - commit_changeset
   - publish_changeset
   - add_file_to_changeset
+  - set_current_update_set
 
 agile_management:
   # Write Verification, Metadata Discovery, and Diagnostic Escalation
@@ -220,6 +238,15 @@ system_administrator:
   - list_notifications
   - list_ui_actions
   - list_access_controls
+  # Generic Table API
+  - query_records
+  - get_record
+  - create_record
+  - update_record
+  - delete_record
+  # System
+  - get_system_properties
+  - get_current_user
   # User Management
   - create_user
   - update_user
@@ -346,6 +373,23 @@ full:
   # Syslog
   - list_syslog_entries
   - get_syslog_entry
+  # Generic Table API
+  - query_records
+  - get_record
+  - create_record
+  - update_record
+  - delete_record
+  # CMDB
+  - list_ci
+  - get_ci
+  - create_ci
+  - update_ci
+  - get_ci_relationships
+  # System
+  - get_system_properties
+  - get_current_user
+  # Update Set Activation
+  - set_current_update_set
   # Catalog Criteria
   - create_user_criteria
   - create_user_criteria_condition

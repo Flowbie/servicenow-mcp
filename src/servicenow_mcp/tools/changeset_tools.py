@@ -691,6 +691,108 @@ def publish_changeset(
         }
 
 
+class SetCurrentUpdateSetParams(BaseModel):
+    """Parameters for activating an update set as the current working set."""
+
+    changeset_id: str = Field(
+        ...,
+        description=(
+            "sys_id of the update set to activate as current. "
+            "The update set must be in 'in progress' state."
+        ),
+    )
+
+
+def set_current_update_set(
+    auth_manager: AuthManager,
+    server_config: ServerConfig,
+    params: Union[Dict[str, Any], SetCurrentUpdateSetParams],
+) -> Dict[str, Any]:
+    """
+    Activate an update set as the current working set for the authenticated user.
+
+    Validates the update set is in 'in progress' state, then updates the user's
+    sys_user_preference to make it the active update set. All subsequent platform
+    changes will be captured in this update set.
+
+    Args:
+        auth_manager: The authentication manager.
+        server_config: The server configuration.
+        params: The changeset_id to activate.
+
+    Returns:
+        Success status with the activated update set details.
+    """
+    result = _unwrap_and_validate_params(
+        params,
+        SetCurrentUpdateSetParams,
+        required_fields=["changeset_id"],
+    )
+    if not result["success"]:
+        return result
+
+    validated_params = result["params"]
+    instance_url = _get_instance_url(auth_manager, server_config)
+    if not instance_url:
+        return {"success": False, "message": "Cannot find instance_url."}
+    headers = _get_headers(auth_manager, server_config)
+    if not headers:
+        return {"success": False, "message": "Cannot find get_headers method."}
+
+    # Validate the update set exists and is in progress
+    check_url = f"{instance_url}/api/now/table/sys_update_set/{validated_params.changeset_id}"
+    try:
+        check_resp = requests.get(check_url, headers=headers)
+        check_resp.raise_for_status()
+        update_set = check_resp.json().get("result", {})
+    except requests.exceptions.RequestException as e:
+        return {"success": False, "message": f"Failed to fetch update set: {e}"}
+
+    state = update_set.get("state", "")
+    if state != "in progress":
+        return {
+            "success": False,
+            "message": (
+                f"Update set is in state '{state}', not 'in progress'. "
+                "Only 'in progress' update sets can be made current."
+            ),
+            "update_set": update_set,
+        }
+
+    # Set as current via sys_user_preference
+    pref_url = f"{instance_url}/api/now/table/sys_user_preference"
+    pref_query_url = (
+        f"{pref_url}?sysparm_query=name=sys_update_set^user.user_name=current&sysparm_limit=1"
+    )
+    try:
+        # Check if preference record already exists
+        pref_resp = requests.get(pref_query_url, headers=headers)
+        pref_resp.raise_for_status()
+        prefs = pref_resp.json().get("result", [])
+
+        pref_data = {"value": validated_params.changeset_id}
+        if prefs:
+            pref_sys_id = prefs[0].get("sys_id", "")
+            upd_resp = requests.patch(
+                f"{pref_url}/{pref_sys_id}",
+                json=pref_data,
+                headers=headers,
+            )
+            upd_resp.raise_for_status()
+        else:
+            pref_data["name"] = "sys_update_set"
+            crt_resp = requests.post(pref_url, json=pref_data, headers=headers)
+            crt_resp.raise_for_status()
+
+        return {
+            "success": True,
+            "message": f"Update set '{update_set.get('name', validated_params.changeset_id)}' is now active.",
+            "update_set": update_set,
+        }
+    except requests.exceptions.RequestException as e:
+        return {"success": False, "message": f"Failed to set current update set: {e}"}
+
+
 def add_file_to_changeset(
     auth_manager: AuthManager,
     server_config: ServerConfig,
