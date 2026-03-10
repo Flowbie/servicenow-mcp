@@ -161,6 +161,7 @@ platform_developer:
   - run_background_script
   # Flow Designer
   - create_flow
+  - list_trigger_types
   # Workflows
   - list_workflows
   - get_workflow_details
@@ -198,12 +199,45 @@ agile_management:
   - get_data_policies
   - get_ui_policies
   # Story Management
+  - get_story
   - create_story
   - update_story
   - list_stories
+  - archive_story
+  - move_story_state
+  - assign_story
+  - add_story_comment
   - list_story_dependencies
+  - list_story_blockers
   - create_story_dependency
   - delete_story_dependency
+  # Sprint Management
+  - create_sprint
+  - get_sprint
+  - get_sprint_summary
+  - start_sprint
+  - close_sprint
+  # Agile Planning (read-only context)
+  - story_breakdown
+  - generate_acceptance_criteria
+  - estimate_story_points
+  - identify_story_risks
+  - generate_test_scenarios
+  # Release Management
+  - create_release
+  - get_release
+  - validate_release_readiness
+  - compile_release_notes
+  # Agile Reporting
+  - get_my_work
+  - get_blocked_work
+  - get_release_status
+  # Agile Sprint Planning
+  - recommend_sprint_stories
+  # Agile Governance
+  - validate_story_dependencies
+  - validate_story_testing
+  - validate_story_promotion_instructions
   # Epic Management
   - create_epic
   - update_epic
@@ -212,9 +246,38 @@ agile_management:
   - create_scrum_task
   - update_scrum_task
   - list_scrum_tasks
+  - get_scrum_task
+  - close_scrum_task
+  - assign_scrum_task
   # Project Management
   - create_project
   - update_project
+  - list_projects
+
+agile_readonly:
+  # Read-only subset — safe for reporting agents and dashboards
+  - get_story
+  - list_stories
+  - list_story_dependencies
+  - list_story_blockers
+  - get_sprint
+  - get_sprint_summary
+  - story_breakdown
+  - generate_acceptance_criteria
+  - estimate_story_points
+  - identify_story_risks
+  - generate_test_scenarios
+  - get_release
+  - get_release_status
+  - get_blocked_work
+  - get_my_work
+  - recommend_sprint_stories
+  - validate_story_dependencies
+  - validate_story_testing
+  - validate_story_promotion_instructions
+  - list_epics
+  - list_scrum_tasks
+  - get_scrum_task
   - list_projects
 
 system_administrator:
@@ -322,6 +385,7 @@ full:
   - run_background_script
   # Flow Designer
   - create_flow
+  - list_trigger_types
   # Workflow
   - list_workflows
   - get_workflow_details
@@ -397,12 +461,45 @@ full:
   - create_ui_policy
   - create_ui_policy_action
   # Story Management
+  - get_story
   - create_story
   - update_story
   - list_stories
+  - archive_story
+  - move_story_state
+  - assign_story
+  - add_story_comment
   - list_story_dependencies
+  - list_story_blockers
   - create_story_dependency
   - delete_story_dependency
+  # Sprint Management
+  - create_sprint
+  - get_sprint
+  - get_sprint_summary
+  - start_sprint
+  - close_sprint
+  # Agile Planning
+  - story_breakdown
+  - generate_acceptance_criteria
+  - estimate_story_points
+  - identify_story_risks
+  - generate_test_scenarios
+  # Release Management
+  - create_release
+  - get_release
+  - validate_release_readiness
+  - compile_release_notes
+  # Agile Reporting
+  - get_my_work
+  - get_blocked_work
+  - get_release_status
+  # Agile Sprint Planning
+  - recommend_sprint_stories
+  # Agile Governance
+  - validate_story_dependencies
+  - validate_story_testing
+  - validate_story_promotion_instructions
   # Epic Management
   - create_epic
   - update_epic
@@ -411,6 +508,9 @@ full:
   - create_scrum_task
   - update_scrum_task
   - list_scrum_tasks
+  - get_scrum_task
+  - close_scrum_task
+  - assign_scrum_task
   # Project Management
   - create_project
   - update_project

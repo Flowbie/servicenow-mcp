@@ -208,11 +208,51 @@ The default `config/tool_packages.yaml` includes the following role-based packag
 #### Agile Management Tools
 
 ##### Story Management
-1. **create_story** - Create a new user story in ServiceNow
-2. **update_story** - Update an existing user story in ServiceNow
-3. **list_stories** - List user stories with filtering options
-4. **create_story_dependency** - Create a dependency between two stories
-5. **delete_story_dependency** - Delete a dependency between stories
+1. **get_story** - Get a specific user story by sys_id
+2. **create_story** - Create a new user story in ServiceNow
+3. **update_story** - Update an existing user story in ServiceNow
+4. **list_stories** - List user stories with filtering options (sprint, epic, priority, state)
+5. **archive_story** - Archive a user story
+6. **move_story_state** - Transition a story to a new state
+7. **assign_story** - Assign a story to a user
+8. **add_story_comment** - Add a comment to a story
+9. **list_story_dependencies** - List dependencies for a story
+10. **list_story_blockers** - List stories blocking a given story
+11. **create_story_dependency** - Create a dependency between two stories
+12. **delete_story_dependency** - Delete a dependency between stories
+
+##### Sprint Management
+1. **create_sprint** - Create a new sprint in ServiceNow
+2. **get_sprint** - Get details for a specific sprint
+3. **get_sprint_summary** - Get a summary of story counts and points for a sprint
+4. **start_sprint** - Transition a sprint from Planning to Active state
+5. **close_sprint** - Transition a sprint from Active to Completed state
+
+##### Agile Planning Tools
+1. **story_breakdown** - Break down a high-level story into sub-tasks
+2. **generate_acceptance_criteria** - Generate acceptance criteria for a story
+3. **estimate_story_points** - Estimate story points for a story
+4. **identify_story_risks** - Identify risks associated with a story
+5. **generate_test_scenarios** - Generate test scenarios for a story
+
+##### Release Management
+1. **create_release** - Create a new release in ServiceNow
+2. **get_release** - Get details for a specific release
+3. **validate_release_readiness** - Validate that a release is ready to ship
+4. **compile_release_notes** - Compile release notes for a release
+
+##### Agile Reporting
+1. **get_my_work** - Get stories and tasks assigned to the current user
+2. **get_blocked_work** - Get stories currently blocked by dependencies
+3. **get_release_status** - Get the status of all stories in a release
+
+##### Agile Sprint Planning
+1. **recommend_sprint_stories** - Recommend stories from the backlog for an upcoming sprint
+
+##### Agile Governance
+1. **validate_story_dependencies** - Validate that all story dependencies are satisfied before promotion
+2. **validate_story_testing** - Validate that a story has sufficient test coverage
+3. **validate_story_promotion_instructions** - Validate that a story has complete promotion instructions
 
 ##### Epic Management
 1. **create_epic** - Create a new epic in ServiceNow
@@ -220,9 +260,12 @@ The default `config/tool_packages.yaml` includes the following role-based packag
 3. **list_epics** - List epics from ServiceNow with filtering options
 
 ##### Scrum Task Management
-1. **create_scrum_task** - Create a new scrum task in ServiceNow
-2. **update_scrum_task** - Update an existing scrum task in ServiceNow
-3. **list_scrum_tasks** - List scrum tasks from ServiceNow with filtering options
+1. **get_scrum_task** - Get a specific scrum task by sys_id
+2. **create_scrum_task** - Create a new scrum task in ServiceNow
+3. **update_scrum_task** - Update an existing scrum task in ServiceNow
+4. **list_scrum_tasks** - List scrum tasks from ServiceNow with filtering options
+5. **close_scrum_task** - Close a scrum task
+6. **assign_scrum_task** - Assign a scrum task to a user
 
 ##### Project Management
 1. **create_project** - Create a new project in ServiceNow
@@ -399,6 +442,8 @@ Below are some example natural language queries you can use with Claude to inter
 - "Update change CHG0012345, set the state to 'Implement'."
 
 #### Agile Management Examples
+
+##### Story Management
 - "Create a new user story for implementing a new reporting dashboard"
 - "Update the 'Implement a new reporting dashboard' story to set it as blocked"
 - "List all user stories assigned to the Data Analytics team"
@@ -413,6 +458,37 @@ Below are some example natural language queries you can use with Claude to inter
 - "Create a new project called 'Data Analytics Initiatives'"
 - "Update the 'Data Analytics Initiatives' project to set it as completed"
 - "List all projects in the 'Data Analytics' epic"
+
+##### Sprint Lifecycle
+- "Start the Q2 Sprint 3 sprint so the team can begin work"
+- "Close sprint SPR0001234 now that all stories are complete"
+- "Get a summary of story counts and points for sprint SPR0001234"
+
+##### AI Planning Tools
+- "Break down the story 'Build single sign-on integration' into implementation sub-tasks"
+- "Generate acceptance criteria for the story 'Migrate incident data to new schema'"
+- "Estimate story points for 'Add bulk export to the reporting dashboard' based on its description"
+- "Identify the main risks for story STRY0080729 before we start the sprint"
+- "Generate test scenarios for the story 'Implement password expiry notifications'"
+
+##### Release Management
+- "Create a new release called 'Q2 2026 Platform Release' targeting the production instance"
+- "Get the details of release REL0000123"
+- "Check whether release REL0000123 is ready to ship — are all stories complete and tested?"
+- "Compile release notes for REL0000123 summarizing all completed stories"
+
+##### Agile Reporting
+- "Show me all the stories and tasks currently assigned to me"
+- "Which stories in the current sprint are blocked by unresolved dependencies?"
+- "Give me a status summary of all stories in release REL0000123"
+
+##### Sprint Planning
+- "Recommend which backlog stories should be pulled into the next sprint based on priority and capacity"
+
+##### Agile Governance
+- "Check whether all dependencies for story STRY0080729 are satisfied before we promote it"
+- "Validate that story STRY0080729 has sufficient test coverage to be marked ready for testing"
+- "Verify that story STRY0080729 has complete promotion instructions before we move it to production"
 
 #### Workflow Management Examples
 - "Show me all active workflows in ServiceNow"

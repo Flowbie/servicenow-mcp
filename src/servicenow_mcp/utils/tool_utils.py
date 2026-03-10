@@ -331,6 +331,56 @@ from servicenow_mcp.tools.workflow_tools import (
 from servicenow_mcp.tools.workflow_tools import (
     update_workflow_activity as update_workflow_activity_tool,
 )
+from servicenow_mcp.tools.sprint_tools import (
+    CreateSprintParams,
+    GetSprintParams,
+    GetSprintSummaryParams,
+    StartSprintParams,
+    CloseSprintParams,
+)
+from servicenow_mcp.tools.sprint_tools import (
+    create_sprint as create_sprint_tool,
+    get_sprint as get_sprint_tool,
+    get_sprint_summary as get_sprint_summary_tool,
+    start_sprint as start_sprint_tool,
+    close_sprint as close_sprint_tool,
+)
+from servicenow_mcp.tools.agile_planning_tools import (
+    StoryIdParams as PlanningStoryIdParams,
+    story_breakdown as story_breakdown_tool,
+    generate_acceptance_criteria as generate_acceptance_criteria_tool,
+    estimate_story_points as estimate_story_points_tool,
+    identify_story_risks as identify_story_risks_tool,
+    generate_test_scenarios as generate_test_scenarios_tool,
+)
+from servicenow_mcp.tools.release_tools import (
+    CreateReleaseParams,
+    GetReleaseParams,
+    ValidateReleaseReadinessParams,
+    CompileReleaseNotesParams,
+    create_release as create_release_tool,
+    get_release as get_release_tool,
+    validate_release_readiness as validate_release_readiness_tool,
+    compile_release_notes as compile_release_notes_tool,
+)
+from servicenow_mcp.tools.agile_reporting_tools import (
+    GetMyWorkParams,
+    GetBlockedWorkParams,
+    GetReleaseStatusParams,
+    get_my_work as get_my_work_tool,
+    get_blocked_work as get_blocked_work_tool,
+    get_release_status as get_release_status_tool,
+)
+from servicenow_mcp.tools.agile_governance_tools import (
+    StoryIdParams as GovernanceStoryIdParams,
+    validate_story_dependencies as validate_story_dependencies_tool,
+    validate_story_testing as validate_story_testing_tool,
+    validate_story_promotion_instructions as validate_story_promotion_instructions_tool,
+)
+from servicenow_mcp.tools.agile_sprint_planning_tools import (
+    RecommendSprintStoriesParams,
+    recommend_sprint_stories as recommend_sprint_stories_tool,
+)
 from servicenow_mcp.tools.story_tools import (
     CreateStoryParams,
     UpdateStoryParams,
@@ -338,6 +388,12 @@ from servicenow_mcp.tools.story_tools import (
     ListStoryDependenciesParams,
     CreateStoryDependencyParams,
     DeleteStoryDependencyParams,
+    GetStoryParams,
+    ArchiveStoryParams,
+    MoveStoryStateParams,
+    AssignStoryParams,
+    AddStoryCommentParams,
+    ListStoryBlockersParams,
 )
 from servicenow_mcp.tools.story_tools import (
     create_story as create_story_tool,
@@ -346,6 +402,12 @@ from servicenow_mcp.tools.story_tools import (
     list_story_dependencies as list_story_dependencies_tool,
     create_story_dependency as create_story_dependency_tool,
     delete_story_dependency as delete_story_dependency_tool,
+    get_story as get_story_tool,
+    archive_story as archive_story_tool,
+    move_story_state as move_story_state_tool,
+    assign_story as assign_story_tool,
+    add_story_comment as add_story_comment_tool,
+    list_story_blockers as list_story_blockers_tool,
 )
 from servicenow_mcp.tools.epic_tools import (
     CreateEpicParams,
@@ -361,11 +423,17 @@ from servicenow_mcp.tools.scrum_task_tools import (
     CreateScrumTaskParams,
     UpdateScrumTaskParams,
     ListScrumTasksParams,
+    GetScrumTaskParams,
+    CloseScrumTaskParams,
+    AssignScrumTaskParams,
 )
 from servicenow_mcp.tools.scrum_task_tools import (
     create_scrum_task as create_scrum_task_tool,
     update_scrum_task as update_scrum_task_tool,
     list_scrum_tasks as list_scrum_tasks_tool,
+    get_scrum_task as get_scrum_task_tool,
+    close_scrum_task as close_scrum_task_tool,
+    assign_scrum_task as assign_scrum_task_tool,
 )
 from servicenow_mcp.tools.project_tools import (
     CreateProjectParams,
@@ -1257,6 +1325,74 @@ def get_tool_definitions(
             "Delete a story dependency in ServiceNow",
             "str",
         ),
+        "get_story": (
+            get_story_tool,
+            GetStoryParams,
+            dict,
+            (
+                "Retrieve a single story by sys_id or story number (e.g. STRY0001234). "
+                "Returns the full story record including state, epic, sprint, assignee, "
+                "acceptance_criteria, and story_points. Read-only."
+            ),
+            "json",
+        ),
+        "archive_story": (
+            archive_story_tool,
+            ArchiveStoryParams,
+            dict,
+            (
+                "Archive (cancel) a story by setting its state to Cancelled. "
+                "Requires a story_id. Optional reason is recorded as a work note. "
+                "Blocked if the story is already Complete or Cancelled."
+            ),
+            "json",
+        ),
+        "move_story_state": (
+            move_story_state_tool,
+            MoveStoryStateParams,
+            dict,
+            (
+                "Move a story to a new lifecycle state with transition validation. "
+                "Accepts friendly state names (draft, ready, in_progress, ready_for_testing, "
+                "testing, complete, cancelled) or numeric values (-6, 1, 2, -7, -8, 3, 4). "
+                "Enforces allowed transitions and business rules: "
+                "moving to Complete requires acceptance_criteria; "
+                "moving to Cancelled requires a reason."
+            ),
+            "json",
+        ),
+        "assign_story": (
+            assign_story_tool,
+            AssignStoryParams,
+            dict,
+            (
+                "Assign a story to a user and/or group. "
+                "Provide assigned_to (user sys_id), assignment_group (group sys_id), or both. "
+                "At least one must be supplied."
+            ),
+            "json",
+        ),
+        "add_story_comment": (
+            add_story_comment_tool,
+            AddStoryCommentParams,
+            dict,
+            (
+                "Add a work note / comment to a story. "
+                "Appends the comment text to the story's work_notes journal field."
+            ),
+            "json",
+        ),
+        "list_story_blockers": (
+            list_story_blockers_tool,
+            ListStoryBlockersParams,
+            dict,
+            (
+                "List all stories that are blocking the given story. "
+                "Returns dependency records from m2m_story_dependencies where the story "
+                "is the dependent (blocked) side. Read-only."
+            ),
+            "json",
+        ),
         # Epic Management Tools
         "create_epic": (
             create_epic_tool,
@@ -1300,6 +1436,27 @@ def get_tool_definitions(
             str,  # Expects JSON string
             "List scrum tasks from ServiceNow",
             "json",  # Tool returns list/dict
+        ),
+        "get_scrum_task": (
+            get_scrum_task_tool,
+            GetScrumTaskParams,
+            dict,
+            "Retrieve a single scrum task by sys_id. Returns the full task record. Read-only.",
+            "json",
+        ),
+        "close_scrum_task": (
+            close_scrum_task_tool,
+            CloseScrumTaskParams,
+            dict,
+            "Close a scrum task by setting its state to Complete (3). Optionally adds closing work notes.",
+            "json",
+        ),
+        "assign_scrum_task": (
+            assign_scrum_task_tool,
+            AssignScrumTaskParams,
+            dict,
+            "Assign a scrum task to a user and/or group. At least one of assigned_to or assignment_group required.",
+            "json",
         ),
         # Project Management Tools
         "create_project": (
@@ -1466,6 +1623,255 @@ def get_tool_definitions(
                 "Optionally includes the user's active roles (include_roles=true, costs an extra API call). "
                 "Use to confirm which account the MCP server is acting as, verify role "
                 "assignments, or retrieve the sys_id for assigning records. Read-only."
+            ),
+            "json",
+        ),
+        # Sprint Management Tools
+        "create_sprint": (
+            create_sprint_tool,
+            CreateSprintParams,
+            dict,
+            (
+                "Create a new sprint in ServiceNow (rm_sprint_2). "
+                "Requires a name, start_date, and end_date (YYYY-MM-DD). "
+                "Optionally attach to a release via release_id and set a sprint goal. "
+                "Sprint is created in Planning state. "
+                "To add stories to the sprint use update_story with the sprint field."
+            ),
+            "json",
+        ),
+        "get_sprint": (
+            get_sprint_tool,
+            GetSprintParams,
+            dict,
+            (
+                "Retrieve a single sprint by sys_id, sprint number (e.g. SPRINT0001234), "
+                "or sprint name (e.g. 'Sprint 14'). "
+                "Returns full sprint record including state, dates, goal, and release. "
+                "Read-only."
+            ),
+            "json",
+        ),
+        "get_sprint_summary": (
+            get_sprint_summary_tool,
+            GetSprintSummaryParams,
+            dict,
+            (
+                "Return an aggregated summary for a sprint: story counts grouped by state "
+                "(done, in_progress, backlog, cancelled) and story point totals "
+                "(total, completed, remaining). Includes a completion_forecast signal. "
+                "Set include_stories=true to also return the full story list. "
+                "Read-only."
+            ),
+            "json",
+        ),
+        "start_sprint": (
+            start_sprint_tool,
+            StartSprintParams,
+            dict,
+            (
+                "Transition a sprint from Planning to Active state. "
+                "Validates the sprint is in Planning state before patching. "
+                "Returns an open story count as an informational warning. "
+                "Requires the sprint sys_id."
+            ),
+            "json",
+        ),
+        "close_sprint": (
+            close_sprint_tool,
+            CloseSprintParams,
+            dict,
+            (
+                "Transition a sprint from Active to Completed state. "
+                "Fails with OPEN_STORIES_BLOCKING_CLOSE if open stories remain (use force=True to override). "
+                "Returns the count of stories carried over open at close time."
+            ),
+            "json",
+        ),
+        # Agile Planning Tools (read-only context gathering)
+        "story_breakdown": (
+            story_breakdown_tool,
+            PlanningStoryIdParams,
+            dict,
+            (
+                "Gather all context needed to break a user story into scrum tasks. "
+                "Returns the story, its epic, existing tasks, similar stories from the same epic, "
+                "a task type guide, and AI analysis hints. Read-only."
+            ),
+            "json",
+        ),
+        "generate_acceptance_criteria": (
+            generate_acceptance_criteria_tool,
+            PlanningStoryIdParams,
+            dict,
+            (
+                "Gather context for writing acceptance criteria for a story. "
+                "Returns the story, its epic, any existing AC, and AC from similar stories "
+                "in the same epic as calibration examples. Read-only."
+            ),
+            "json",
+        ),
+        "estimate_story_points": (
+            estimate_story_points_tool,
+            PlanningStoryIdParams,
+            dict,
+            (
+                "Gather context for estimating story points. "
+                "Returns the story, its epic, similar completed stories with their point values, "
+                "the Fibonacci scale, and calibration hints. Read-only."
+            ),
+            "json",
+        ),
+        "identify_story_risks": (
+            identify_story_risks_tool,
+            PlanningStoryIdParams,
+            dict,
+            (
+                "Surface open blockers and risk signals for a story. "
+                "Queries m2m_story_dependencies for prerequisites not yet done or cancelled. "
+                "Returns open blocker count, blocker details, and risk analysis hints. Read-only."
+            ),
+            "json",
+        ),
+        "generate_test_scenarios": (
+            generate_test_scenarios_tool,
+            PlanningStoryIdParams,
+            dict,
+            (
+                "Gather context for generating test scenarios for a story. "
+                "Returns the story, its epic, existing testing tasks, and structured hints "
+                "for happy path, edge cases, error paths, and integration points. Read-only."
+            ),
+            "json",
+        ),
+        # Release Management Tools
+        "create_release": (
+            create_release_tool,
+            CreateReleaseParams,
+            dict,
+            (
+                "Create a new release in ServiceNow (rm_release). "
+                "Requires a name; optionally provide a planned_date (YYYY-MM-DD) and description. "
+                "Returns the new release sys_id, number, and name."
+            ),
+            "json",
+        ),
+        "get_release": (
+            get_release_tool,
+            GetReleaseParams,
+            dict,
+            (
+                "Retrieve a single release by sys_id, release number (e.g. REL0001234), or name. "
+                "Attempts a direct sys_id lookup first; falls back to number/name query. Read-only."
+            ),
+            "json",
+        ),
+        "validate_release_readiness": (
+            validate_release_readiness_tool,
+            ValidateReleaseReadinessParams,
+            dict,
+            (
+                "Run a readiness checklist against a release. "
+                "Checks: all stories done, acceptance criteria populated, all sprints completed, "
+                "planned date set, and no in-progress stories. "
+                "Returns ready: true/false and a list of check results."
+            ),
+            "json",
+        ),
+        "compile_release_notes": (
+            compile_release_notes_tool,
+            CompileReleaseNotesParams,
+            dict,
+            (
+                "Compile release notes from completed stories in a release, grouped by epic. "
+                "Returns story count, total points, and stories organised by epic title. Read-only."
+            ),
+            "json",
+        ),
+        # Agile Reporting Tools
+        "get_my_work": (
+            get_my_work_tool,
+            GetMyWorkParams,
+            dict,
+            (
+                "Return open stories assigned to a specific user. "
+                "Call get_current_user first to obtain the user sys_id. "
+                "Excludes Complete and Cancelled stories. Read-only."
+            ),
+            "json",
+        ),
+        "get_blocked_work": (
+            get_blocked_work_tool,
+            GetBlockedWorkParams,
+            dict,
+            (
+                "Return stories that are blocked by unfinished prerequisites. "
+                "Queries m2m_story_dependencies and filters to open blockers. "
+                "Optionally restrict to a single sprint via sprint_id. Read-only."
+            ),
+            "json",
+        ),
+        "get_release_status": (
+            get_release_status_tool,
+            GetReleaseStatusParams,
+            dict,
+            (
+                "Return a status dashboard for a release: sprint counts by state, story counts "
+                "by state, point totals, and an overall_status signal "
+                "(not_started / on_track / at_risk / complete). Read-only."
+            ),
+            "json",
+        ),
+        # Agile Sprint Planning Tools
+        "recommend_sprint_stories": (
+            recommend_sprint_stories_tool,
+            RecommendSprintStoriesParams,
+            dict,
+            (
+                "Recommend backlog stories for a sprint using a multi-factor scoring algorithm. "
+                "Scores each candidate by priority (Critical=50, High=40, Moderate=30, Low=20, Planning=10), "
+                "optional sprint objective keyword alignment (+3 per keyword match, max +10), "
+                "and capacity fit (story points vs. sprint capacity). "
+                "Performs a single batch dependency check across all candidates. "
+                "Returns three lists: recommended (clear dependencies, fits capacity), "
+                "blocked (has open prerequisite stories), and over_capacity (would exceed capacity). "
+                "Read-only."
+            ),
+            "json",
+        ),
+        # Agile Governance Tools
+        "validate_story_dependencies": (
+            validate_story_dependencies_tool,
+            GovernanceStoryIdParams,
+            dict,
+            (
+                "Check that all prerequisite stories for a given story are Complete or Cancelled. "
+                "Returns all_dependencies_met: bool and a list of open_blockers with number, title, "
+                "and state. A story with no dependencies returns all_dependencies_met: true. Read-only."
+            ),
+            "json",
+        ),
+        "validate_story_testing": (
+            validate_story_testing_tool,
+            GovernanceStoryIdParams,
+            dict,
+            (
+                "Check that at least one testing task (rm_scrum_task type=4) exists for the story "
+                "and all testing tasks are in a done state (Complete or Cancelled). "
+                "Returns testing_complete: bool, total_testing_tasks: int, and incomplete_tasks list. "
+                "Read-only."
+            ),
+            "json",
+        ),
+        "validate_story_promotion_instructions": (
+            validate_story_promotion_instructions_tool,
+            GovernanceStoryIdParams,
+            dict,
+            (
+                "Check that the story has non-empty promotion instructions. "
+                "Returns has_promotion_instructions: bool and the field_value. "
+                "Use before promoting a story to confirm deployment instructions are documented. "
+                "Read-only."
             ),
             "json",
         ),
