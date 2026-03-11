@@ -863,18 +863,19 @@ def get_data_lookup_rules(
 # ---------------------------------------------------------------------------
 
 class BusinessRulesParams(BaseModel):
-    """Parameters for querying active Business Rules that reference a field."""
+    """Parameters for querying active Business Rules on a table."""
 
     table: str = Field(
         ...,
         description="ServiceNow table to inspect (e.g., 'incident').",
     )
-    field: str = Field(
-        ...,
+    field: Optional[str] = Field(
+        None,
         description=(
             "Field name to search for in Business Rule scripts (e.g., 'priority'). "
-            "Rules whose script text contains this string are returned. The search "
-            "is a substring match — short or common field names may return false positives."
+            "When provided, only rules whose script body contains this string are returned. "
+            "When omitted, all active Business Rules for the table are returned. "
+            "The search is a substring match — short or common field names may return false positives."
         ),
     )
 
@@ -904,10 +905,10 @@ class BusinessRule(BaseModel):
 
 
 class BusinessRulesResult(BaseModel):
-    """Active Business Rules on a table whose scripts reference the target field."""
+    """Active Business Rules on a table, optionally filtered by field reference."""
 
     table: str
-    field: str
+    field: Optional[str] = None
     rules: list[BusinessRule] = Field(default_factory=list)
     rules_found: bool
     search_note: str = Field(
@@ -949,12 +950,12 @@ def get_business_rules(
     """
     url = f"{config.api_url}/table/sys_script"
 
+    snquery = f"collection={params.table}^active=true"
+    if params.field:
+        snquery += f"^scriptCONTAINS{params.field}"
+
     query_params = {
-        "sysparm_query": (
-            f"collection={params.table}"
-            f"^active=true"
-            f"^scriptCONTAINS{params.field}"
-        ),
+        "sysparm_query": snquery,
         "sysparm_fields": "name,when,action_insert,action_update,active,condition,script",
         "sysparm_limit": 50,
     }
@@ -971,7 +972,7 @@ def get_business_rules(
         _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
         logger.error(
             f"get_business_rules | fetch failed | table={params.table} "
-            f"| field={params.field} | error={e}"
+            f"| field={params.field or 'all'} | error={e}"
             + (f" | body={_body}" if _body else "")
         )
         return BusinessRulesResult(
@@ -985,7 +986,7 @@ def get_business_rules(
     if not raw_results:
         logger.debug(
             f"get_business_rules | no rules found | table={params.table} "
-            f"| field={params.field}"
+            f"| field={params.field or 'all'}"
         )
         return BusinessRulesResult(
             table=params.table,
@@ -1019,7 +1020,7 @@ def get_business_rules(
 
     logger.info(
         f"get_business_rules | found {len(rules)} rules | table={params.table} "
-        f"| field={params.field}"
+        f"| field={params.field or 'all'}"
     )
 
     return BusinessRulesResult(
