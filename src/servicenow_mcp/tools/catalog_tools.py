@@ -684,4 +684,240 @@ def move_catalog_items(
             success=False,
             message=f"Error moving catalog items: {str(e)}",
             data=None,
-        ) 
+        )
+
+
+class CreateCatalogItemParams(BaseModel):
+    """Parameters for creating a catalog item."""
+
+    name: str = Field(..., description="Name of the catalog item")
+    short_description: str = Field(..., description="Short description")
+    description: Optional[str] = Field(None, description="Detailed description")
+    category: Optional[str] = Field(None, description="Category sys_id")
+    price: Optional[str] = Field(None, description="Price (e.g. '0' or '99.99')")
+    active: bool = Field(True, description="Whether the item is active")
+    order: Optional[int] = Field(None, description="Display order")
+
+
+class DeleteCatalogItemParams(BaseModel):
+    """Parameters for deleting a catalog item."""
+
+    item_id: str = Field(..., description="Catalog item sys_id")
+
+
+class ListCatalogsParams(BaseModel):
+    """Parameters for listing service catalogs."""
+
+    limit: int = Field(10, description="Maximum number to return")
+    offset: int = Field(0, description="Pagination offset")
+    active: Optional[bool] = Field(None, description="Filter by active status")
+
+
+class CreateCatalogParams(BaseModel):
+    """Parameters for creating a service catalog."""
+
+    title: str = Field(..., description="Catalog title")
+    description: Optional[str] = Field(None, description="Catalog description")
+    active: bool = Field(True, description="Whether active")
+
+
+def create_catalog_item(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: CreateCatalogItemParams,
+) -> Dict[str, Any]:
+    """
+    Create a new catalog item in ServiceNow.
+
+    Args:
+        config: Server configuration
+        auth_manager: Authentication manager
+        params: Parameters for creating the catalog item
+
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    logger.info(f"Creating catalog item: {params.name}")
+
+    url = f"{config.instance_url}/api/now/table/sc_cat_item"
+
+    body: Dict[str, Any] = {
+        "name": params.name,
+        "short_description": params.short_description,
+        "active": str(params.active).lower(),
+    }
+    if params.description is not None:
+        body["description"] = params.description
+    if params.category is not None:
+        body["category"] = params.category
+    if params.price is not None:
+        body["price"] = params.price
+    if params.order is not None:
+        body["order"] = str(params.order)
+
+    headers = auth_manager.get_headers()
+    headers["Accept"] = "application/json"
+    headers["Content-Type"] = "application/json"
+
+    try:
+        response = requests.post(url, headers=headers, json=body)
+        response.raise_for_status()
+
+        result = response.json().get("result", {})
+        return {
+            "success": True,
+            "message": "Catalog item created",
+            "item": result,
+        }
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error creating catalog item: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error creating catalog item: {str(e)}",
+            "item": None,
+        }
+
+
+def delete_catalog_item(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: DeleteCatalogItemParams,
+) -> Dict[str, Any]:
+    """
+    Delete a catalog item from ServiceNow.
+
+    Args:
+        config: Server configuration
+        auth_manager: Authentication manager
+        params: Parameters for deleting the catalog item
+
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    logger.info(f"Deleting catalog item: {params.item_id}")
+
+    url = f"{config.instance_url}/api/now/table/sc_cat_item/{params.item_id}"
+
+    headers = auth_manager.get_headers()
+    headers["Accept"] = "application/json"
+
+    try:
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+
+        return {
+            "success": True,
+            "message": "Catalog item deleted",
+        }
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error deleting catalog item: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error deleting catalog item: {str(e)}",
+        }
+
+
+def list_catalogs(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: ListCatalogsParams,
+) -> Dict[str, Any]:
+    """
+    List service catalogs from ServiceNow.
+
+    Args:
+        config: Server configuration
+        auth_manager: Authentication manager
+        params: Parameters for listing catalogs
+
+    Returns:
+        Dictionary containing the catalogs and metadata
+    """
+    logger.info("Listing service catalogs")
+
+    url = f"{config.instance_url}/api/now/table/sc_catalog"
+
+    query_params: Dict[str, Any] = {
+        "sysparm_limit": params.limit,
+        "sysparm_offset": params.offset,
+        "sysparm_display_value": "true",
+        "sysparm_exclude_reference_link": "true",
+    }
+
+    if params.active is not None:
+        query_params["sysparm_query"] = f"active={str(params.active).lower()}"
+
+    headers = auth_manager.get_headers()
+    headers["Accept"] = "application/json"
+
+    try:
+        response = requests.get(url, headers=headers, params=query_params)
+        response.raise_for_status()
+
+        items = response.json().get("result", [])
+        return {
+            "success": True,
+            "message": f"Found {len(items)} catalog(s)",
+            "catalogs": items,
+        }
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error listing catalogs: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error listing catalogs: {str(e)}",
+            "catalogs": [],
+        }
+
+
+def create_catalog(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: CreateCatalogParams,
+) -> Dict[str, Any]:
+    """
+    Create a new service catalog in ServiceNow.
+
+    Args:
+        config: Server configuration
+        auth_manager: Authentication manager
+        params: Parameters for creating the catalog
+
+    Returns:
+        Dictionary containing the result of the operation
+    """
+    logger.info(f"Creating service catalog: {params.title}")
+
+    url = f"{config.instance_url}/api/now/table/sc_catalog"
+
+    body: Dict[str, Any] = {
+        "title": params.title,
+        "active": str(params.active).lower(),
+    }
+    if params.description is not None:
+        body["description"] = params.description
+
+    headers = auth_manager.get_headers()
+    headers["Accept"] = "application/json"
+    headers["Content-Type"] = "application/json"
+
+    try:
+        response = requests.post(url, headers=headers, json=body)
+        response.raise_for_status()
+
+        result = response.json().get("result", {})
+        return {
+            "success": True,
+            "message": "Catalog created",
+            "catalog": result,
+        }
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error creating catalog: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error creating catalog: {str(e)}",
+            "catalog": None,
+        }

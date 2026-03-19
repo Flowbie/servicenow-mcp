@@ -28,7 +28,10 @@ catalog_builder:
   - list_catalog_items
   - get_catalog_item
   - update_catalog_item
-  # planned: Epic 10 — list_catalogs, create_catalog_item
+  - create_catalog_item
+  - delete_catalog_item
+  - list_catalogs
+  - create_catalog
   # planned: Epic 13 — create_ui_policy, create_ui_policy_action,
   #                     create_user_criteria, create_user_criteria_condition
   # Categories
@@ -43,6 +46,21 @@ catalog_builder:
   # planned: Epic 10 — delete_catalog_item_variable, create_catalog_variable_choice
   # Optimization
   - get_optimization_recommendations
+
+request_fulfillment:
+  # Service Request lifecycle — sc_request / sc_req_item (RITM) / sc_task
+  - list_requests
+  - get_request
+  - list_request_items
+  - update_request_item
+  - list_sc_tasks
+  - update_sc_task
+  - get_ritm_variables
+  # Core verification + lookup
+  - verify_fields
+  - get_field_metadata
+  - get_field_choices
+  - query_records
 
 change_coordinator:
   # Change Lifecycle
@@ -369,7 +387,19 @@ full:
   - list_catalog_items
   - get_catalog_item
   - update_catalog_item
-  # planned: Epic 10 — list_catalogs, create_catalog_item
+  # Catalog (new gap fills)
+  - create_catalog_item
+  - delete_catalog_item
+  - list_catalogs
+  - create_catalog
+  # Request Fulfillment
+  - list_requests
+  - get_request
+  - list_request_items
+  - update_request_item
+  - list_sc_tasks
+  - update_sc_task
+  - get_ritm_variables
   # Catalog (Categories)
   - list_catalog_categories
   - create_catalog_category

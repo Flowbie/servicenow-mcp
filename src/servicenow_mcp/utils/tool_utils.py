@@ -501,6 +501,36 @@ from servicenow_mcp.tools.changeset_tools import (
     SetCurrentUpdateSetParams,
     set_current_update_set as set_current_update_set_tool,
 )
+from servicenow_mcp.tools.catalog_tools import (
+    CreateCatalogItemParams,
+    DeleteCatalogItemParams,
+    ListCatalogsParams,
+    CreateCatalogParams,
+)
+from servicenow_mcp.tools.catalog_tools import (
+    create_catalog_item as create_catalog_item_tool,
+    delete_catalog_item as delete_catalog_item_tool,
+    list_catalogs as list_catalogs_tool,
+    create_catalog as create_catalog_tool,
+)
+from servicenow_mcp.tools.request_tools import (
+    ListRequestsParams,
+    GetRequestParams,
+    ListRequestItemsParams,
+    UpdateRequestItemParams,
+    ListScTasksParams,
+    UpdateScTaskParams,
+    GetRitmVariablesParams,
+)
+from servicenow_mcp.tools.request_tools import (
+    list_requests as list_requests_tool,
+    get_request as get_request_tool,
+    list_request_items as list_request_items_tool,
+    update_request_item as update_request_item_tool,
+    list_sc_tasks as list_sc_tasks_tool,
+    update_sc_task as update_sc_task_tool,
+    get_ritm_variables as get_ritm_variables_tool,
+)
 from servicenow_mcp.tools.integration_tools import (
     ListRestMessagesParams,
     GetRestMessageParams,
@@ -903,6 +933,86 @@ def get_tool_definitions(
             Dict[str, Any],  # Expects dict
             "Update a catalog item variable",
             "dict",  # Tool returns Pydantic model
+        ),
+        # Catalog — new tools (gap fill)
+        "create_catalog_item": (
+            create_catalog_item_tool,
+            CreateCatalogItemParams,
+            dict,
+            "Create a new service catalog item (sc_cat_item).",
+            "json",
+        ),
+        "delete_catalog_item": (
+            delete_catalog_item_tool,
+            DeleteCatalogItemParams,
+            dict,
+            "Delete a service catalog item by sys_id (sc_cat_item).",
+            "json",
+        ),
+        "list_catalogs": (
+            list_catalogs_tool,
+            ListCatalogsParams,
+            dict,
+            "List service catalogs (sc_catalog). Filter by active status.",
+            "json",
+        ),
+        "create_catalog": (
+            create_catalog_tool,
+            CreateCatalogParams,
+            dict,
+            "Create a new service catalog (sc_catalog).",
+            "json",
+        ),
+        # Request Fulfillment Tools (sc_request / sc_req_item / sc_task)
+        "list_requests": (
+            list_requests_tool,
+            ListRequestsParams,
+            dict,
+            "List service requests (sc_request). Filter by state or requested_for user.",
+            "json",
+        ),
+        "get_request": (
+            get_request_tool,
+            GetRequestParams,
+            dict,
+            "Get a single service request by number or sys_id (sc_request).",
+            "json",
+        ),
+        "list_request_items": (
+            list_request_items_tool,
+            ListRequestItemsParams,
+            dict,
+            "List requested items (sc_req_item / RITM). Filter by parent request or state.",
+            "json",
+        ),
+        "update_request_item": (
+            update_request_item_tool,
+            UpdateRequestItemParams,
+            dict,
+            "Update a requested item (sc_req_item) — state transitions, assignment, notes.",
+            "json",
+        ),
+        "list_sc_tasks": (
+            list_sc_tasks_tool,
+            ListScTasksParams,
+            dict,
+            "List catalog tasks (sc_task). Filter by parent RITM or state.",
+            "json",
+        ),
+        "update_sc_task": (
+            update_sc_task_tool,
+            UpdateScTaskParams,
+            dict,
+            "Update a catalog task (sc_task) — state transitions, assignment, notes.",
+            "json",
+        ),
+        "get_ritm_variables": (
+            get_ritm_variables_tool,
+            GetRitmVariablesParams,
+            dict,
+            "Get variable answers for a requested item (sc_item_option_mtom indirect join). "
+            "Returns list of {name, label, value} for the RITM's submitted variable values.",
+            "json",
         ),
         # Change Management Tools
         "create_change_request": (

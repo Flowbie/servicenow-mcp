@@ -16,6 +16,10 @@ from servicenow_mcp.tools.catalog_tools import (
     UpdateCatalogCategoryParams,
     UpdateCatalogItemParams,
     MoveCatalogItemsParams,
+    CreateCatalogItemParams,
+    DeleteCatalogItemParams,
+    ListCatalogsParams,
+    CreateCatalogParams,
     get_catalog_item,
     get_catalog_item_variables,
     list_catalog_categories,
@@ -24,6 +28,10 @@ from servicenow_mcp.tools.catalog_tools import (
     update_catalog_category,
     update_catalog_item,
     move_catalog_items,
+    create_catalog_item,
+    delete_catalog_item,
+    list_catalogs,
+    create_catalog,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
 
@@ -765,6 +773,180 @@ class TestCatalogTools(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertIn("Error updating catalog item", result["message"])
         self.assertIsNone(result["data"])
+
+
+    # --- create_catalog_item tests ---
+
+    @patch("servicenow_mcp.tools.catalog_tools.requests.post")
+    def test_create_catalog_item_success(self, mock_post):
+        """Test creating a catalog item successfully."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": {
+                "sys_id": "new_item_id",
+                "name": "New Laptop",
+                "short_description": "Brand new laptop",
+                "active": "true",
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
+        params = CreateCatalogItemParams(
+            name="New Laptop",
+            short_description="Brand new laptop",
+            price="1200",
+            active=True,
+            order=10,
+        )
+        result = create_catalog_item(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["message"], "Catalog item created")
+        self.assertEqual(result["item"]["sys_id"], "new_item_id")
+
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        self.assertEqual(args[0], "https://example.service-now.com/api/now/table/sc_cat_item")
+        self.assertEqual(kwargs["json"]["name"], "New Laptop")
+        self.assertEqual(kwargs["json"]["price"], "1200")
+        self.assertEqual(kwargs["json"]["order"], "10")
+
+    @patch("servicenow_mcp.tools.catalog_tools.requests.post")
+    def test_create_catalog_item_error(self, mock_post):
+        """Test create_catalog_item error handling."""
+        mock_post.side_effect = requests.exceptions.RequestException("API error")
+
+        params = CreateCatalogItemParams(name="Fail Item", short_description="Will fail")
+        result = create_catalog_item(self.config, self.auth_manager, params)
+
+        self.assertFalse(result["success"])
+        self.assertIn("Error creating catalog item", result["message"])
+        self.assertIsNone(result["item"])
+
+    # --- delete_catalog_item tests ---
+
+    @patch("servicenow_mcp.tools.catalog_tools.requests.delete")
+    def test_delete_catalog_item_success(self, mock_delete):
+        """Test deleting a catalog item successfully."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_delete.return_value = mock_response
+
+        params = DeleteCatalogItemParams(item_id="item_to_delete")
+        result = delete_catalog_item(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["message"], "Catalog item deleted")
+
+        mock_delete.assert_called_once()
+        args, _ = mock_delete.call_args
+        self.assertIn("item_to_delete", args[0])
+
+    @patch("servicenow_mcp.tools.catalog_tools.requests.delete")
+    def test_delete_catalog_item_error(self, mock_delete):
+        """Test delete_catalog_item error handling."""
+        mock_delete.side_effect = requests.exceptions.RequestException("Not found")
+
+        params = DeleteCatalogItemParams(item_id="ghost_item")
+        result = delete_catalog_item(self.config, self.auth_manager, params)
+
+        self.assertFalse(result["success"])
+        self.assertIn("Error deleting catalog item", result["message"])
+
+    # --- list_catalogs tests ---
+
+    @patch("servicenow_mcp.tools.catalog_tools.requests.get")
+    def test_list_catalogs_success(self, mock_get):
+        """Test listing service catalogs successfully."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": [
+                {"sys_id": "cat_a", "title": "IT Catalog", "active": "true"},
+                {"sys_id": "cat_b", "title": "HR Catalog", "active": "true"},
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        params = ListCatalogsParams(limit=10, offset=0)
+        result = list_catalogs(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(len(result["catalogs"]), 2)
+        self.assertIn("Found 2 catalog(s)", result["message"])
+
+    @patch("servicenow_mcp.tools.catalog_tools.requests.get")
+    def test_list_catalogs_active_filter(self, mock_get):
+        """Test list_catalogs passes the active filter correctly."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": []}
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        params = ListCatalogsParams(limit=5, offset=0, active=True)
+        result = list_catalogs(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        _, kwargs = mock_get.call_args
+        self.assertEqual(kwargs["params"]["sysparm_query"], "active=true")
+
+    @patch("servicenow_mcp.tools.catalog_tools.requests.get")
+    def test_list_catalogs_error(self, mock_get):
+        """Test list_catalogs error handling."""
+        mock_get.side_effect = requests.exceptions.RequestException("Network failure")
+
+        params = ListCatalogsParams(limit=10, offset=0)
+        result = list_catalogs(self.config, self.auth_manager, params)
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["catalogs"], [])
+        self.assertIn("Error listing catalogs", result["message"])
+
+    # --- create_catalog tests ---
+
+    @patch("servicenow_mcp.tools.catalog_tools.requests.post")
+    def test_create_catalog_success(self, mock_post):
+        """Test creating a service catalog successfully."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": {
+                "sys_id": "new_cat_id",
+                "title": "New IT Catalog",
+                "active": "true",
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
+        params = CreateCatalogParams(
+            title="New IT Catalog",
+            description="Catalog for IT services",
+            active=True,
+        )
+        result = create_catalog(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["message"], "Catalog created")
+        self.assertEqual(result["catalog"]["sys_id"], "new_cat_id")
+
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        self.assertEqual(args[0], "https://example.service-now.com/api/now/table/sc_catalog")
+        self.assertEqual(kwargs["json"]["title"], "New IT Catalog")
+        self.assertEqual(kwargs["json"]["description"], "Catalog for IT services")
+
+    @patch("servicenow_mcp.tools.catalog_tools.requests.post")
+    def test_create_catalog_error(self, mock_post):
+        """Test create_catalog error handling."""
+        mock_post.side_effect = requests.exceptions.RequestException("Server error")
+
+        params = CreateCatalogParams(title="Broken Catalog")
+        result = create_catalog(self.config, self.auth_manager, params)
+
+        self.assertFalse(result["success"])
+        self.assertIn("Error creating catalog", result["message"])
+        self.assertIsNone(result["catalog"])
 
 
 if __name__ == "__main__":
