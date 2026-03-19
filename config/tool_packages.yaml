@@ -28,8 +28,7 @@ catalog_builder:
   - list_catalog_items
   - get_catalog_item
   - update_catalog_item
-  # planned: Epic 10 — list_catalogs, create_catalog_item, delete_catalog_item_variable,
-  #                     create_catalog_variable_choice
+  # planned: Epic 10 — list_catalogs, create_catalog_item
   # planned: Epic 13 — create_ui_policy, create_ui_policy_action,
   #                     create_user_criteria, create_user_criteria_condition
   # Categories
@@ -41,6 +40,7 @@ catalog_builder:
   - create_catalog_item_variable
   - list_catalog_item_variables
   - update_catalog_item_variable
+  # planned: Epic 10 — delete_catalog_item_variable, create_catalog_variable_choice
   # Optimization
   - get_optimization_recommendations
 
