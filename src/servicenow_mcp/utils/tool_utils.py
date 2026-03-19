@@ -345,8 +345,8 @@ from servicenow_mcp.tools.sprint_tools import (
     start_sprint as start_sprint_tool,
     close_sprint as close_sprint_tool,
 )
+from servicenow_mcp.tools.agile_constants import StoryIdParams as PlanningStoryIdParams
 from servicenow_mcp.tools.agile_planning_tools import (
-    StoryIdParams as PlanningStoryIdParams,
     story_breakdown as story_breakdown_tool,
     generate_acceptance_criteria as generate_acceptance_criteria_tool,
     estimate_story_points as estimate_story_points_tool,
@@ -371,8 +371,8 @@ from servicenow_mcp.tools.agile_reporting_tools import (
     get_blocked_work as get_blocked_work_tool,
     get_release_status as get_release_status_tool,
 )
+from servicenow_mcp.tools.agile_constants import StoryIdParams as GovernanceStoryIdParams
 from servicenow_mcp.tools.agile_governance_tools import (
-    StoryIdParams as GovernanceStoryIdParams,
     validate_story_dependencies as validate_story_dependencies_tool,
     validate_story_testing as validate_story_testing_tool,
     validate_story_promotion_instructions as validate_story_promotion_instructions_tool,

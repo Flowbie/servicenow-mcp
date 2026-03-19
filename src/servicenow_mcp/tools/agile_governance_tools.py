@@ -9,9 +9,9 @@ import logging
 from typing import Any, Dict, List
 
 import requests
-from pydantic import BaseModel, Field
 
 from servicenow_mcp.auth.auth_manager import AuthManager
+from servicenow_mcp.tools.agile_constants import STORY_TERMINAL_STATES, StoryIdParams
 from servicenow_mcp.utils.config import ServerConfig
 
 logger = logging.getLogger(__name__)
@@ -20,26 +20,9 @@ logger = logging.getLogger(__name__)
 # State constants
 # ---------------------------------------------------------------------------
 
-# Story prerequisites must be Complete (3) or Cancelled (4) to be considered done
-_STORY_TERMINAL_STATES = {"3", "4"}
-
 # Scrum tasks: Complete (3) or Cancelled (4) are done states
 # -6=Draft, 1=Ready, 2=Work in progress, 3=Complete, 4=Cancelled
 _SCRUM_TASK_DONE_STATES = {"3", "4"}
-
-
-# ---------------------------------------------------------------------------
-# Shared params model (all three tools take only a story_id)
-# ---------------------------------------------------------------------------
-
-
-class StoryIdParams(BaseModel):
-    """Parameters for story governance validation tools."""
-
-    story_id: str = Field(
-        ...,
-        description="sys_id of the story to validate.",
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +80,7 @@ def validate_story_dependencies(
     open_blockers = []
     for dep in deps:
         state = str(dep.get("prerequisite_story.state") or "")
-        if state not in _STORY_TERMINAL_STATES:
+        if state not in STORY_TERMINAL_STATES:
             open_blockers.append(
                 {
                     "number": dep.get("prerequisite_story.number"),

@@ -9,19 +9,17 @@ import logging
 from typing import Any, Dict, List, Optional
 
 import requests
-from pydantic import BaseModel, Field
 
 from servicenow_mcp.auth.auth_manager import AuthManager
+from servicenow_mcp.tools.agile_constants import StoryIdParams
+from servicenow_mcp.tools.agile_governance_tools import validate_story_dependencies
 from servicenow_mcp.utils.config import ServerConfig
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Story/task state constants (shared with sprint_tools)
+# Story/task state constants (local to this module)
 # ---------------------------------------------------------------------------
-
-_STORY_DONE_STATES = {"3"}
-_STORY_CANCELLED_STATES = {"4"}
 
 # Scrum task type values (rm_scrum_task.type)
 _SCRUM_TASK_TYPE_TESTING = "4"
@@ -33,20 +31,6 @@ _TASK_TYPE_GUIDE: Dict[str, str] = {
     "4": "testing — manual and automated test execution",
     "5": "devops — CI/CD, infrastructure, deployment scripts",
 }
-
-
-# ---------------------------------------------------------------------------
-# Params models
-# ---------------------------------------------------------------------------
-
-
-class StoryIdParams(BaseModel):
-    """Single-story lookup — used by several planning tools."""
-
-    story_id: str = Field(
-        ...,
-        description="sys_id of the rm_story record to analyse.",
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -374,8 +358,8 @@ def identify_story_risks(
     """
     Surface open blockers and risk signals for a story.
 
-    Queries the m2m_story_dependencies table for prerequisites and filters
-    to those not yet done or cancelled.
+    Delegates the prerequisite dependency check to validate_story_dependencies
+    and augments the result with planning-specific risk hints.
     """
     story = _get_story(config, auth_manager, params.story_id)
     if not story:
@@ -388,48 +372,28 @@ def identify_story_risks(
     story_sys_id = _resolve_story_sys_id(story)
     existing_task_count = len(_list_scrum_tasks(config, auth_manager, story_sys_id))
 
-    # Fetch all prerequisite dependencies
-    dep_url = f"{config.instance_url}/api/now/table/m2m_story_dependencies"
-    open_blockers: List[Dict] = []
-    try:
-        response = requests.get(
-            dep_url,
-            headers=auth_manager.get_headers(),
-            params={
-                "sysparm_query": f"dependent_story={story_sys_id}",
-                "sysparm_fields": (
-                    "sys_id,prerequisite_story,prerequisite_story.number,"
-                    "prerequisite_story.short_description,prerequisite_story.state"
-                ),
-                "sysparm_limit": 100,
-            },
-            timeout=config.timeout,
-        )
-        response.raise_for_status()
-        deps = response.json().get("result", [])
-
-        # Filter to open prerequisites (not done=3, not cancelled=4)
-        for dep in deps:
-            prereq_state = str(dep.get("prerequisite_story.state") or "")
-            if prereq_state not in (_STORY_DONE_STATES | _STORY_CANCELLED_STATES):
-                open_blockers.append(
-                    {
-                        "dependency_id": dep.get("sys_id"),
-                        "prerequisite_story_number": dep.get(
-                            "prerequisite_story.number"
-                        ),
-                        "prerequisite_story_title": dep.get(
-                            "prerequisite_story.short_description"
-                        ),
-                        "prerequisite_state": prereq_state,
-                    }
-                )
-    except requests.RequestException as e:
+    # Delegate blocker resolution to the governance tool
+    dep_result = validate_story_dependencies(config, auth_manager, params)
+    if not dep_result.get("success"):
+        open_blockers: List[Dict] = []
         logger.warning(
-            "identify_story_risks | story=%s | dependency fetch error: %s",
+            "identify_story_risks | story=%s | dependency check failed: %s",
             story_sys_id,
-            e,
+            dep_result.get("message"),
         )
+    else:
+        # Remap governance open_blocker shape to planning output contract:
+        # governance: {number, title, state}
+        # planning:   {dependency_id, prerequisite_story_number, prerequisite_story_title, prerequisite_state}
+        open_blockers = [
+            {
+                "dependency_id": None,
+                "prerequisite_story_number": b.get("number"),
+                "prerequisite_story_title": b.get("title"),
+                "prerequisite_state": b.get("state"),
+            }
+            for b in dep_result.get("open_blockers", [])
+        ]
 
     risk_analysis_hints = [
         "Blocked stories cannot safely start until all prerequisites are resolved.",
