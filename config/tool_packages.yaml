@@ -25,11 +25,13 @@ service_desk:
 
 catalog_builder:
   # Core Catalog
-  - list_catalogs
   - list_catalog_items
   - get_catalog_item
-  - create_catalog_item
   - update_catalog_item
+  # planned: Epic 10 — list_catalogs, create_catalog_item, delete_catalog_item_variable,
+  #                     create_catalog_variable_choice
+  # planned: Epic 13 — create_ui_policy, create_ui_policy_action,
+  #                     create_user_criteria, create_user_criteria_condition
   # Categories
   - list_catalog_categories
   - create_catalog_category
@@ -39,13 +41,6 @@ catalog_builder:
   - create_catalog_item_variable
   - list_catalog_item_variables
   - update_catalog_item_variable
-  - delete_catalog_item_variable
-  - create_catalog_variable_choice
-  # Basic Scripting (UI Policy & User Criteria)
-  - create_ui_policy
-  - create_ui_policy_action
-  - create_user_criteria
-  - create_user_criteria_condition
   # Optimization
   - get_optimization_recommendations
 
@@ -156,7 +151,7 @@ platform_developer:
   - create_script_include
   - update_script_include
   - delete_script_include
-  - execute_script_include
+  # planned: Epic 13 — execute_script_include
   # Background Script Execution
   - run_background_script
   # Flow Designer
@@ -321,9 +316,7 @@ system_administrator:
   - list_groups
   - add_group_members
   - remove_group_members
-  # System Logs
-  - list_syslog_entries
-  - get_syslog_entry
+  # removed: list_syslog_entries, get_syslog_entry — no implementation, none planned
 
 full:
   # Write Verification, Metadata Discovery, and Diagnostic Escalation
@@ -354,11 +347,10 @@ full:
   - list_incidents
   - get_incident_by_number
   # Catalog (Core)
-  - list_catalogs
   - list_catalog_items
   - get_catalog_item
-  - create_catalog_item
   - update_catalog_item
+  # planned: Epic 10 — list_catalogs, create_catalog_item
   # Catalog (Categories)
   - list_catalog_categories
   - create_catalog_category
@@ -370,8 +362,7 @@ full:
   - create_catalog_item_variable
   - list_catalog_item_variables
   - update_catalog_item_variable
-  - delete_catalog_item_variable
-  - create_catalog_variable_choice
+  # planned: Epic 10 — delete_catalog_item_variable, create_catalog_variable_choice
   # Change Management
   - create_change_request
   - update_change_request
@@ -413,7 +404,7 @@ full:
   - create_script_include
   - update_script_include
   - delete_script_include
-  - execute_script_include
+  # planned: Epic 13 — execute_script_include
   # Knowledge Base
   - create_knowledge_base
   - list_knowledge_bases
@@ -434,9 +425,7 @@ full:
   - add_group_members
   - remove_group_members
   - list_groups
-  # Syslog
-  - list_syslog_entries
-  - get_syslog_entry
+  # removed: list_syslog_entries, get_syslog_entry — no implementation, none planned
   # Generic Table API
   - query_records
   - get_record
