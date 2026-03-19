@@ -345,7 +345,7 @@ from servicenow_mcp.tools.sprint_tools import (
     start_sprint as start_sprint_tool,
     close_sprint as close_sprint_tool,
 )
-from servicenow_mcp.tools.agile_constants import StoryIdParams as PlanningStoryIdParams
+from servicenow_mcp.tools.agile_constants import StoryIdParams
 from servicenow_mcp.tools.agile_planning_tools import (
     story_breakdown as story_breakdown_tool,
     generate_acceptance_criteria as generate_acceptance_criteria_tool,
@@ -371,7 +371,6 @@ from servicenow_mcp.tools.agile_reporting_tools import (
     get_blocked_work as get_blocked_work_tool,
     get_release_status as get_release_status_tool,
 )
-from servicenow_mcp.tools.agile_constants import StoryIdParams as GovernanceStoryIdParams
 from servicenow_mcp.tools.agile_governance_tools import (
     validate_story_dependencies as validate_story_dependencies_tool,
     validate_story_testing as validate_story_testing_tool,
@@ -1691,7 +1690,7 @@ def get_tool_definitions(
         # Agile Planning Tools (read-only context gathering)
         "story_breakdown": (
             story_breakdown_tool,
-            PlanningStoryIdParams,
+            StoryIdParams,
             dict,
             (
                 "Gather all context needed to break a user story into scrum tasks. "
@@ -1702,7 +1701,7 @@ def get_tool_definitions(
         ),
         "generate_acceptance_criteria": (
             generate_acceptance_criteria_tool,
-            PlanningStoryIdParams,
+            StoryIdParams,
             dict,
             (
                 "Gather context for writing acceptance criteria for a story. "
@@ -1713,7 +1712,7 @@ def get_tool_definitions(
         ),
         "estimate_story_points": (
             estimate_story_points_tool,
-            PlanningStoryIdParams,
+            StoryIdParams,
             dict,
             (
                 "Gather context for estimating story points. "
@@ -1724,7 +1723,7 @@ def get_tool_definitions(
         ),
         "identify_story_risks": (
             identify_story_risks_tool,
-            PlanningStoryIdParams,
+            StoryIdParams,
             dict,
             (
                 "Surface open blockers and risk signals for a story. "
@@ -1735,7 +1734,7 @@ def get_tool_definitions(
         ),
         "generate_test_scenarios": (
             generate_test_scenarios_tool,
-            PlanningStoryIdParams,
+            StoryIdParams,
             dict,
             (
                 "Gather context for generating test scenarios for a story. "
@@ -1842,7 +1841,7 @@ def get_tool_definitions(
         # Agile Governance Tools
         "validate_story_dependencies": (
             validate_story_dependencies_tool,
-            GovernanceStoryIdParams,
+            StoryIdParams,
             dict,
             (
                 "Check that all prerequisite stories for a given story are Complete or Cancelled. "
@@ -1853,7 +1852,7 @@ def get_tool_definitions(
         ),
         "validate_story_testing": (
             validate_story_testing_tool,
-            GovernanceStoryIdParams,
+            StoryIdParams,
             dict,
             (
                 "Check that at least one testing task (rm_scrum_task type=4) exists for the story "
@@ -1865,7 +1864,7 @@ def get_tool_definitions(
         ),
         "validate_story_promotion_instructions": (
             validate_story_promotion_instructions_tool,
-            GovernanceStoryIdParams,
+            StoryIdParams,
             dict,
             (
                 "Check that the story has non-empty promotion instructions. "
