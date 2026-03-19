@@ -1,7 +1,11 @@
 """
-Workflow management tools for the ServiceNow MCP server.
+Legacy Workflow engine tools for the ServiceNow MCP server (wf_workflow table).
 
-This module provides tools for viewing and managing workflows in ServiceNow.
+This module covers the legacy Workflow engine, NOT Flow Designer (sys_hub_flow).
+The primary use case going forward is read-only analysis: understanding existing
+legacy workflows so they can be re-implemented as Flow Designer flows via a
+planned migration tool. Write operations (create/update/add_activity etc.) remain
+available but creating new legacy workflows is not recommended on new instances.
 """
 
 import logging
