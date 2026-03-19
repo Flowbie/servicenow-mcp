@@ -30,19 +30,6 @@ class OptimizationRecommendationsParams(BaseModel):
     category_id: Optional[str] = None
 
 
-class UpdateCatalogItemParams(BaseModel):
-    """Parameters for updating a catalog item."""
-
-    item_id: str
-    name: Optional[str] = None
-    short_description: Optional[str] = None
-    description: Optional[str] = None
-    category: Optional[str] = None
-    price: Optional[str] = None
-    active: Optional[bool] = None
-    order: Optional[int] = None
-
-
 def get_optimization_recommendations(
     config: ServerConfig, auth_manager: AuthManager, params: OptimizationRecommendationsParams
 ) -> Dict:
@@ -102,63 +89,6 @@ def get_optimization_recommendations(
             "success": False,
             "message": f"Error getting optimization recommendations: {str(e)}",
             "recommendations": [],
-        }
-
-
-def update_catalog_item(
-    config: ServerConfig, auth_manager: AuthManager, params: UpdateCatalogItemParams
-) -> Dict:
-    """
-    Update a catalog item.
-
-    Args:
-        config: The server configuration
-        auth_manager: The authentication manager
-        params: The parameters for updating the catalog item
-
-    Returns:
-        A dictionary containing the result of the update operation
-    """
-    logger.info(f"Updating catalog item: {params.item_id}")
-    
-    try:
-        # Build the request body with only the provided parameters
-        body = {}
-        if params.name is not None:
-            body["name"] = params.name
-        if params.short_description is not None:
-            body["short_description"] = params.short_description
-        if params.description is not None:
-            body["description"] = params.description
-        if params.category is not None:
-            body["category"] = params.category
-        if params.price is not None:
-            body["price"] = params.price
-        if params.active is not None:
-            body["active"] = str(params.active).lower()
-        if params.order is not None:
-            body["order"] = str(params.order)
-        
-        # Make the API request
-        url = f"{config.instance_url}/api/now/table/sc_cat_item/{params.item_id}"
-        headers = auth_manager.get_headers()
-        headers["Content-Type"] = "application/json"
-        
-        response = requests.patch(url, headers=headers, json=body)
-        response.raise_for_status()
-        
-        return {
-            "success": True,
-            "message": "Catalog item updated successfully",
-            "data": response.json()["result"],
-        }
-    
-    except Exception as e:
-        logger.error(f"Error updating catalog item: {e}")
-        return {
-            "success": False,
-            "message": f"Error updating catalog item: {str(e)}",
-            "data": None,
         }
 
 

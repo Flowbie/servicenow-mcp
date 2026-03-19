@@ -4,13 +4,9 @@ from typing import Any, Callable, Dict, Tuple, Type
 # (This list needs to be kept complete and up-to-date)
 from servicenow_mcp.tools.catalog_optimization import (
     OptimizationRecommendationsParams,
-    UpdateCatalogItemParams,
 )
 from servicenow_mcp.tools.catalog_optimization import (
     get_optimization_recommendations as get_optimization_recommendations_tool,
-)
-from servicenow_mcp.tools.catalog_optimization import (
-    update_catalog_item as update_catalog_item_tool,
 )
 from servicenow_mcp.tools.catalog_tools import (
     CreateCatalogCategoryParams,
@@ -19,6 +15,7 @@ from servicenow_mcp.tools.catalog_tools import (
     ListCatalogItemsParams,
     MoveCatalogItemsParams,
     UpdateCatalogCategoryParams,
+    UpdateCatalogItemParams,
 )
 from servicenow_mcp.tools.catalog_tools import (
     create_catalog_category as create_catalog_category_tool,
@@ -37,6 +34,9 @@ from servicenow_mcp.tools.catalog_tools import (
 )
 from servicenow_mcp.tools.catalog_tools import (
     update_catalog_category as update_catalog_category_tool,
+)
+from servicenow_mcp.tools.catalog_tools import (
+    update_catalog_item as update_catalog_item_tool,
 )
 from servicenow_mcp.tools.catalog_variables import (
     CreateCatalogItemVariableParams,

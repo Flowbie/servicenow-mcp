@@ -14,6 +14,7 @@ from servicenow_mcp.tools.catalog_tools import (
     ListCatalogItemsParams,
     CreateCatalogCategoryParams,
     UpdateCatalogCategoryParams,
+    UpdateCatalogItemParams,
     MoveCatalogItemsParams,
     get_catalog_item,
     get_catalog_item_variables,
@@ -21,6 +22,7 @@ from servicenow_mcp.tools.catalog_tools import (
     list_catalog_items,
     create_catalog_category,
     update_catalog_category,
+    update_catalog_item,
     move_catalog_items,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
@@ -673,6 +675,96 @@ class TestCatalogTools(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.data["moved_items_count"], 1)
         mock_patch.assert_called_once()
+
+
+    # --- update_catalog_item tests ---
+
+    @patch("requests.patch")
+    def test_update_catalog_item(self, mock_patch):
+        """Test updating a catalog item."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": {
+                "sys_id": "item1",
+                "name": "Laptop",
+                "short_description": "Updated laptop description",
+                "description": "Detailed description",
+                "category": "hardware",
+                "price": "999.99",
+                "active": "true",
+                "order": "100",
+            }
+        }
+        mock_patch.return_value = mock_response
+
+        params = UpdateCatalogItemParams(
+            item_id="item1",
+            short_description="Updated laptop description",
+        )
+        result = update_catalog_item(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["data"]["short_description"], "Updated laptop description")
+
+        mock_patch.assert_called_once()
+        args, kwargs = mock_patch.call_args
+        self.assertEqual(args[0], "https://example.service-now.com/api/now/table/sc_cat_item/item1")
+        self.assertEqual(kwargs["json"], {"short_description": "Updated laptop description"})
+
+    @patch("requests.patch")
+    def test_update_catalog_item_multiple_fields(self, mock_patch):
+        """Test updating multiple fields of a catalog item."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": {
+                "sys_id": "item1",
+                "name": "Updated Laptop",
+                "short_description": "Updated laptop description",
+                "description": "Detailed description",
+                "category": "hardware",
+                "price": "1099.99",
+                "active": "true",
+                "order": "100",
+            }
+        }
+        mock_patch.return_value = mock_response
+
+        params = UpdateCatalogItemParams(
+            item_id="item1",
+            name="Updated Laptop",
+            short_description="Updated laptop description",
+            price="1099.99",
+        )
+        result = update_catalog_item(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["data"]["name"], "Updated Laptop")
+        self.assertEqual(result["data"]["short_description"], "Updated laptop description")
+        self.assertEqual(result["data"]["price"], "1099.99")
+
+        mock_patch.assert_called_once()
+        args, kwargs = mock_patch.call_args
+        self.assertEqual(args[0], "https://example.service-now.com/api/now/table/sc_cat_item/item1")
+        self.assertEqual(kwargs["json"], {
+            "name": "Updated Laptop",
+            "short_description": "Updated laptop description",
+            "price": "1099.99",
+        })
+
+    @patch("requests.patch")
+    def test_update_catalog_item_error(self, mock_patch):
+        """Test error handling when updating a catalog item."""
+        mock_patch.side_effect = requests.exceptions.RequestException("API Error")
+
+        params = UpdateCatalogItemParams(
+            item_id="item1",
+            short_description="Updated laptop description",
+        )
+        result = update_catalog_item(self.config, self.auth_manager, params)
+
+        self.assertFalse(result["success"])
+        self.assertIn("Error updating catalog item", result["message"])
+        self.assertIsNone(result["data"])
 
 
 if __name__ == "__main__":
