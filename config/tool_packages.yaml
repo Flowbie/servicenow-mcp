@@ -443,12 +443,8 @@ full:
   - get_current_user
   # Update Set Activation
   - set_current_update_set
-  # Catalog Criteria
-  - create_user_criteria
-  - create_user_criteria_condition
-  # UI Policy
-  - create_ui_policy
-  - create_ui_policy_action
+  # planned: Epic 13 — create_ui_policy, create_ui_policy_action,
+  #                     create_user_criteria, create_user_criteria_condition
   # Story Management
   - get_story
   - create_story
