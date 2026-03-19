@@ -8,8 +8,10 @@ from unittest.mock import MagicMock, patch
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.catalog_optimization import (
     OptimizationRecommendationsParams,
-    UpdateCatalogItemParams,
     get_optimization_recommendations,
+)
+from servicenow_mcp.tools.catalog_tools import (
+    UpdateCatalogItemParams,
     update_catalog_item,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
@@ -22,10 +24,10 @@ class TestCatalogOptimizationToolParameters(unittest.TestCase):
         """Test that the parameter classes for the tools are properly defined."""
         # Test OptimizationRecommendationsParams
         params = OptimizationRecommendationsParams(
-            recommendation_types=["inactive_items", "low_usage"],
+            recommendation_types=["inactive_items", "description_quality"],
             category_id="hardware"
         )
-        self.assertEqual(params.recommendation_types, ["inactive_items", "low_usage"])
+        self.assertEqual(params.recommendation_types, ["inactive_items", "description_quality"])
         self.assertEqual(params.category_id, "hardware")
 
         # Test with default values

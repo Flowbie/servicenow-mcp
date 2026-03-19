@@ -5,7 +5,6 @@ Tools module for the ServiceNow MCP server.
 # Import tools as they are implemented
 from servicenow_mcp.tools.catalog_optimization import (
     get_optimization_recommendations,
-    update_catalog_item,
 )
 from servicenow_mcp.tools.catalog_tools import (
     create_catalog_category,
@@ -14,6 +13,7 @@ from servicenow_mcp.tools.catalog_tools import (
     list_catalog_items,
     move_catalog_items,
     update_catalog_category,
+    update_catalog_item,
 )
 from servicenow_mcp.tools.catalog_variables import (
     create_catalog_item_variable,

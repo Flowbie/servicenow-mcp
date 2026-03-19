@@ -135,6 +135,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.mcp.json
 
 # Spyder project settings
 .spyderproject
@@ -175,6 +176,9 @@ cython_debug/
 .vscode/
 *.swp
 *.swo
+
+# Git worktrees
+.worktrees/
 
 # Project specific
 .env.local

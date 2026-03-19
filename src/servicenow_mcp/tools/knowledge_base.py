@@ -188,10 +188,11 @@ def create_knowledge_base(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to create knowledge base: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to create knowledge base: {e}" + (f" | body={_body}" if _body else ""))
         return KnowledgeBaseResponse(
             success=False,
-            message=f"Failed to create knowledge base: {str(e)}",
+            message=f"Failed to create knowledge base: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -311,10 +312,11 @@ def list_knowledge_bases(
         }
 
     except requests.RequestException as e:
-        logger.error(f"Failed to list knowledge bases: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to list knowledge bases: {e}" + (f" | body={_body}" if _body else ""))
         return {
             "success": False,
-            "message": f"Failed to list knowledge bases: {str(e)}",
+            "message": f"Failed to list knowledge bases: {str(e)}" + (f" | response: {_body}" if _body else ""),
             "knowledge_bases": [],
             "count": 0,
             "limit": params.limit,
@@ -387,10 +389,11 @@ def create_category(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to create category: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to create category: {e}" + (f" | body={_body}" if _body else ""))
         return CategoryResponse(
             success=False,
-            message=f"Failed to create category: {str(e)}",
+            message=f"Failed to create category: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -447,10 +450,11 @@ def create_article(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to create article: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to create article: {e}" + (f" | body={_body}" if _body else ""))
         return ArticleResponse(
             success=False,
-            message=f"Failed to create article: {str(e)}",
+            message=f"Failed to create article: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -507,10 +511,11 @@ def update_article(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to update article: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to update article: {e}" + (f" | body={_body}" if _body else ""))
         return ArticleResponse(
             success=False,
-            message=f"Failed to update article: {str(e)}",
+            message=f"Failed to update article: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -561,10 +566,11 @@ def publish_article(
         )
 
     except requests.RequestException as e:
-        logger.error(f"Failed to publish article: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to publish article: {e}" + (f" | body={_body}" if _body else ""))
         return ArticleResponse(
             success=False,
-            message=f"Failed to publish article: {str(e)}",
+            message=f"Failed to publish article: {str(e)}" + (f" | response: {_body}" if _body else ""),
         )
 
 
@@ -692,10 +698,11 @@ def list_articles(
         }
 
     except requests.RequestException as e:
-        logger.error(f"Failed to list articles: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to list articles: {e}" + (f" | body={_body}" if _body else ""))
         return {
             "success": False,
-            "message": f"Failed to list articles: {str(e)}",
+            "message": f"Failed to list articles: {str(e)}" + (f" | response: {_body}" if _body else ""),
             "articles": [],
             "count": 0,
             "limit": params.limit,
@@ -805,10 +812,11 @@ def get_article(
         }
 
     except requests.RequestException as e:
-        logger.error(f"Failed to get article: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to get article: {e}" + (f" | body={_body}" if _body else ""))
         return {
             "success": False,
-            "message": f"Failed to get article: {str(e)}",
+            "message": f"Failed to get article: {str(e)}" + (f" | response: {_body}" if _body else ""),
         }
 
 
@@ -963,10 +971,11 @@ def list_categories(
         }
 
     except requests.RequestException as e:
-        logger.error(f"Failed to list categories: {e}")
+        _body = e.response.text[:2000] if getattr(e, "response", None) is not None else ""
+        logger.error(f"Failed to list categories: {e}" + (f" | body={_body}" if _body else ""))
         return {
             "success": False,
-            "message": f"Failed to list categories: {str(e)}",
+            "message": f"Failed to list categories: {str(e)}" + (f" | response: {_body}" if _body else ""),
             "categories": [],
             "count": 0,
             "limit": params.limit,

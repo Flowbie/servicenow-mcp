@@ -1,12 +1,14 @@
 """
 Scrum Task management tools for the ServiceNow MCP server.
 
-This module provides tools for managing stories in ServiceNow.
+This module provides tools for managing scrum tasks (rm_scrum_task) in ServiceNow.
+
+States: -6=Draft, 1=Ready, 2=Work in progress, 3=Complete, 4=Cancelled
+Types:  1=Analysis, 2=Coding, 3=Documentation, 4=Testing
 """
 
 import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Dict, Optional
 
 import requests
 from pydantic import BaseModel, Field
@@ -16,442 +18,390 @@ from servicenow_mcp.utils.config import ServerConfig
 
 logger = logging.getLogger(__name__)
 
-# Type variable for Pydantic models
-T = TypeVar('T', bound=BaseModel)
+# Closed states — Complete (3) or Cancelled (4)
+_CLOSED_STATES = {"3", "4"}
+
+
+# ---------------------------------------------------------------------------
+# Params models
+# ---------------------------------------------------------------------------
+
 
 class CreateScrumTaskParams(BaseModel):
     """Parameters for creating a scrum task."""
 
-    story: str = Field(..., description="Short description of the story. It requires the System ID of the story.")
+    story: str = Field(..., description="sys_id of the parent story (rm_story)")
     short_description: str = Field(..., description="Short description of the scrum task")
-    priority: Optional[str] = Field(None, description="Priority of scrum task (1 is Critical, 2 is High, 3 is Moderate, 4 is Low)")
+    priority: Optional[str] = Field(None, description="Priority (1=Critical, 2=High, 3=Moderate, 4=Low)")
     planned_hours: Optional[int] = Field(None, description="Planned hours for the scrum task")
     remaining_hours: Optional[int] = Field(None, description="Remaining hours for the scrum task")
-    hours: Optional[int] = Field(None, description="Actual Hours for the scrum task")
+    hours: Optional[int] = Field(None, description="Actual hours logged")
     description: Optional[str] = Field(None, description="Detailed description of the scrum task")
-    type: Optional[str] = Field(None, description="Type of scrum task (1 is Analysis, 2 is Coding, 3 is Documentation, 4 is Testing)")
-    state: Optional[str] = Field(None, description="State of scrum task (-6 is Draft,1 is Ready, 2 is Work in progress, 3 is Complete, 4 is Cancelled)")
-    assignment_group: Optional[str] = Field(None, description="Group assigned to the scrum task")
-    assigned_to: Optional[str] = Field(None, description="User assigned to the scrum task")
+    type: Optional[str] = Field(None, description="Type (1=Analysis, 2=Coding, 3=Documentation, 4=Testing)")
+    state: Optional[str] = Field(None, description="State (-6=Draft, 1=Ready, 2=Work in progress, 3=Complete, 4=Cancelled)")
+    assignment_group: Optional[str] = Field(None, description="sys_id of the group assigned to the scrum task")
+    assigned_to: Optional[str] = Field(None, description="sys_id of the user assigned to the scrum task")
     work_notes: Optional[str] = Field(None, description="Work notes to add to the scrum task")
-    
+
+
 class UpdateScrumTaskParams(BaseModel):
     """Parameters for updating a scrum task."""
 
-    scrum_task_id: str = Field(..., description="Scrum Task ID or sys_id")
+    scrum_task_id: str = Field(..., description="sys_id of the scrum task to update")
     short_description: Optional[str] = Field(None, description="Short description of the scrum task")
-    priority: Optional[str] = Field(None, description="Priority of scrum task (1 is Critical, 2 is High, 3 is Moderate, 4 is Low)")
+    priority: Optional[str] = Field(None, description="Priority (1=Critical, 2=High, 3=Moderate, 4=Low)")
     planned_hours: Optional[int] = Field(None, description="Planned hours for the scrum task")
     remaining_hours: Optional[int] = Field(None, description="Remaining hours for the scrum task")
-    hours: Optional[int] = Field(None, description="Actual Hours for the scrum task")
+    hours: Optional[int] = Field(None, description="Actual hours logged")
     description: Optional[str] = Field(None, description="Detailed description of the scrum task")
-    type: Optional[str] = Field(None, description="Type of scrum task (1 is Analysis, 2 is Coding, 3 is Documentation, 4 is Testing)")
-    state: Optional[str] = Field(None, description="State of scrum task (-6 is Draft,1 is Ready, 2 is Work in progress, 3 is Complete, 4 is Cancelled)")
-    assignment_group: Optional[str] = Field(None, description="Group assigned to the scrum task")
-    assigned_to: Optional[str] = Field(None, description="User assigned to the scrum task")
+    type: Optional[str] = Field(None, description="Type (1=Analysis, 2=Coding, 3=Documentation, 4=Testing)")
+    state: Optional[str] = Field(None, description="State (-6=Draft, 1=Ready, 2=Work in progress, 3=Complete, 4=Cancelled)")
+    assignment_group: Optional[str] = Field(None, description="sys_id of the group assigned to the scrum task")
+    assigned_to: Optional[str] = Field(None, description="sys_id of the user assigned to the scrum task")
     work_notes: Optional[str] = Field(None, description="Work notes to add to the scrum task")
+
 
 class ListScrumTasksParams(BaseModel):
     """Parameters for listing scrum tasks."""
 
     limit: Optional[int] = Field(10, description="Maximum number of records to return")
     offset: Optional[int] = Field(0, description="Offset to start from")
+    story_id: Optional[str] = Field(None, description="Filter by parent story sys_id")
     state: Optional[str] = Field(None, description="Filter by state")
-    assignment_group: Optional[str] = Field(None, description="Filter by assignment group")
-    timeframe: Optional[str] = Field(None, description="Filter by timeframe (upcoming, in-progress, completed)")
-    query: Optional[str] = Field(None, description="Additional query string")
+    assignment_group: Optional[str] = Field(None, description="Filter by assignment group sys_id")
+    query: Optional[str] = Field(None, description="Additional encoded query string")
 
 
-def _unwrap_and_validate_params(params: Any, model_class: Type[T], required_fields: List[str] = None) -> Dict[str, Any]:
-    """
-    Helper function to unwrap and validate parameters.
-    
-    Args:
-        params: The parameters to unwrap and validate.
-        model_class: The Pydantic model class to validate against.
-        required_fields: List of required field names.
-        
-    Returns:
-        A tuple of (success, result) where result is either the validated parameters or an error message.
-    """
-    # Handle case where params might be wrapped in another dictionary
-    if isinstance(params, dict) and len(params) == 1 and "params" in params and isinstance(params["params"], dict):
-        logger.warning("Detected params wrapped in a 'params' key. Unwrapping...")
-        params = params["params"]
-    
-    # Handle case where params might be a Pydantic model object
-    if not isinstance(params, dict):
-        try:
-            # Try to convert to dict if it's a Pydantic model
-            logger.warning("Params is not a dictionary. Attempting to convert...")
-            params = params.dict() if hasattr(params, "dict") else dict(params)
-        except Exception as e:
-            logger.error(f"Failed to convert params to dictionary: {e}")
-            return {
-                "success": False,
-                "message": f"Invalid parameters format. Expected a dictionary, got {type(params).__name__}",
-            }
-    
-    # Validate required parameters are present
-    if required_fields:
-        for field in required_fields:
-            if field not in params:
-                return {
-                    "success": False,
-                    "message": f"Missing required parameter '{field}'",
-                }
-    
-    try:
-        # Validate parameters against the model
-        validated_params = model_class(**params)
-        return {
-            "success": True,
-            "params": validated_params,
-        }
-    except Exception as e:
-        logger.error(f"Error validating parameters: {e}")
-        return {
-            "success": False,
-            "message": f"Error validating parameters: {str(e)}",
-        }
+class GetScrumTaskParams(BaseModel):
+    """Parameters for retrieving a single scrum task."""
+
+    scrum_task_id: str = Field(..., description="sys_id of the scrum task to retrieve")
 
 
-def _get_instance_url(auth_manager: AuthManager, server_config: ServerConfig) -> Optional[str]:
-    """
-    Helper function to get the instance URL from either server_config or auth_manager.
-    
-    Args:
-        auth_manager: The authentication manager.
-        server_config: The server configuration.
-        
-    Returns:
-        The instance URL if found, None otherwise.
-    """
-    if hasattr(server_config, 'instance_url'):
-        return server_config.instance_url
-    elif hasattr(auth_manager, 'instance_url'):
-        return auth_manager.instance_url
-    else:
-        logger.error("Cannot find instance_url in either server_config or auth_manager")
-        return None
+class CloseScrumTaskParams(BaseModel):
+    """Parameters for closing a scrum task."""
+
+    scrum_task_id: str = Field(..., description="sys_id of the scrum task to close")
+    work_notes: Optional[str] = Field(None, description="Optional closing notes")
 
 
-def _get_headers(auth_manager: Any, server_config: Any) -> Optional[Dict[str, str]]:
-    """
-    Helper function to get headers from either auth_manager or server_config.
-    
-    Args:
-        auth_manager: The authentication manager or object passed as auth_manager.
-        server_config: The server configuration or object passed as server_config.
-        
-    Returns:
-        The headers if found, None otherwise.
-    """
-    # Try to get headers from auth_manager
-    if hasattr(auth_manager, 'get_headers'):
-        return auth_manager.get_headers()
-    
-    # If auth_manager doesn't have get_headers, try server_config
-    if hasattr(server_config, 'get_headers'):
-        return server_config.get_headers()
-    
-    # If neither has get_headers, check if auth_manager is actually a ServerConfig
-    # and server_config is actually an AuthManager (parameters swapped)
-    if hasattr(server_config, 'get_headers') and not hasattr(auth_manager, 'get_headers'):
-        return server_config.get_headers()
-    
-    logger.error("Cannot find get_headers method in either auth_manager or server_config")
-    return None
+class AssignScrumTaskParams(BaseModel):
+    """Parameters for assigning a scrum task."""
+
+    scrum_task_id: str = Field(..., description="sys_id of the scrum task to assign")
+    assigned_to: Optional[str] = Field(None, description="sys_id of the user to assign")
+    assignment_group: Optional[str] = Field(None, description="sys_id of the group to assign")
+
+
+# ---------------------------------------------------------------------------
+# Tool implementations
+# ---------------------------------------------------------------------------
+
 
 def create_scrum_task(
+    config: ServerConfig,
     auth_manager: AuthManager,
-    server_config: ServerConfig,
-    params: Dict[str, Any],
+    params: CreateScrumTaskParams,
 ) -> Dict[str, Any]:
-    """
-    Create a new scrum task in ServiceNow.
+    """Create a new scrum task in ServiceNow."""
+    url = f"{config.instance_url}/api/now/table/rm_scrum_task"
 
-    Args:
-        auth_manager: The authentication manager.
-        server_config: The server configuration.
-        params: The parameters for creating the scrum task.
-
-    Returns:
-        The created scrum task.
-    """
-
-    # Unwrap and validate parameters
-    result = _unwrap_and_validate_params(
-        params, 
-        CreateScrumTaskParams, 
-        required_fields=["short_description", "story"]
-    )
-    
-    if not result["success"]:
-        return result
-    
-    validated_params = result["params"]
-    
-    # Prepare the request data
-    data = {
-        "story": validated_params.story,
-        "short_description": validated_params.short_description,
+    data: Dict[str, Any] = {
+        "story": params.story,
+        "short_description": params.short_description,
     }
+    if params.priority is not None:
+        data["priority"] = params.priority
+    if params.planned_hours is not None:
+        data["planned_hours"] = params.planned_hours
+    if params.remaining_hours is not None:
+        data["remaining_hours"] = params.remaining_hours
+    if params.hours is not None:
+        data["hours"] = params.hours
+    if params.description is not None:
+        data["description"] = params.description
+    if params.type is not None:
+        data["type"] = params.type
+    if params.state is not None:
+        data["state"] = params.state
+    if params.assignment_group is not None:
+        data["assignment_group"] = params.assignment_group
+    if params.assigned_to is not None:
+        data["assigned_to"] = params.assigned_to
+    if params.work_notes is not None:
+        data["work_notes"] = params.work_notes
 
-    # Add optional fields if provided
-    if validated_params.priority:
-        data["priority"] = validated_params.priority
-    if validated_params.planned_hours:
-        data["planned_hours"] = validated_params.planned_hours
-    if validated_params.remaining_hours:
-        data["remaining_hours"] = validated_params.remaining_hours
-    if validated_params.hours:
-        data["hours"] = validated_params.hours
-    if validated_params.description:
-        data["description"] = validated_params.description
-    if validated_params.type:
-        data["type"] = validated_params.type
-    if validated_params.state:
-        data["state"] = validated_params.state
-    if validated_params.assignment_group:
-        data["assignment_group"] = validated_params.assignment_group
-    if validated_params.assigned_to:
-        data["assigned_to"] = validated_params.assigned_to
-    if validated_params.work_notes:
-        data["work_notes"] = validated_params.work_notes
-    
-    # Get the instance URL
-    instance_url = _get_instance_url(auth_manager, server_config)
-    if not instance_url:
-        return {
-            "success": False,
-            "message": "Cannot find instance_url in either server_config or auth_manager",
-        }
-    
-    # Get the headers
-    headers = _get_headers(auth_manager, server_config)
-    if not headers:
-        return {
-            "success": False,
-            "message": "Cannot find get_headers method in either auth_manager or server_config",
-        }
-    
-    # Add Content-Type header
+    headers = auth_manager.get_headers()
     headers["Content-Type"] = "application/json"
-    
-    # Make the API request
-    url = f"{instance_url}/api/now/table/rm_scrum_task"
-    
+
     try:
-        response = requests.post(url, json=data, headers=headers)
+        response = requests.post(url, json=data, headers=headers, timeout=config.timeout)
         response.raise_for_status()
-        
-        result = response.json()
-        
         return {
             "success": True,
-            "message": "Scrum Task created successfully",
-            "scrum_task": result["result"],
+            "message": "Scrum task created successfully",
+            "scrum_task": response.json()["result"],
         }
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error creating scrum task: {e}")
+    except requests.RequestException as e:
+        logger.error("create_scrum_task | error=%s", e)
         return {
             "success": False,
-            "message": f"Error creating scrum task: {str(e)}",
+            "message": f"Error creating scrum task: {e}",
         }
+
 
 def update_scrum_task(
+    config: ServerConfig,
     auth_manager: AuthManager,
-    server_config: ServerConfig,
-    params: Dict[str, Any],
+    params: UpdateScrumTaskParams,
 ) -> Dict[str, Any]:
-    """
-    Update an existing scrum task in ServiceNow.
+    """Update an existing scrum task in ServiceNow."""
+    url = f"{config.instance_url}/api/now/table/rm_scrum_task/{params.scrum_task_id}"
 
-    Args:
-        auth_manager: The authentication manager.
-        server_config: The server configuration.
-        params: The parameters for updating the scrum task.
+    data: Dict[str, Any] = {}
+    if params.short_description is not None:
+        data["short_description"] = params.short_description
+    if params.priority is not None:
+        data["priority"] = params.priority
+    if params.planned_hours is not None:
+        data["planned_hours"] = params.planned_hours
+    if params.remaining_hours is not None:
+        data["remaining_hours"] = params.remaining_hours
+    if params.hours is not None:
+        data["hours"] = params.hours
+    if params.description is not None:
+        data["description"] = params.description
+    if params.type is not None:
+        data["type"] = params.type
+    if params.state is not None:
+        data["state"] = params.state
+    if params.assignment_group is not None:
+        data["assignment_group"] = params.assignment_group
+    if params.assigned_to is not None:
+        data["assigned_to"] = params.assigned_to
+    if params.work_notes is not None:
+        data["work_notes"] = params.work_notes
 
-    Returns:
-        The updated scrum task.
-    """
-    # Unwrap and validate parameters
-    result = _unwrap_and_validate_params(
-        params, 
-        UpdateScrumTaskParams,
-        required_fields=["scrum_task_id"]
-    )
-    
-    if not result["success"]:
-        return result
-    
-    validated_params = result["params"]
-    
-    # Prepare the request data
-    data = {}
-
-    # Add optional fields if provided
-    if validated_params.short_description:
-        data["short_description"] = validated_params.short_description
-    if validated_params.priority:
-        data["priority"] = validated_params.priority
-    if validated_params.planned_hours:
-        data["planned_hours"] = validated_params.planned_hours
-    if validated_params.remaining_hours:
-        data["remaining_hours"] = validated_params.remaining_hours
-    if validated_params.hours:
-        data["hours"] = validated_params.hours
-    if validated_params.description:
-        data["description"] = validated_params.description
-    if validated_params.type:
-        data["type"] = validated_params.type
-    if validated_params.state:
-        data["state"] = validated_params.state
-    if validated_params.assignment_group:
-        data["assignment_group"] = validated_params.assignment_group
-    if validated_params.assigned_to:
-        data["assigned_to"] = validated_params.assigned_to
-    if validated_params.work_notes:
-        data["work_notes"] = validated_params.work_notes
-    
-    # Get the instance URL
-    instance_url = _get_instance_url(auth_manager, server_config)
-    if not instance_url:
-        return {
-            "success": False,
-            "message": "Cannot find instance_url in either server_config or auth_manager",
-        }
-    
-    # Get the headers
-    headers = _get_headers(auth_manager, server_config)
-    if not headers:
-        return {
-            "success": False,
-            "message": "Cannot find get_headers method in either auth_manager or server_config",
-        }
-    
-    # Add Content-Type header
+    headers = auth_manager.get_headers()
     headers["Content-Type"] = "application/json"
-    
-    # Make the API request
-    url = f"{instance_url}/api/now/table/rm_scrum_task/{validated_params.scrum_task_id}"
-    
+
     try:
-        response = requests.put(url, json=data, headers=headers)
+        response = requests.put(url, json=data, headers=headers, timeout=config.timeout)
+        if response.status_code == 404:
+            return {
+                "success": False,
+                "message": f"Scrum task not found: {params.scrum_task_id}",
+            }
         response.raise_for_status()
-        
-        result = response.json()
-        
         return {
             "success": True,
-            "message": "Scrum Task updated successfully",
-            "scrum_task": result["result"],
+            "message": "Scrum task updated successfully",
+            "scrum_task": response.json()["result"],
         }
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error updating scrum task: {e}")
+    except requests.RequestException as e:
+        logger.error("update_scrum_task | task_id=%s | error=%s", params.scrum_task_id, e)
         return {
             "success": False,
-            "message": f"Error updating scrum task: {str(e)}",
+            "message": f"Error updating scrum task: {e}",
         }
+
 
 def list_scrum_tasks(
+    config: ServerConfig,
     auth_manager: AuthManager,
-    server_config: ServerConfig,
-    params: Dict[str, Any],
+    params: ListScrumTasksParams,
 ) -> Dict[str, Any]:
-    """
-    List scrum tasks from ServiceNow.
+    """List scrum tasks from ServiceNow."""
+    url = f"{config.instance_url}/api/now/table/rm_scrum_task"
 
-    Args:
-        auth_manager: The authentication manager.
-        server_config: The server configuration.
-        params: The parameters for listing scrum tasks.
-
-    Returns:
-        A list of scrum tasks.
-    """
-    # Unwrap and validate parameters
-    result = _unwrap_and_validate_params(
-        params, 
-        ListScrumTasksParams
-    )
-    
-    if not result["success"]:
-        return result
-    
-    validated_params = result["params"]
-    
-    # Build the query
     query_parts = []
-    
-    if validated_params.state:
-        query_parts.append(f"state={validated_params.state}")
-    if validated_params.assignment_group:
-        query_parts.append(f"assignment_group={validated_params.assignment_group}")
-    
-    # Handle timeframe filtering
-    if validated_params.timeframe:
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if validated_params.timeframe == "upcoming":
-            query_parts.append(f"start_date>{now}")
-        elif validated_params.timeframe == "in-progress":
-            query_parts.append(f"start_date<{now}^end_date>{now}")
-        elif validated_params.timeframe == "completed":
-            query_parts.append(f"end_date<{now}")
-    
-    # Add any additional query string
-    if validated_params.query:
-        query_parts.append(validated_params.query)
-    
-    # Combine query parts
+    if params.story_id:
+        query_parts.append(f"story={params.story_id}")
+    if params.state:
+        query_parts.append(f"state={params.state}")
+    if params.assignment_group:
+        query_parts.append(f"assignment_group={params.assignment_group}")
+    if params.query:
+        query_parts.append(params.query)
+
     query = "^".join(query_parts) if query_parts else ""
-    
-    # Get the instance URL
-    instance_url = _get_instance_url(auth_manager, server_config)
-    if not instance_url:
-        return {
-            "success": False,
-            "message": "Cannot find instance_url in either server_config or auth_manager",
-        }
-    
-    # Get the headers
-    headers = _get_headers(auth_manager, server_config)
-    if not headers:
-        return {
-            "success": False,
-            "message": "Cannot find get_headers method in either auth_manager or server_config",
-        }
-    
-    # Make the API request
-    url = f"{instance_url}/api/now/table/rm_scrum_task"
-    
-    params = {
-        "sysparm_limit": validated_params.limit,
-        "sysparm_offset": validated_params.offset,
-        "sysparm_query": query,
-        "sysparm_display_value": "true",
-    }
-    
+
     try:
-        response = requests.get(url, headers=headers, params=params)
+        response = requests.get(
+            url,
+            headers=auth_manager.get_headers(),
+            params={
+                "sysparm_limit": params.limit,
+                "sysparm_offset": params.offset,
+                "sysparm_query": query,
+                "sysparm_display_value": "true",
+            },
+            timeout=config.timeout,
+        )
         response.raise_for_status()
-        
-        result = response.json()
-        
-        # Handle the case where result["result"] is a list
-        scrum_tasks = result.get("result", [])
-        count = len(scrum_tasks)
-        
+        scrum_tasks = response.json().get("result", [])
         return {
             "success": True,
             "scrum_tasks": scrum_tasks,
-            "count": count,
-            "total": count,  # Use count as total if total is not provided
+            "count": len(scrum_tasks),
         }
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error listing stories: {e}")
+    except requests.RequestException as e:
+        logger.error("list_scrum_tasks | error=%s", e)
         return {
             "success": False,
-            "message": f"Error listing stories: {str(e)}",
+            "message": f"Error listing scrum tasks: {e}",
+        }
+
+
+def get_scrum_task(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: GetScrumTaskParams,
+) -> Dict[str, Any]:
+    """Retrieve a single scrum task by sys_id."""
+    url = f"{config.instance_url}/api/now/table/rm_scrum_task/{params.scrum_task_id}"
+
+    try:
+        response = requests.get(
+            url,
+            headers=auth_manager.get_headers(),
+            params={"sysparm_display_value": "true"},
+            timeout=config.timeout,
+        )
+        if response.status_code == 404:
+            return {
+                "success": False,
+                "message": "Scrum task not found",
+            }
+        response.raise_for_status()
+        result = response.json().get("result")
+        if not result:
+            return {
+                "success": False,
+                "message": "Scrum task not found",
+            }
+        return {
+            "success": True,
+            "scrum_task": result,
+        }
+    except requests.RequestException as e:
+        logger.error("get_scrum_task | task_id=%s | error=%s", params.scrum_task_id, e)
+        return {
+            "success": False,
+            "message": f"Error retrieving scrum task: {e}",
+        }
+
+
+def close_scrum_task(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: CloseScrumTaskParams,
+) -> Dict[str, Any]:
+    """Close a scrum task by setting its state to Complete (3)."""
+    # First fetch the current state to check guard condition
+    get_url = f"{config.instance_url}/api/now/table/rm_scrum_task/{params.scrum_task_id}"
+
+    try:
+        get_response = requests.get(
+            get_url,
+            headers=auth_manager.get_headers(),
+            params={"sysparm_fields": "sys_id,state", "sysparm_display_value": "false"},
+            timeout=config.timeout,
+        )
+        if get_response.status_code == 404:
+            return {
+                "success": False,
+                "message": "Scrum task not found",
+            }
+        get_response.raise_for_status()
+        current = get_response.json().get("result")
+        if not current:
+            return {
+                "success": False,
+                "message": "Scrum task not found",
+            }
+
+        current_state = str(current.get("state") or "")
+        if current_state in _CLOSED_STATES:
+            return {
+                "success": False,
+                "message": "Scrum task is already closed (Complete or Cancelled)",
+            }
+    except requests.RequestException as e:
+        logger.error("close_scrum_task (get phase) | task_id=%s | error=%s", params.scrum_task_id, e)
+        return {
+            "success": False,
+            "message": f"Error retrieving scrum task: {e}",
+        }
+
+    # Now patch state to Complete
+    patch_data: Dict[str, Any] = {"state": "3"}
+    if params.work_notes:
+        patch_data["work_notes"] = params.work_notes
+
+    headers = auth_manager.get_headers()
+    headers["Content-Type"] = "application/json"
+
+    try:
+        patch_response = requests.patch(
+            get_url,
+            json=patch_data,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        patch_response.raise_for_status()
+        return {
+            "success": True,
+            "message": "Scrum task closed",
+            "scrum_task": patch_response.json()["result"],
+        }
+    except requests.RequestException as e:
+        logger.error("close_scrum_task (patch phase) | task_id=%s | error=%s", params.scrum_task_id, e)
+        return {
+            "success": False,
+            "message": f"Error closing scrum task: {e}",
+        }
+
+
+def assign_scrum_task(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: AssignScrumTaskParams,
+) -> Dict[str, Any]:
+    """Assign a scrum task to a user and/or group."""
+    if not params.assigned_to and not params.assignment_group:
+        return {
+            "success": False,
+            "message": "At least one of assigned_to or assignment_group must be provided",
+        }
+
+    url = f"{config.instance_url}/api/now/table/rm_scrum_task/{params.scrum_task_id}"
+
+    data: Dict[str, Any] = {}
+    if params.assigned_to:
+        data["assigned_to"] = params.assigned_to
+    if params.assignment_group:
+        data["assignment_group"] = params.assignment_group
+
+    headers = auth_manager.get_headers()
+    headers["Content-Type"] = "application/json"
+
+    try:
+        response = requests.put(url, json=data, headers=headers, timeout=config.timeout)
+        if response.status_code == 404:
+            return {
+                "success": False,
+                "message": f"Scrum task not found: {params.scrum_task_id}",
+            }
+        response.raise_for_status()
+        return {
+            "success": True,
+            "message": "Scrum task assigned",
+            "scrum_task": response.json()["result"],
+        }
+    except requests.RequestException as e:
+        logger.error("assign_scrum_task | task_id=%s | error=%s", params.scrum_task_id, e)
+        return {
+            "success": False,
+            "message": f"Error assigning scrum task: {e}",
         }

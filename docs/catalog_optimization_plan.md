@@ -132,7 +132,7 @@ class OptimizationRecommendationsParams(BaseModel):
     
     category_id: Optional[str] = Field(None, description="Filter by category ID")
     recommendation_types: List[str] = Field(
-        ["inactive_items", "low_usage", "high_abandonment", "slow_fulfillment", "description_quality"],
+        ["inactive_items", "description_quality"],
         description="Types of recommendations to include"
     )
 ```
@@ -218,7 +218,7 @@ for item in result["high_abandonment_items"]:
 ```python
 # Get optimization recommendations
 params = OptimizationRecommendationsParams(
-    recommendation_types=["inactive_items", "low_usage", "description_quality"]
+    recommendation_types=["inactive_items", "description_quality"]
 )
 result = get_optimization_recommendations(config, auth_manager, params)
 

@@ -7,6 +7,7 @@ This script directly tests the workflow_tools functions with proper authenticati
 import os
 import json
 import logging
+import pytest
 from dotenv import load_dotenv
 
 from servicenow_mcp.auth.auth_manager import AuthManager
@@ -60,6 +61,7 @@ def print_result(name, result):
     else:
         logger.info(json.dumps(result, indent=2))
 
+@pytest.mark.skip(reason="integration test — requires live ServiceNow instance")
 def test_list_workflows(auth_manager, server_config):
     """Test the list_workflows function."""
     logger.info("Testing list_workflows...")
@@ -74,6 +76,7 @@ def test_list_workflows(auth_manager, server_config):
     
     return result
 
+@pytest.mark.skip(reason="integration test — requires live ServiceNow instance")
 def test_get_workflow_details(auth_manager, server_config, workflow_id):
     """Test the get_workflow_details function."""
     logger.info(f"Testing get_workflow_details for workflow {workflow_id}...")
@@ -83,6 +86,7 @@ def test_get_workflow_details(auth_manager, server_config, workflow_id):
     
     return result
 
+@pytest.mark.skip(reason="integration test — requires live ServiceNow instance")
 def test_list_workflow_versions(auth_manager, server_config, workflow_id):
     """Test the list_workflow_versions function."""
     logger.info(f"Testing list_workflow_versions for workflow {workflow_id}...")
@@ -92,6 +96,7 @@ def test_list_workflow_versions(auth_manager, server_config, workflow_id):
     
     return result
 
+@pytest.mark.skip(reason="integration test — requires live ServiceNow instance")
 def test_get_workflow_activities(auth_manager, server_config, workflow_id):
     """Test the get_workflow_activities function."""
     logger.info(f"Testing get_workflow_activities for workflow {workflow_id}...")
@@ -101,6 +106,7 @@ def test_get_workflow_activities(auth_manager, server_config, workflow_id):
     
     return result
 
+@pytest.mark.skip(reason="integration test — requires live ServiceNow instance")
 def test_with_swapped_params(auth_manager, server_config):
     """Test functions with swapped parameters to verify our fix works."""
     logger.info("Testing with swapped parameters...")
