@@ -49,9 +49,6 @@ def get_optimization_recommendations(server: ServiceNowMCP) -> Dict:
     params = OptimizationRecommendationsParams(
         recommendation_types=[
             "inactive_items",
-            "low_usage",
-            "high_abandonment",
-            "slow_fulfillment",
             "description_quality",
         ]
     )
@@ -97,16 +94,7 @@ def print_recommendations(recommendations: Dict) -> None:
                 print(f"     Description: {item['short_description'] or '(No description)'}")
                 
                 # Print additional details based on recommendation type
-                if rec["type"] == "low_usage":
-                    print(f"     Order Count: {item['order_count']}")
-                elif rec["type"] == "high_abandonment":
-                    print(f"     Abandonment Rate: {item['abandonment_rate']}%")
-                    print(f"     Cart Adds: {item['cart_adds']}")
-                    print(f"     Completed Orders: {item['orders']}")
-                elif rec["type"] == "slow_fulfillment":
-                    print(f"     Avg. Fulfillment Time: {item['avg_fulfillment_time']} days")
-                    print(f"     Compared to Catalog Avg: {item['avg_fulfillment_time_vs_catalog']}x slower")
-                elif rec["type"] == "description_quality":
+                if rec["type"] == "description_quality":
                     print(f"     Description Quality Score: {item['description_quality']}/100")
                     print(f"     Issues: {', '.join(item['quality_issues'])}")
                 
