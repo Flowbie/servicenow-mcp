@@ -18,18 +18,15 @@ from servicenow_mcp.tools.release_tools import (
     _fetch_release_stories,
     _extract_sys_id,
 )
+from servicenow_mcp.tools.agile_constants import (
+    STORY_DONE_STATES,
+    STORY_CANCELLED_STATES,
+    STORY_IN_PROGRESS_STATES,
+    STORY_BACKLOG_STATES,
+    SPRINT_COMPLETED_STATE,
+)
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# State constants
-# ---------------------------------------------------------------------------
-
-_STORY_DONE_STATES = {"3"}
-_STORY_CANCELLED_STATES = {"4"}
-_STORY_IN_PROGRESS_STATES = {"2", "-7", "-8"}
-_STORY_BACKLOG_STATES = {"-6", "1"}
-_SPRINT_COMPLETED_STATE = "3"
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +185,7 @@ def get_blocked_work(
     open_deps = [
         dep for dep in all_deps
         if str(dep.get("prerequisite_story.state") or "") not in (
-            _STORY_DONE_STATES | _STORY_CANCELLED_STATES
+            STORY_DONE_STATES | STORY_CANCELLED_STATES
         )
     ]
 
@@ -325,16 +322,16 @@ def get_release_status(
         pts = int(story.get("story_points") or 0)
         points["total"] += pts
 
-        if state in _STORY_DONE_STATES:
+        if state in STORY_DONE_STATES:
             story_counts["done"] += 1
             points["completed"] += pts
-        elif state in _STORY_IN_PROGRESS_STATES:
+        elif state in STORY_IN_PROGRESS_STATES:
             story_counts["in_progress"] += 1
             points["remaining"] += pts
-        elif state in _STORY_BACKLOG_STATES:
+        elif state in STORY_BACKLOG_STATES:
             story_counts["backlog"] += 1
             points["remaining"] += pts
-        elif state in _STORY_CANCELLED_STATES:
+        elif state in STORY_CANCELLED_STATES:
             story_counts["cancelled"] += 1
 
     # Derive overall status

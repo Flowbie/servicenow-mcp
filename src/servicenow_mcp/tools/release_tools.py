@@ -13,17 +13,14 @@ from pydantic import BaseModel, Field
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.config import ServerConfig
+from servicenow_mcp.tools.agile_constants import (
+    STORY_DONE_STATES,
+    STORY_CANCELLED_STATES,
+    STORY_IN_PROGRESS_STATES,
+    SPRINT_COMPLETED_STATE,
+)
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Story/sprint state constants
-# ---------------------------------------------------------------------------
-
-_STORY_DONE_STATE = "3"
-_STORY_CANCELLED_STATE = "4"
-_STORY_IN_PROGRESS_STATES = {"2", "-7", "-8"}
-_SPRINT_COMPLETED_STATE = "3"
 
 
 # ---------------------------------------------------------------------------
@@ -351,17 +348,17 @@ def validate_release_readiness(
     # Run checks
     non_cancelled = [
         s for s in stories
-        if str(s.get("state", "")) != _STORY_CANCELLED_STATE
+        if str(s.get("state", "")) not in STORY_CANCELLED_STATES
     ]
 
     # 1. All stories done
     all_done = all(
-        str(s.get("state", "")) in {_STORY_DONE_STATE, _STORY_CANCELLED_STATE}
+        str(s.get("state", "")) in STORY_DONE_STATES | STORY_CANCELLED_STATES
         for s in stories
     )
     not_done_count = sum(
         1 for s in stories
-        if str(s.get("state", "")) not in {_STORY_DONE_STATE, _STORY_CANCELLED_STATE}
+        if str(s.get("state", "")) not in STORY_DONE_STATES | STORY_CANCELLED_STATES
     )
 
     # 2. AC populated on non-cancelled stories
@@ -374,7 +371,7 @@ def validate_release_readiness(
     # 3. All sprints completed
     incomplete_sprints = [
         s.get("name") for s in sprints
-        if str(s.get("state", "")) != _SPRINT_COMPLETED_STATE
+        if str(s.get("state", "")) != SPRINT_COMPLETED_STATE
     ]
     all_sprints_completed = len(incomplete_sprints) == 0
 
@@ -388,7 +385,7 @@ def validate_release_readiness(
     # 5. No in-progress stories
     in_progress = [
         s.get("number") for s in stories
-        if str(s.get("state", "")) in _STORY_IN_PROGRESS_STATES
+        if str(s.get("state", "")) in STORY_IN_PROGRESS_STATES
     ]
     no_in_progress = len(in_progress) == 0
 
@@ -485,7 +482,7 @@ def compile_release_notes(
     # Filter to done stories only
     done_stories = [
         s for s in stories
-        if str(s.get("state", "")) == _STORY_DONE_STATE
+        if str(s.get("state", "")) in STORY_DONE_STATES
     ]
 
     # Group by epic

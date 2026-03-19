@@ -14,6 +14,12 @@ from pydantic import BaseModel, Field
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.config import ServerConfig
+from servicenow_mcp.tools.agile_constants import (
+    STORY_DONE_STATES,
+    STORY_CANCELLED_STATES,
+    STORY_IN_PROGRESS_STATES,
+    STORY_BACKLOG_STATES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +42,6 @@ _SPRINT_STATE_LABELS: Dict[str, str] = {
 
 # States in which a sprint can still receive stories
 _SPRINT_OPEN_STATES = {SPRINT_STATE_PLANNING, SPRINT_STATE_ACTIVE}
-
-# Story state groupings (rm_story.state numeric values)
-_STORY_DONE_STATES       = {"3"}
-_STORY_IN_PROGRESS_STATES = {"2", "-7", "-8"}
-_STORY_BACKLOG_STATES    = {"-6", "1"}
-_STORY_CANCELLED_STATES  = {"4"}
 
 
 # ---------------------------------------------------------------------------
@@ -354,16 +354,16 @@ def get_sprint_summary(
         pts = int(story.get("story_points") or 0)
         points["total"] += pts
 
-        if state in _STORY_DONE_STATES:
+        if state in STORY_DONE_STATES:
             counts["done"] += 1
             points["completed"] += pts
-        elif state in _STORY_IN_PROGRESS_STATES:
+        elif state in STORY_IN_PROGRESS_STATES:
             counts["in_progress"] += 1
             points["remaining"] += pts
-        elif state in _STORY_BACKLOG_STATES:
+        elif state in STORY_BACKLOG_STATES:
             counts["backlog"] += 1
             points["remaining"] += pts
-        elif state in _STORY_CANCELLED_STATES:
+        elif state in STORY_CANCELLED_STATES:
             counts["cancelled"] += 1
             # cancelled stories don't count toward remaining
 
