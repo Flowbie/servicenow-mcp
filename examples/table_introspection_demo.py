@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
-from servicenow_mcp.tools.introspection_tools import (
+from servicenow_mcp.tools.blueprint_tools import (
     get_table_metadata,
     list_table_fields,
     list_table_relationships,

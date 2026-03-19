@@ -8,8 +8,10 @@ from unittest.mock import MagicMock, patch
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.catalog_optimization import (
     OptimizationRecommendationsParams,
-    UpdateCatalogItemParams,
     get_optimization_recommendations,
+)
+from servicenow_mcp.tools.catalog_tools import (
+    UpdateCatalogItemParams,
     update_catalog_item,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig

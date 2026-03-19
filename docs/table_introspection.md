@@ -117,7 +117,7 @@ List all tables that **extend** (inherit from) a parent table via `sys_db_object
 
 ## Usage Examples
 
-> The examples below show conceptual usage via MCP. In Python, call the functions in `servicenow_mcp.tools.introspection_tools` with `ServerConfig`, `AuthManager`, and the appropriate params models.
+> The examples below show conceptual usage via MCP. In Python, call the functions in `servicenow_mcp.tools.blueprint_tools` with `ServerConfig`, `AuthManager`, and the appropriate params models.
 
 ### Get table metadata for `incident`
 
