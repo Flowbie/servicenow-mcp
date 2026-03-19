@@ -275,6 +275,25 @@ agile_readonly:
   - get_scrum_task
   - list_projects
 
+integration_developer:
+  # Integration Platform — outbound REST, Scripted REST APIs, Import Sets, MID Servers
+  - list_rest_messages
+  - get_rest_message
+  - create_rest_message
+  - add_http_method
+  - list_scripted_rest_apis
+  - get_scripted_rest_api
+  - create_scripted_rest_api
+  - add_rest_resource
+  - list_import_sets
+  - list_mid_servers
+  - get_mid_server_status
+  # Core tools needed alongside integration work
+  - query_records
+  - get_record
+  - verify_fields
+  - get_field_metadata
+
 system_administrator:
   # Write Verification, Metadata Discovery, and Diagnostic Escalation
   - verify_fields
@@ -443,6 +462,18 @@ full:
   - get_current_user
   # Update Set Activation
   - set_current_update_set
+  # Integration Platform
+  - list_rest_messages
+  - get_rest_message
+  - create_rest_message
+  - add_http_method
+  - list_scripted_rest_apis
+  - get_scripted_rest_api
+  - create_scripted_rest_api
+  - add_rest_resource
+  - list_import_sets
+  - list_mid_servers
+  - get_mid_server_status
   # planned: Epic 13 — create_ui_policy, create_ui_policy_action,
   #                     create_user_criteria, create_user_criteria_condition
   # Story Management
