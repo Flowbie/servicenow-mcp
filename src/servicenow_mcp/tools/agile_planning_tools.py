@@ -18,7 +18,7 @@ from servicenow_mcp.utils.config import ServerConfig
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Story/task state constants (local to this module)
+# Scrum task type constants (local to this module)
 # ---------------------------------------------------------------------------
 
 # Scrum task type values (rm_scrum_task.type)
@@ -387,7 +387,7 @@ def identify_story_risks(
         # planning:   {dependency_id, prerequisite_story_number, prerequisite_story_title, prerequisite_state}
         open_blockers = [
             {
-                "dependency_id": None,
+                "dependency_id": b.get("sys_id"),
                 "prerequisite_story_number": b.get("number"),
                 "prerequisite_story_title": b.get("title"),
                 "prerequisite_state": b.get("state"),

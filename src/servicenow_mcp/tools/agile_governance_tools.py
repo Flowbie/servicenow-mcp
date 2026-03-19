@@ -83,6 +83,7 @@ def validate_story_dependencies(
         if state not in STORY_TERMINAL_STATES:
             open_blockers.append(
                 {
+                    "sys_id": dep.get("sys_id"),
                     "number": dep.get("prerequisite_story.number"),
                     "title": dep.get("prerequisite_story.short_description"),
                     "state": state,

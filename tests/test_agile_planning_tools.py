@@ -8,8 +8,8 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from servicenow_mcp.auth.auth_manager import AuthManager
+from servicenow_mcp.tools.agile_constants import StoryIdParams
 from servicenow_mcp.tools.agile_planning_tools import (
-    StoryIdParams,
     story_breakdown,
     generate_acceptance_criteria,
     estimate_story_points,
