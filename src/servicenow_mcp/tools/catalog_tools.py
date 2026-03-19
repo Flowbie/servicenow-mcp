@@ -556,7 +556,7 @@ class UpdateCatalogItemParams(BaseModel):
 
 def update_catalog_item(
     config: ServerConfig, auth_manager: AuthManager, params: UpdateCatalogItemParams
-) -> dict:
+) -> CatalogResponse:
     """
     Update a catalog item.
 

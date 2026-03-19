@@ -679,7 +679,7 @@ class TestCatalogTools(unittest.TestCase):
 
     # --- update_catalog_item tests ---
 
-    @patch("requests.patch")
+    @patch("servicenow_mcp.tools.catalog_tools.requests.patch")
     def test_update_catalog_item(self, mock_patch):
         """Test updating a catalog item."""
         mock_response = MagicMock()
@@ -711,7 +711,7 @@ class TestCatalogTools(unittest.TestCase):
         self.assertEqual(args[0], "https://example.service-now.com/api/now/table/sc_cat_item/item1")
         self.assertEqual(kwargs["json"], {"short_description": "Updated laptop description"})
 
-    @patch("requests.patch")
+    @patch("servicenow_mcp.tools.catalog_tools.requests.patch")
     def test_update_catalog_item_multiple_fields(self, mock_patch):
         """Test updating multiple fields of a catalog item."""
         mock_response = MagicMock()
@@ -751,7 +751,7 @@ class TestCatalogTools(unittest.TestCase):
             "price": "1099.99",
         })
 
-    @patch("requests.patch")
+    @patch("servicenow_mcp.tools.catalog_tools.requests.patch")
     def test_update_catalog_item_error(self, mock_patch):
         """Test error handling when updating a catalog item."""
         mock_patch.side_effect = requests.exceptions.RequestException("API Error")
