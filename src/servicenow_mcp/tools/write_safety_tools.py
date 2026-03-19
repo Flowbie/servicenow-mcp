@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.config import ServerConfig
+from servicenow_mcp.utils.snow_utils import parse_snow_bool
 
 logger = logging.getLogger(__name__)
 
@@ -270,16 +271,6 @@ def _extract_field_value(raw, prefer_display: bool = False) -> str:
     return str(raw) if raw is not None else ""
 
 
-def _parse_snow_bool(value: str) -> bool:
-    """
-    Normalise ServiceNow boolean field representations to Python bool.
-
-    sys_dictionary boolean columns can come back as "true"/"false",
-    "1"/"0", "Yes"/"No" depending on the sysparm_display_value setting.
-    """
-    return value.strip().lower() in ("true", "1", "yes")
-
-
 # ---------------------------------------------------------------------------
 # get_field_metadata
 # ---------------------------------------------------------------------------
@@ -499,9 +490,9 @@ def _build_metadata_result(
     record: dict,
 ) -> FieldMetadataResult:
     """Build a FieldMetadataResult from a raw sys_dictionary record dict."""
-    read_only = _parse_snow_bool(_extract_field_value(record.get("read_only", "false")))
-    calculated = _parse_snow_bool(_extract_field_value(record.get("calculated", "false")))
-    mandatory = _parse_snow_bool(_extract_field_value(record.get("mandatory", "false")))
+    read_only = parse_snow_bool(_extract_field_value(record.get("read_only", "false")))
+    calculated = parse_snow_bool(_extract_field_value(record.get("calculated", "false")))
+    mandatory = parse_snow_bool(_extract_field_value(record.get("mandatory", "false")))
 
     max_length_raw = _extract_field_value(record.get("max_length", ""))
     max_length: Optional[int] = None
@@ -828,9 +819,9 @@ def get_data_lookup_rules(
         sys_id = _extract_field_value(row.get("sys_id", ""))
         name = _extract_field_value(row.get("name", ""), prefer_display=True)
         output_field = _extract_field_value(row.get("field", ""), prefer_display=True)
-        on_insert = _parse_snow_bool(_extract_field_value(row.get("on_insert", "false")))
-        on_update = _parse_snow_bool(_extract_field_value(row.get("on_update", "false")))
-        active = _parse_snow_bool(_extract_field_value(row.get("active", "true")))
+        on_insert = parse_snow_bool(_extract_field_value(row.get("on_insert", "false")))
+        on_update = parse_snow_bool(_extract_field_value(row.get("on_update", "false")))
+        active = parse_snow_bool(_extract_field_value(row.get("active", "true")))
         rules.append(DataLookupRule(
             sys_id=sys_id,
             name=name,
@@ -1002,9 +993,9 @@ def get_business_rules(
     for row in raw_results:
         name = str(row.get("name", ""))
         timing = str(row.get("when", ""))
-        action_insert = _parse_snow_bool(str(row.get("action_insert", "false")))
-        action_update = _parse_snow_bool(str(row.get("action_update", "false")))
-        active = _parse_snow_bool(str(row.get("active", "true")))
+        action_insert = parse_snow_bool(row.get("action_insert", False))
+        action_update = parse_snow_bool(row.get("action_update", False))
+        active = parse_snow_bool(row.get("active", True))
         condition = str(row.get("condition", ""))
         script_full = str(row.get("script", ""))
         script_preview = script_full[:500] + ("..." if len(script_full) > 500 else "")
@@ -1159,10 +1150,10 @@ def get_data_policies(
             row.get("policy.name", row.get("policy", {}).get("display_value", "")),
             prefer_display=True,
         )
-        mandatory = _parse_snow_bool(
+        mandatory = parse_snow_bool(
             _extract_field_value(row.get("mandatory", "false"))
         )
-        read_only = _parse_snow_bool(
+        read_only = parse_snow_bool(
             _extract_field_value(row.get("read_only", "false"))
         )
 

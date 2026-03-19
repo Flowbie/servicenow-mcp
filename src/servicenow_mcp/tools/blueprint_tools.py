@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.config import ServerConfig
+from servicenow_mcp.utils.snow_utils import parse_snow_bool
 
 logger = logging.getLogger(__name__)
 
@@ -213,14 +214,6 @@ class ListTableFieldsResult(BaseModel):
     )
 
 
-def _parse_snow_bool(value: Any) -> bool:
-    """Normalize ServiceNow boolean to Python bool."""
-    if value is None:
-        return False
-    s = str(value).strip().lower()
-    return s in ("true", "1", "yes")
-
-
 def _extract_display_or_value(raw: Any) -> str:
     """Extract string from a display_value/value dict or return str(raw)."""
     if isinstance(raw, dict):
@@ -297,9 +290,9 @@ def _query_dict_for_table(
                 continue
             internal_type = _extract_display_or_value(rec.get("internal_type")) or ""
             reference = _extract_display_or_value(rec.get("reference")) or ""
-            read_only = _parse_snow_bool(rec.get("read_only", False))
-            calculated = _parse_snow_bool(rec.get("calculated", False))
-            mandatory = _parse_snow_bool(rec.get("mandatory", False))
+            read_only = parse_snow_bool(rec.get("read_only", False))
+            calculated = parse_snow_bool(rec.get("calculated", False))
+            mandatory = parse_snow_bool(rec.get("mandatory", False))
             default_value = _extract_display_or_value(rec.get("default_value")) or ""
             fields.append(
                 TableFieldInfo(

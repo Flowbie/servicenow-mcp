@@ -124,7 +124,7 @@ from servicenow_mcp.tools.incident_tools import (
     UpdateIncidentParams,
     GetIncidentByNumberParams,
 )
-from servicenow_mcp.tools.metadata_tools import (
+from servicenow_mcp.tools.write_safety_tools import (
     BusinessRulesParams,
     DataLookupRulesParams,
     DataPoliciesParams,
@@ -140,7 +140,7 @@ from servicenow_mcp.tools.metadata_tools import (
     get_ui_policies as get_ui_policies_tool,
     verify_fields as verify_fields_tool,
 )
-from servicenow_mcp.tools.introspection_tools import (
+from servicenow_mcp.tools.blueprint_tools import (
     GetTableMetadataParams,
     ListTableFieldsParams,
     ListTableRelationshipsParams,

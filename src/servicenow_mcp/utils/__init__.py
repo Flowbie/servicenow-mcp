@@ -10,6 +10,7 @@ from servicenow_mcp.utils.config import (
     OAuthConfig,
     ServerConfig,
 )
+from servicenow_mcp.utils.snow_utils import parse_snow_bool
 
 __all__ = [
     "ApiKeyConfig",
@@ -18,4 +19,5 @@ __all__ = [
     "BasicAuthConfig",
     "OAuthConfig",
     "ServerConfig",
+    "parse_snow_bool",
 ] 

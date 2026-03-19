@@ -9,7 +9,7 @@ These tools answer "what automation, form behaviour, and security rules exist
 for this table?" and are used primarily for architecture blueprint generation,
 pre-implementation research, and root cause investigation.
 
-Contrast with the field-centric diagnostic tools in metadata_tools.py
+Contrast with the field-centric diagnostic tools in write_safety_tools.py
 (get_business_rules, get_ui_policies) which require a field name and are used
 during write-mismatch escalation. The tools here take only a table name and
 return all customizations for that table.
@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.config import ServerConfig
+from servicenow_mcp.utils.snow_utils import parse_snow_bool
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +33,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-
-
-def _parse_snow_bool(value: Any) -> bool:
-    """Normalize a ServiceNow boolean field to Python bool."""
-    if value is None:
-        return False
-    return str(value).strip().lower() in ("true", "1", "yes")
 
 
 def _str(value: Any) -> str:
@@ -130,7 +124,7 @@ def list_business_rules(
     a table.
 
     To investigate a specific field write mismatch, use get_business_rules
-    (metadata_tools) which filters by field name. This tool returns ALL rules
+    (write_safety_tools) which filters by field name. This tool returns ALL rules
     on the table without a field filter.
 
     Does not modify any records.
@@ -161,11 +155,11 @@ def list_business_rules(
                 sys_id=_str(row.get("sys_id")),
                 name=_str(row.get("name")),
                 timing=_str(row.get("when")),
-                action_insert=_parse_snow_bool(row.get("action_insert")),
-                action_update=_parse_snow_bool(row.get("action_update")),
-                action_delete=_parse_snow_bool(row.get("action_delete")),
-                action_query=_parse_snow_bool(row.get("action_query")),
-                active=_parse_snow_bool(row.get("active")),
+                action_insert=parse_snow_bool(row.get("action_insert")),
+                action_update=parse_snow_bool(row.get("action_update")),
+                action_delete=parse_snow_bool(row.get("action_delete")),
+                action_query=parse_snow_bool(row.get("action_query")),
+                active=parse_snow_bool(row.get("active")),
                 condition=_str(row.get("condition")),
                 script_preview=_preview(row.get("script")),
             )
@@ -243,7 +237,7 @@ def list_ui_policies(
     effect on REST API writes.
 
     To check a specific field's visibility, mandatory, or read-only state in
-    the form use get_ui_policies (metadata_tools) which filters by field name
+    the form use get_ui_policies (write_safety_tools) which filters by field name
     via sys_ui_policy_action. This tool returns all policies on the table.
 
     Does not modify any records.
@@ -270,8 +264,8 @@ def list_ui_policies(
             UIPolicySummary(
                 sys_id=_str(row.get("sys_id")),
                 name=_str(row.get("name")),
-                active=_parse_snow_bool(row.get("active")),
-                run_scripts=_parse_snow_bool(row.get("run_scripts")),
+                active=parse_snow_bool(row.get("active")),
+                run_scripts=parse_snow_bool(row.get("run_scripts")),
                 short_description=_str(row.get("short_description")),
             )
             for row in results
@@ -369,7 +363,7 @@ def list_client_scripts(
                 name=_str(row.get("name")),
                 script_type=_str(row.get("type")),
                 field_name=_str(row.get("field_name")),
-                active=_parse_snow_bool(row.get("active")),
+                active=parse_snow_bool(row.get("active")),
                 script_preview=_preview(row.get("script")),
             )
             for row in results
@@ -469,7 +463,7 @@ def list_notifications(
             NotificationSummary(
                 sys_id=_str(row.get("sys_id")),
                 name=_str(row.get("name")),
-                active=_parse_snow_bool(row.get("active")),
+                active=parse_snow_bool(row.get("active")),
                 event_name=_str(row.get("event_name")),
                 subject=_str(row.get("subject")),
                 condition=_str(row.get("condition")),
@@ -579,10 +573,10 @@ def list_ui_actions(
                 sys_id=_str(row.get("sys_id")),
                 name=_str(row.get("name")),
                 action_name=_str(row.get("action_name")),
-                form_button=_parse_snow_bool(row.get("form_button")),
-                form_context_menu=_parse_snow_bool(row.get("form_context_menu")),
-                list_choice=_parse_snow_bool(row.get("list_choice")),
-                active=_parse_snow_bool(row.get("active")),
+                form_button=parse_snow_bool(row.get("form_button")),
+                form_context_menu=parse_snow_bool(row.get("form_context_menu")),
+                list_choice=parse_snow_bool(row.get("list_choice")),
+                active=parse_snow_bool(row.get("active")),
                 condition=_str(row.get("condition")),
                 script_preview=_preview(row.get("script")),
             )
@@ -722,7 +716,7 @@ def list_access_controls(
                     name=acl_name,
                     acl_type=_str(row.get("type")),
                     operation=_str(row.get("operation")),
-                    active=_parse_snow_bool(row.get("active")),
+                    active=parse_snow_bool(row.get("active")),
                     roles=roles_str,
                     condition=_str(row.get("condition")),
                     script_preview=_preview(row.get("script")),
