@@ -18,7 +18,7 @@ All tools are read-only. None modify any records.
 """
 
 import logging
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 from pydantic import BaseModel, Field
@@ -1202,3 +1202,132 @@ def list_scheduled_scripts(
         err = _request_error(e)
         logger.error("list_scheduled_scripts | failed | error=%s", err)
         return {"success": False, "message": f"Error listing scheduled scripts: {err}"}
+
+
+# ---------------------------------------------------------------------------
+# Client Script enable / disable / delete  (story 13.2)
+# ---------------------------------------------------------------------------
+
+
+class EnableClientScriptParams(BaseModel):
+    """Parameters for enabling a client script."""
+
+    script_sys_id: str = Field(..., description="sys_id of the client script (sys_script_client) to enable")
+
+
+class DisableClientScriptParams(BaseModel):
+    """Parameters for disabling a client script."""
+
+    script_sys_id: str = Field(..., description="sys_id of the client script (sys_script_client) to disable")
+
+
+class DeleteClientScriptParams(BaseModel):
+    """Parameters for deleting a client script."""
+
+    script_sys_id: str = Field(..., description="sys_id of the client script (sys_script_client) to delete")
+
+
+def enable_client_script(
+    config: ServerConfig, auth_manager: AuthManager, params: EnableClientScriptParams
+) -> Dict[str, Any]:
+    """Enable a client script by setting active=true on sys_script_client."""
+    url = f"{config.api_url}/table/sys_script_client/{params.script_sys_id}"
+    try:
+        headers = auth_manager.get_headers()
+        response = requests.patch(url, headers=headers, json={"active": "true"}, timeout=config.timeout)
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info("enable_client_script | enabled | sys_id=%s", params.script_sys_id)
+        return {"success": True, "message": f"Client script {params.script_sys_id} enabled", "client_script": record}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("enable_client_script | failed | sys_id=%s | error=%s", params.script_sys_id, err)
+        return {"success": False, "message": f"Error enabling client script: {err}"}
+
+
+def disable_client_script(
+    config: ServerConfig, auth_manager: AuthManager, params: DisableClientScriptParams
+) -> Dict[str, Any]:
+    """Disable a client script by setting active=false on sys_script_client."""
+    url = f"{config.api_url}/table/sys_script_client/{params.script_sys_id}"
+    try:
+        headers = auth_manager.get_headers()
+        response = requests.patch(url, headers=headers, json={"active": "false"}, timeout=config.timeout)
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info("disable_client_script | disabled | sys_id=%s", params.script_sys_id)
+        return {"success": True, "message": f"Client script {params.script_sys_id} disabled", "client_script": record}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("disable_client_script | failed | sys_id=%s | error=%s", params.script_sys_id, err)
+        return {"success": False, "message": f"Error disabling client script: {err}"}
+
+
+def delete_client_script(
+    config: ServerConfig, auth_manager: AuthManager, params: DeleteClientScriptParams
+) -> Dict[str, Any]:
+    """Delete a client script record from sys_script_client."""
+    url = f"{config.api_url}/table/sys_script_client/{params.script_sys_id}"
+    try:
+        headers = auth_manager.get_headers()
+        response = requests.delete(url, headers=headers, timeout=config.timeout)
+        response.raise_for_status()
+        logger.info("delete_client_script | deleted | sys_id=%s", params.script_sys_id)
+        return {"success": True, "message": f"Client script {params.script_sys_id} deleted"}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("delete_client_script | failed | sys_id=%s | error=%s", params.script_sys_id, err)
+        return {"success": False, "message": f"Error deleting client script: {err}"}
+
+
+# ---------------------------------------------------------------------------
+# UI Action enable / disable  (story 13.3)
+# ---------------------------------------------------------------------------
+
+
+class EnableUiActionParams(BaseModel):
+    """Parameters for enabling a UI action."""
+
+    action_sys_id: str = Field(..., description="sys_id of the UI action (sys_ui_action) to enable")
+
+
+class DisableUiActionParams(BaseModel):
+    """Parameters for disabling a UI action."""
+
+    action_sys_id: str = Field(..., description="sys_id of the UI action (sys_ui_action) to disable")
+
+
+def enable_ui_action(
+    config: ServerConfig, auth_manager: AuthManager, params: EnableUiActionParams
+) -> Dict[str, Any]:
+    """Enable a UI action by setting active=true on sys_ui_action."""
+    url = f"{config.api_url}/table/sys_ui_action/{params.action_sys_id}"
+    try:
+        headers = auth_manager.get_headers()
+        response = requests.patch(url, headers=headers, json={"active": "true"}, timeout=config.timeout)
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info("enable_ui_action | enabled | sys_id=%s", params.action_sys_id)
+        return {"success": True, "message": f"UI action {params.action_sys_id} enabled", "ui_action": record}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("enable_ui_action | failed | sys_id=%s | error=%s", params.action_sys_id, err)
+        return {"success": False, "message": f"Error enabling UI action: {err}"}
+
+
+def disable_ui_action(
+    config: ServerConfig, auth_manager: AuthManager, params: DisableUiActionParams
+) -> Dict[str, Any]:
+    """Disable a UI action by setting active=false on sys_ui_action."""
+    url = f"{config.api_url}/table/sys_ui_action/{params.action_sys_id}"
+    try:
+        headers = auth_manager.get_headers()
+        response = requests.patch(url, headers=headers, json={"active": "false"}, timeout=config.timeout)
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info("disable_ui_action | disabled | sys_id=%s", params.action_sys_id)
+        return {"success": True, "message": f"UI action {params.action_sys_id} disabled", "ui_action": record}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("disable_ui_action | failed | sys_id=%s | error=%s", params.action_sys_id, err)
+        return {"success": False, "message": f"Error disabling UI action: {err}"}
