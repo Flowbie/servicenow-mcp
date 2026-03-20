@@ -8,11 +8,14 @@ import unittest
 from unittest.mock import MagicMock, call, patch
 
 from servicenow_mcp.auth.auth_manager import AuthManager
+import requests
+
 from servicenow_mcp.tools.integration_tools import (
     AddHttpMethodParams,
     AddRestResourceParams,
     CreateRestMessageParams,
     CreateScriptedRestApiParams,
+    CreateTransformMapParams,
     GetMidServerStatusParams,
     GetRestMessageParams,
     GetScriptedRestApiParams,
@@ -20,10 +23,14 @@ from servicenow_mcp.tools.integration_tools import (
     ListMidServersParams,
     ListRestMessagesParams,
     ListScriptedRestApisParams,
+    ListTransformMapsParams,
+    RunImportParams,
+    RunTransformParams,
     add_http_method,
     add_rest_resource,
     create_rest_message,
     create_scripted_rest_api,
+    create_transform_map,
     get_mid_server_status,
     get_rest_message,
     get_scripted_rest_api,
@@ -31,6 +38,9 @@ from servicenow_mcp.tools.integration_tools import (
     list_mid_servers,
     list_rest_messages,
     list_scripted_rest_apis,
+    list_transform_maps,
+    run_import,
+    run_transform,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
 
@@ -465,6 +475,180 @@ class TestGetMidServerStatus(unittest.TestCase):
 
         self.assertFalse(result["success"])
         self.assertIn("HTTP error", result["message"])
+
+
+class TestListTransformMaps(unittest.TestCase):
+    def setUp(self):
+        auth_config = AuthConfig(
+            type=AuthType.BASIC,
+            basic=BasicAuthConfig(username="test_user", password="test_password"),
+        )
+        self.config = ServerConfig(instance_url="https://test.service-now.com", auth=auth_config)
+        self.auth_manager = MagicMock(spec=AuthManager)
+        self.auth_manager.get_headers.return_value = {"Authorization": "Bearer FAKE_TOKEN"}
+
+    @patch("servicenow_mcp.tools.integration_tools.requests.get")
+    def test_list_transform_maps_success(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": [
+                {"sys_id": "tm1", "name": "User Import Map", "source_table": "u_user_staging",
+                 "target_table": "sys_user", "active": "true"},
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        params = ListTransformMapsParams()
+        result = list_transform_maps(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["transform_maps"][0]["name"], "User Import Map")
+
+    @patch("servicenow_mcp.tools.integration_tools.requests.get")
+    def test_list_transform_maps_with_filter(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": []}
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        params = ListTransformMapsParams(source_table_filter="u_staging")
+        result = list_transform_maps(self.config, self.auth_manager, params)
+
+        call_args = mock_get.call_args
+        self.assertIn("sysparm_query", call_args[1]["params"])
+
+    @patch("servicenow_mcp.tools.integration_tools.requests.get")
+    def test_list_transform_maps_http_error(self, mock_get):
+        mock_get.side_effect = requests.HTTPError("Connection refused")
+        params = ListTransformMapsParams()
+        result = list_transform_maps(self.config, self.auth_manager, params)
+        self.assertFalse(result["success"])
+        self.assertIn("message", result)
+
+
+class TestCreateTransformMap(unittest.TestCase):
+    def setUp(self):
+        auth_config = AuthConfig(
+            type=AuthType.BASIC,
+            basic=BasicAuthConfig(username="test_user", password="test_password"),
+        )
+        self.config = ServerConfig(instance_url="https://test.service-now.com", auth=auth_config)
+        self.auth_manager = MagicMock(spec=AuthManager)
+        self.auth_manager.get_headers.return_value = {"Authorization": "Bearer FAKE_TOKEN"}
+
+    @patch("servicenow_mcp.tools.integration_tools.requests.post")
+    def test_create_transform_map_success(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": {"sys_id": "tm_new", "name": "New Import Map", "active": "true"}
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
+        params = CreateTransformMapParams(
+            name="New Import Map",
+            source_table="u_staging_table",
+            target_table="incident",
+        )
+        result = create_transform_map(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["transform_map"]["sys_id"], "tm_new")
+
+    @patch("servicenow_mcp.tools.integration_tools.requests.post")
+    def test_create_transform_map_http_error(self, mock_post):
+        mock_post.side_effect = requests.HTTPError("Connection refused")
+        params = CreateTransformMapParams(name="Fail Map", source_table="u_src", target_table="incident")
+        result = create_transform_map(self.config, self.auth_manager, params)
+        self.assertFalse(result["success"])
+        self.assertIn("message", result)
+
+
+class TestRunTransform(unittest.TestCase):
+    def setUp(self):
+        auth_config = AuthConfig(
+            type=AuthType.BASIC,
+            basic=BasicAuthConfig(username="test_user", password="test_password"),
+        )
+        self.config = ServerConfig(instance_url="https://test.service-now.com", auth=auth_config)
+        self.auth_manager = MagicMock(spec=AuthManager)
+        self.auth_manager.get_headers.return_value = {"Authorization": "Bearer FAKE_TOKEN"}
+
+    @patch("servicenow_mcp.tools.integration_tools.requests.patch")
+    def test_run_transform_success(self, mock_patch):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": {"sys_id": "is1", "state": "complete"}
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_patch.return_value = mock_response
+
+        params = RunTransformParams(import_set_sys_id="is1", transform_map_sys_id="tm1")
+        result = run_transform(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+
+    @patch("servicenow_mcp.tools.integration_tools.requests.patch")
+    def test_run_transform_http_error(self, mock_patch):
+        mock_patch.side_effect = requests.HTTPError("Timeout")
+        params = RunTransformParams(import_set_sys_id="is1")
+        result = run_transform(self.config, self.auth_manager, params)
+        self.assertFalse(result["success"])
+        self.assertIn("message", result)
+
+
+class TestRunImport(unittest.TestCase):
+    def setUp(self):
+        auth_config = AuthConfig(
+            type=AuthType.BASIC,
+            basic=BasicAuthConfig(username="test_user", password="test_password"),
+        )
+        self.config = ServerConfig(instance_url="https://test.service-now.com", auth=auth_config)
+        self.auth_manager = MagicMock(spec=AuthManager)
+        self.auth_manager.get_headers.return_value = {"Authorization": "Bearer FAKE_TOKEN"}
+
+    @patch("servicenow_mcp.tools.integration_tools.requests.post")
+    def test_run_import_success(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": [{"display_name": "number", "display_value": "IMP0010001",
+                        "status": "inserted", "sys_id": "is1", "table": "incident",
+                        "transform_map": "User Import Map", "error": None}]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
+        params = RunImportParams(staging_table="u_user_staging", payload={"u_name": "Test User"})
+        result = run_import(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["results"][0]["status"], "inserted")
+
+    @patch("servicenow_mcp.tools.integration_tools.requests.post")
+    def test_run_import_dict_result_wrapped_in_list(self, mock_post):
+        """Test that a single dict result is normalized to a list."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": {"status": "inserted", "sys_id": "is2"}
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_post.return_value = mock_response
+
+        params = RunImportParams(staging_table="u_staging", payload={"field": "val"})
+        result = run_import(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertIsInstance(result["results"], list)
+
+    @patch("servicenow_mcp.tools.integration_tools.requests.post")
+    def test_run_import_http_error(self, mock_post):
+        mock_post.side_effect = requests.HTTPError("Timeout")
+        params = RunImportParams(staging_table="u_staging", payload={"field": "val"})
+        result = run_import(self.config, self.auth_manager, params)
+        self.assertFalse(result["success"])
+        self.assertIn("message", result)
 
 
 if __name__ == "__main__":
