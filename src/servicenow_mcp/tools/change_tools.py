@@ -6,7 +6,7 @@ This module provides tools for managing change requests in ServiceNow.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Dict, List, Literal, Optional, Type, TypeVar
 
 import requests
 from pydantic import BaseModel, Field
@@ -955,4 +955,373 @@ def reject_change(
         return {
             "success": False,
             "message": f"Error rejecting change: {str(e)}",
-        } 
+        }
+
+
+# ---------------------------------------------------------------------------
+# Change Task Tools (Phase 3 additions)
+# ---------------------------------------------------------------------------
+
+class ListChangeTasksParams(BaseModel):
+    """Parameters for listing tasks for a change request."""
+
+    change_request_id: str = Field(..., description="sys_id of the parent change request")
+    limit: Optional[int] = Field(10, description="Maximum number of records to return")
+    offset: Optional[int] = Field(0, description="Offset to start from")
+
+
+class GetChangeTaskParams(BaseModel):
+    """Parameters for getting a single change task."""
+
+    task_id: str = Field(..., description="sys_id of the change task")
+
+
+class UpdateChangeTaskParams(BaseModel):
+    """Parameters for updating a change task."""
+
+    task_id: str = Field(..., description="sys_id of the change task")
+    state: Optional[str] = Field(None, description="New state value")
+    assigned_to: Optional[str] = Field(None, description="sys_id of user to assign")
+    close_code: Optional[str] = Field(None, description="Close code (successful, successful_issues, unsuccessful)")
+    work_notes: Optional[str] = Field(None, description="Work notes to add")
+
+
+class CloseChangeTaskParams(BaseModel):
+    """Parameters for closing a change task."""
+
+    task_id: str = Field(..., description="sys_id of the change task")
+    state: Literal["3", "4"] = Field(
+        ..., description="Closing state: '3' (closed complete) or '4' (closed incomplete)"
+    )
+    close_code: Literal["successful", "successful_issues", "unsuccessful"] = Field(
+        ...,
+        description="Close code: 'successful', 'successful_issues', or 'unsuccessful'",
+    )
+    close_notes: Optional[str] = Field(None, description="Closing notes")
+
+
+class GetCabScheduleParams(BaseModel):
+    """Parameters for reading CAB schedule from a change request."""
+
+    change_id: str = Field(..., description="sys_id of the change request")
+
+
+class UpdateCabDetailsParams(BaseModel):
+    """Parameters for updating CAB details on a change request."""
+
+    change_id: str = Field(..., description="sys_id of the change request")
+    cab_required: Optional[bool] = Field(None, description="Whether CAB approval is required")
+    cab_date_time: Optional[str] = Field(None, description="CAB meeting date/time (YYYY-MM-DD HH:MM:SS)")
+
+
+def list_change_tasks(
+    auth_manager: AuthManager,
+    server_config: ServerConfig,
+    params: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    List change tasks for a specific change request.
+
+    Args:
+        auth_manager: The authentication manager.
+        server_config: The server configuration.
+        params: The parameters including change_request_id.
+
+    Returns:
+        A list of change tasks.
+    """
+    result = _unwrap_and_validate_params(params, ListChangeTasksParams, required_fields=["change_request_id"])
+    if not result["success"]:
+        return result
+    validated_params = result["params"]
+
+    instance_url = _get_instance_url(auth_manager, server_config)
+    if not instance_url:
+        return {"success": False, "message": "Cannot find instance_url in either server_config or auth_manager"}
+
+    headers = _get_headers(auth_manager, server_config)
+    if not headers:
+        return {"success": False, "message": "Cannot find get_headers method in either auth_manager or server_config"}
+
+    url = f"{instance_url}/api/now/table/change_task"
+    query_params = {
+        "sysparm_query": f"change_request={validated_params.change_request_id}",
+        "sysparm_limit": validated_params.limit,
+        "sysparm_offset": validated_params.offset,
+        "sysparm_display_value": "true",
+    }
+
+    try:
+        response = requests.get(url, headers=headers, params=query_params)
+        response.raise_for_status()
+        tasks = response.json().get("result", [])
+        return {
+            "success": True,
+            "change_tasks": tasks,
+            "count": len(tasks),
+        }
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error listing change tasks: {e}")
+        return {"success": False, "message": f"Error listing change tasks: {str(e)}"}
+
+
+def get_change_task(
+    auth_manager: AuthManager,
+    server_config: ServerConfig,
+    params: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Get a single change task by sys_id.
+
+    Args:
+        auth_manager: The authentication manager.
+        server_config: The server configuration.
+        params: The parameters including task_id.
+
+    Returns:
+        The change task record.
+    """
+    result = _unwrap_and_validate_params(params, GetChangeTaskParams, required_fields=["task_id"])
+    if not result["success"]:
+        return result
+    validated_params = result["params"]
+
+    instance_url = _get_instance_url(auth_manager, server_config)
+    if not instance_url:
+        return {"success": False, "message": "Cannot find instance_url in either server_config or auth_manager"}
+
+    headers = _get_headers(auth_manager, server_config)
+    if not headers:
+        return {"success": False, "message": "Cannot find get_headers method in either auth_manager or server_config"}
+
+    url = f"{instance_url}/api/now/table/change_task/{validated_params.task_id}"
+    query_params = {"sysparm_display_value": "true"}
+
+    try:
+        response = requests.get(url, headers=headers, params=query_params)
+        response.raise_for_status()
+        return {
+            "success": True,
+            "change_task": response.json().get("result", {}),
+        }
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error getting change task: {e}")
+        return {"success": False, "message": f"Error getting change task: {str(e)}"}
+
+
+def update_change_task(
+    auth_manager: AuthManager,
+    server_config: ServerConfig,
+    params: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Update state, assignment, or close_code on a change task.
+
+    Args:
+        auth_manager: The authentication manager.
+        server_config: The server configuration.
+        params: The parameters including task_id and fields to update.
+
+    Returns:
+        The updated change task.
+    """
+    result = _unwrap_and_validate_params(params, UpdateChangeTaskParams, required_fields=["task_id"])
+    if not result["success"]:
+        return result
+    validated_params = result["params"]
+
+    instance_url = _get_instance_url(auth_manager, server_config)
+    if not instance_url:
+        return {"success": False, "message": "Cannot find instance_url in either server_config or auth_manager"}
+
+    headers = _get_headers(auth_manager, server_config)
+    if not headers:
+        return {"success": False, "message": "Cannot find get_headers method in either auth_manager or server_config"}
+
+    headers["Content-Type"] = "application/json"
+
+    data = {}
+    if validated_params.state is not None:
+        data["state"] = validated_params.state
+    if validated_params.assigned_to is not None:
+        data["assigned_to"] = validated_params.assigned_to
+    if validated_params.close_code is not None:
+        data["close_code"] = validated_params.close_code
+    if validated_params.work_notes is not None:
+        data["work_notes"] = validated_params.work_notes
+
+    url = f"{instance_url}/api/now/table/change_task/{validated_params.task_id}"
+
+    try:
+        response = requests.patch(url, json=data, headers=headers)
+        response.raise_for_status()
+        return {
+            "success": True,
+            "message": "Change task updated successfully",
+            "change_task": response.json().get("result", {}),
+        }
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error updating change task: {e}")
+        return {"success": False, "message": f"Error updating change task: {str(e)}"}
+
+
+def close_change_task(
+    auth_manager: AuthManager,
+    server_config: ServerConfig,
+    params: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Close a change task, requiring state and close_code.
+
+    Args:
+        auth_manager: The authentication manager.
+        server_config: The server configuration.
+        params: The parameters including task_id, state, and close_code.
+
+    Returns:
+        The closed change task.
+    """
+    result = _unwrap_and_validate_params(
+        params, CloseChangeTaskParams, required_fields=["task_id", "state", "close_code"]
+    )
+    if not result["success"]:
+        return result
+    validated_params = result["params"]
+
+    instance_url = _get_instance_url(auth_manager, server_config)
+    if not instance_url:
+        return {"success": False, "message": "Cannot find instance_url in either server_config or auth_manager"}
+
+    headers = _get_headers(auth_manager, server_config)
+    if not headers:
+        return {"success": False, "message": "Cannot find get_headers method in either auth_manager or server_config"}
+
+    headers["Content-Type"] = "application/json"
+
+    data = {
+        "state": validated_params.state,
+        "close_code": validated_params.close_code,
+    }
+    if validated_params.close_notes is not None:
+        data["close_notes"] = validated_params.close_notes
+
+    url = f"{instance_url}/api/now/table/change_task/{validated_params.task_id}"
+
+    try:
+        response = requests.patch(url, json=data, headers=headers)
+        response.raise_for_status()
+        return {
+            "success": True,
+            "message": "Change task closed successfully",
+            "change_task": response.json().get("result", {}),
+        }
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error closing change task: {e}")
+        return {"success": False, "message": f"Error closing change task: {str(e)}"}
+
+
+def get_cab_schedule(
+    auth_manager: AuthManager,
+    server_config: ServerConfig,
+    params: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Read CAB schedule fields (cab_required, cab_date_time) from a change request.
+
+    Args:
+        auth_manager: The authentication manager.
+        server_config: The server configuration.
+        params: The parameters including change_id.
+
+    Returns:
+        The CAB schedule details.
+    """
+    result = _unwrap_and_validate_params(params, GetCabScheduleParams, required_fields=["change_id"])
+    if not result["success"]:
+        return result
+    validated_params = result["params"]
+
+    instance_url = _get_instance_url(auth_manager, server_config)
+    if not instance_url:
+        return {"success": False, "message": "Cannot find instance_url in either server_config or auth_manager"}
+
+    headers = _get_headers(auth_manager, server_config)
+    if not headers:
+        return {"success": False, "message": "Cannot find get_headers method in either auth_manager or server_config"}
+
+    url = f"{instance_url}/api/now/table/change_request/{validated_params.change_id}"
+    query_params = {
+        "sysparm_fields": "sys_id,number,cab_required,cab_date_time,short_description",
+        "sysparm_display_value": "true",
+    }
+
+    try:
+        response = requests.get(url, headers=headers, params=query_params)
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        return {
+            "success": True,
+            "change_id": validated_params.change_id,
+            "cab_required": record.get("cab_required"),
+            "cab_date_time": record.get("cab_date_time"),
+            "number": record.get("number"),
+            "short_description": record.get("short_description"),
+        }
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error getting CAB schedule: {e}")
+        return {"success": False, "message": f"Error getting CAB schedule: {str(e)}"}
+
+
+def update_cab_details(
+    auth_manager: AuthManager,
+    server_config: ServerConfig,
+    params: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Update CAB details (cab_required, cab_date_time) on a change request.
+
+    Args:
+        auth_manager: The authentication manager.
+        server_config: The server configuration.
+        params: The parameters including change_id and CAB fields.
+
+    Returns:
+        The updated change request CAB details.
+    """
+    result = _unwrap_and_validate_params(params, UpdateCabDetailsParams, required_fields=["change_id"])
+    if not result["success"]:
+        return result
+    validated_params = result["params"]
+
+    instance_url = _get_instance_url(auth_manager, server_config)
+    if not instance_url:
+        return {"success": False, "message": "Cannot find instance_url in either server_config or auth_manager"}
+
+    headers = _get_headers(auth_manager, server_config)
+    if not headers:
+        return {"success": False, "message": "Cannot find get_headers method in either auth_manager or server_config"}
+
+    headers["Content-Type"] = "application/json"
+
+    data = {}
+    if validated_params.cab_required is not None:
+        data["cab_required"] = validated_params.cab_required
+    if validated_params.cab_date_time is not None:
+        data["cab_date_time"] = validated_params.cab_date_time
+
+    url = f"{instance_url}/api/now/table/change_request/{validated_params.change_id}"
+
+    try:
+        response = requests.patch(url, json=data, headers=headers)
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        return {
+            "success": True,
+            "message": "CAB details updated successfully",
+            "change_id": validated_params.change_id,
+            "cab_required": record.get("cab_required"),
+            "cab_date_time": record.get("cab_date_time"),
+        }
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error updating CAB details: {e}")
+        return {"success": False, "message": f"Error updating CAB details: {str(e)}"}

@@ -729,3 +729,476 @@ def list_access_controls(
         err = _request_error(e)
         logger.error("list_access_controls | failed | table=%s | error=%s", params.table, err)
         return ListAccessControlsResult(table=params.table, fetch_error=err)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 — Platform scripting write tools
+# ---------------------------------------------------------------------------
+
+
+# --- Business Rules (sys_script) ---
+# NOTE: The table field on sys_script is named 'collection', not 'table'.
+
+
+class CreateBusinessRuleParams(BaseModel):
+    """Parameters for creating a Business Rule in sys_script."""
+
+    name: str = Field(..., description="Display name for the business rule")
+    table: str = Field(
+        ...,
+        description="Target table name (stored as 'collection' on sys_script, e.g. 'incident')",
+    )
+    when: str = Field(
+        ...,
+        description="Execution timing: 'before', 'after', 'async', or 'display'",
+    )
+    script: str = Field(..., description="Server-side JavaScript for the rule")
+    action_insert: bool = Field(False, description="Run on insert")
+    action_update: bool = Field(False, description="Run on update")
+    action_delete: bool = Field(False, description="Run on delete")
+    action_query: bool = Field(False, description="Run on query")
+    active: bool = Field(True, description="Whether the rule is active")
+    condition: Optional[str] = Field(None, description="GlideRecord condition expression")
+    order: Optional[int] = Field(None, description="Execution order (lower runs first)")
+
+
+class UpdateBusinessRuleParams(BaseModel):
+    """Parameters for updating an existing Business Rule."""
+
+    sys_id: str = Field(..., description="sys_id of the business rule to update")
+    name: Optional[str] = Field(None, description="New display name")
+    when: Optional[str] = Field(None, description="Execution timing: before, after, async, display")
+    script: Optional[str] = Field(None, description="Updated JavaScript")
+    action_insert: Optional[bool] = Field(None, description="Run on insert")
+    action_update: Optional[bool] = Field(None, description="Run on update")
+    action_delete: Optional[bool] = Field(None, description="Run on delete")
+    action_query: Optional[bool] = Field(None, description="Run on query")
+    active: Optional[bool] = Field(None, description="Active state")
+    condition: Optional[str] = Field(None, description="GlideRecord condition expression")
+    order: Optional[int] = Field(None, description="Execution order")
+
+
+class DeleteBusinessRuleParams(BaseModel):
+    """Parameters for deleting a Business Rule."""
+
+    sys_id: str = Field(..., description="sys_id of the business rule to delete")
+
+
+def create_business_rule(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: CreateBusinessRuleParams,
+) -> dict:
+    """Create a Business Rule in sys_script.
+
+    Note: the table field on sys_script is named 'collection', not 'table'.
+    """
+    try:
+        headers = auth_manager.get_headers()
+        headers["Content-Type"] = "application/json"
+        data: dict = {
+            "name": params.name,
+            "collection": params.table,   # field is 'collection', not 'table'
+            "when": params.when,
+            "script": params.script,
+            "action_insert": str(params.action_insert).lower(),
+            "action_update": str(params.action_update).lower(),
+            "action_delete": str(params.action_delete).lower(),
+            "action_query": str(params.action_query).lower(),
+            "active": str(params.active).lower(),
+        }
+        if params.condition is not None:
+            data["condition"] = params.condition
+        if params.order is not None:
+            data["order"] = str(params.order)
+
+        response = requests.post(
+            f"{config.api_url}/table/sys_script",
+            json=data,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info("create_business_rule | created | name=%s | sys_id=%s", params.name, record.get("sys_id"))
+        return {"success": True, "message": f"Business rule '{params.name}' created", "business_rule": record}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("create_business_rule | failed | name=%s | error=%s", params.name, err)
+        return {"success": False, "message": f"Error creating business rule: {err}"}
+
+
+def update_business_rule(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: UpdateBusinessRuleParams,
+) -> dict:
+    """Update an existing Business Rule in sys_script."""
+    try:
+        headers = auth_manager.get_headers()
+        headers["Content-Type"] = "application/json"
+        data: dict = {}
+        if params.name is not None:
+            data["name"] = params.name
+        if params.when is not None:
+            data["when"] = params.when
+        if params.script is not None:
+            data["script"] = params.script
+        if params.action_insert is not None:
+            data["action_insert"] = str(params.action_insert).lower()
+        if params.action_update is not None:
+            data["action_update"] = str(params.action_update).lower()
+        if params.action_delete is not None:
+            data["action_delete"] = str(params.action_delete).lower()
+        if params.action_query is not None:
+            data["action_query"] = str(params.action_query).lower()
+        if params.active is not None:
+            data["active"] = str(params.active).lower()
+        if params.condition is not None:
+            data["condition"] = params.condition
+        if params.order is not None:
+            data["order"] = str(params.order)
+
+        response = requests.patch(
+            f"{config.api_url}/table/sys_script/{params.sys_id}",
+            json=data,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info("update_business_rule | updated | sys_id=%s", params.sys_id)
+        return {"success": True, "message": f"Business rule {params.sys_id} updated", "business_rule": record}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("update_business_rule | failed | sys_id=%s | error=%s", params.sys_id, err)
+        return {"success": False, "message": f"Error updating business rule: {err}"}
+
+
+def delete_business_rule(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: DeleteBusinessRuleParams,
+) -> dict:
+    """Delete a Business Rule from sys_script by sys_id."""
+    try:
+        headers = auth_manager.get_headers()
+        response = requests.delete(
+            f"{config.api_url}/table/sys_script/{params.sys_id}",
+            headers=headers,
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        logger.info("delete_business_rule | deleted | sys_id=%s", params.sys_id)
+        return {"success": True, "message": f"Business rule {params.sys_id} deleted"}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("delete_business_rule | failed | sys_id=%s | error=%s", params.sys_id, err)
+        return {"success": False, "message": f"Error deleting business rule: {err}"}
+
+
+# --- Client Scripts (sys_script_client) ---
+# NOTE: The correct table is sys_script_client, NOT sys_client_script.
+
+
+class CreateClientScriptParams(BaseModel):
+    """Parameters for creating a Client Script in sys_script_client."""
+
+    name: str = Field(..., description="Display name for the client script")
+    table: str = Field(..., description="Target table name (e.g. 'incident')")
+    script_type: str = Field(
+        ...,
+        description="Script type: 'onChange', 'onLoad', 'onSubmit', or 'onCellEdit'",
+    )
+    script: str = Field(..., description="Client-side JavaScript")
+    active: bool = Field(True, description="Whether the script is active")
+    field_name: Optional[str] = Field(
+        None,
+        description="Field to watch (required for onChange, omit for onLoad/onSubmit)",
+    )
+
+
+class UpdateClientScriptParams(BaseModel):
+    """Parameters for updating an existing Client Script."""
+
+    sys_id: str = Field(..., description="sys_id of the client script to update")
+    name: Optional[str] = Field(None, description="New display name")
+    script: Optional[str] = Field(None, description="Updated JavaScript")
+    script_type: Optional[str] = Field(None, description="onChange, onLoad, onSubmit, onCellEdit")
+    active: Optional[bool] = Field(None, description="Active state")
+    field_name: Optional[str] = Field(None, description="Watched field name")
+
+
+def create_client_script(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: CreateClientScriptParams,
+) -> dict:
+    """Create a Client Script in sys_script_client.
+
+    Note: the table is sys_script_client, NOT sys_client_script.
+    """
+    try:
+        headers = auth_manager.get_headers()
+        headers["Content-Type"] = "application/json"
+        data: dict = {
+            "name": params.name,
+            "table": params.table,
+            "type": params.script_type,
+            "script": params.script,
+            "active": str(params.active).lower(),
+        }
+        if params.field_name is not None:
+            data["field_name"] = params.field_name
+
+        response = requests.post(
+            f"{config.api_url}/table/sys_script_client",
+            json=data,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info("create_client_script | created | name=%s | sys_id=%s", params.name, record.get("sys_id"))
+        return {"success": True, "message": f"Client script '{params.name}' created", "client_script": record}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("create_client_script | failed | name=%s | error=%s", params.name, err)
+        return {"success": False, "message": f"Error creating client script: {err}"}
+
+
+def update_client_script(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: UpdateClientScriptParams,
+) -> dict:
+    """Update an existing Client Script in sys_script_client."""
+    try:
+        headers = auth_manager.get_headers()
+        headers["Content-Type"] = "application/json"
+        data: dict = {}
+        if params.name is not None:
+            data["name"] = params.name
+        if params.script is not None:
+            data["script"] = params.script
+        if params.script_type is not None:
+            data["type"] = params.script_type
+        if params.active is not None:
+            data["active"] = str(params.active).lower()
+        if params.field_name is not None:
+            data["field_name"] = params.field_name
+
+        response = requests.patch(
+            f"{config.api_url}/table/sys_script_client/{params.sys_id}",
+            json=data,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info("update_client_script | updated | sys_id=%s", params.sys_id)
+        return {"success": True, "message": f"Client script {params.sys_id} updated", "client_script": record}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("update_client_script | failed | sys_id=%s | error=%s", params.sys_id, err)
+        return {"success": False, "message": f"Error updating client script: {err}"}
+
+
+# --- UI Actions (sys_ui_action) ---
+# NOTE: There is NO action_type field on sys_ui_action.
+# Surfaces are controlled by 14 boolean fields.
+_UI_ACTION_SURFACE_FLAGS = [
+    "form_button", "form_context_menu", "form_link", "list_banner_button",
+    "list_choice", "list_context_menu", "list_expanded", "list_link",
+    "form_menu_button", "ref_contributions", "onload", "client", "ajax",
+    "isolate_script",
+]
+
+
+class CreateUIActionParams(BaseModel):
+    """Parameters for creating a UI Action in sys_ui_action.
+
+    There is no action_type field on sys_ui_action. Surfaces are controlled
+    by 14 individual boolean flags.
+    """
+
+    name: str = Field(..., description="Display name for the UI action")
+    table: str = Field(..., description="Target table name (e.g. 'incident')")
+    script: str = Field(..., description="Server-side JavaScript for the action")
+    active: bool = Field(True, description="Whether the UI action is active")
+    action_name: Optional[str] = Field(None, description="Internal action name (used in references)")
+    condition: Optional[str] = Field(None, description="Condition controlling visibility")
+    # Surface boolean flags
+    form_button: bool = Field(False, description="Show as a form button")
+    form_context_menu: bool = Field(False, description="Show in form context menu")
+    form_link: bool = Field(False, description="Show as a form link")
+    list_banner_button: bool = Field(False, description="Show as a list banner button")
+    list_choice: bool = Field(False, description="Show as a list action choice")
+    list_context_menu: bool = Field(False, description="Show in list context menu")
+    list_expanded: bool = Field(False, description="Show in expanded list")
+    list_link: bool = Field(False, description="Show as a list link")
+    form_menu_button: bool = Field(False, description="Show as a form menu button")
+    ref_contributions: bool = Field(False, description="Contribute to reference field")
+    onload: bool = Field(False, description="Execute on form load")
+    client: bool = Field(False, description="Run as client-side script")
+    ajax: bool = Field(False, description="Run as AJAX call")
+    isolate_script: bool = Field(False, description="Isolate script execution")
+
+
+class UpdateUIActionParams(BaseModel):
+    """Parameters for updating an existing UI Action."""
+
+    sys_id: str = Field(..., description="sys_id of the UI action to update")
+    name: Optional[str] = Field(None, description="New display name")
+    script: Optional[str] = Field(None, description="Updated JavaScript")
+    active: Optional[bool] = Field(None, description="Active state")
+    action_name: Optional[str] = Field(None, description="Internal action name")
+    condition: Optional[str] = Field(None, description="Visibility condition")
+    # Surface boolean flags — all optional
+    form_button: Optional[bool] = Field(None)
+    form_context_menu: Optional[bool] = Field(None)
+    form_link: Optional[bool] = Field(None)
+    list_banner_button: Optional[bool] = Field(None)
+    list_choice: Optional[bool] = Field(None)
+    list_context_menu: Optional[bool] = Field(None)
+    list_expanded: Optional[bool] = Field(None)
+    list_link: Optional[bool] = Field(None)
+    form_menu_button: Optional[bool] = Field(None)
+    ref_contributions: Optional[bool] = Field(None)
+    onload: Optional[bool] = Field(None)
+    client: Optional[bool] = Field(None)
+    ajax: Optional[bool] = Field(None)
+    isolate_script: Optional[bool] = Field(None)
+
+
+def create_ui_action(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: CreateUIActionParams,
+) -> dict:
+    """Create a UI Action in sys_ui_action.
+
+    There is no action_type field on sys_ui_action. Surfaces are controlled
+    by 14 individual boolean flags (form_button, form_context_menu, etc.).
+    """
+    try:
+        headers = auth_manager.get_headers()
+        headers["Content-Type"] = "application/json"
+        data: dict = {
+            "name": params.name,
+            "table": params.table,
+            "script": params.script,
+            "active": str(params.active).lower(),
+        }
+        if params.action_name is not None:
+            data["action_name"] = params.action_name
+        if params.condition is not None:
+            data["condition"] = params.condition
+        for flag in _UI_ACTION_SURFACE_FLAGS:
+            data[flag] = str(getattr(params, flag)).lower()
+
+        response = requests.post(
+            f"{config.api_url}/table/sys_ui_action",
+            json=data,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info("create_ui_action | created | name=%s | sys_id=%s", params.name, record.get("sys_id"))
+        return {"success": True, "message": f"UI action '{params.name}' created", "ui_action": record}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("create_ui_action | failed | name=%s | error=%s", params.name, err)
+        return {"success": False, "message": f"Error creating UI action: {err}"}
+
+
+def update_ui_action(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: UpdateUIActionParams,
+) -> dict:
+    """Update an existing UI Action in sys_ui_action."""
+    try:
+        headers = auth_manager.get_headers()
+        headers["Content-Type"] = "application/json"
+        data: dict = {}
+        if params.name is not None:
+            data["name"] = params.name
+        if params.script is not None:
+            data["script"] = params.script
+        if params.active is not None:
+            data["active"] = str(params.active).lower()
+        if params.action_name is not None:
+            data["action_name"] = params.action_name
+        if params.condition is not None:
+            data["condition"] = params.condition
+        for flag in _UI_ACTION_SURFACE_FLAGS:
+            val = getattr(params, flag)
+            if val is not None:
+                data[flag] = str(val).lower()
+
+        response = requests.patch(
+            f"{config.api_url}/table/sys_ui_action/{params.sys_id}",
+            json=data,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info("update_ui_action | updated | sys_id=%s", params.sys_id)
+        return {"success": True, "message": f"UI action {params.sys_id} updated", "ui_action": record}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("update_ui_action | failed | sys_id=%s | error=%s", params.sys_id, err)
+        return {"success": False, "message": f"Error updating UI action: {err}"}
+
+
+# --- Scheduled Scripts (sysauto_script) — read-only ---
+
+
+class ListScheduledScriptsParams(BaseModel):
+    """Parameters for listing scheduled script executions from sysauto_script."""
+
+    limit: int = Field(10, description="Maximum number of records to return")
+    offset: int = Field(0, description="Pagination offset")
+    active: Optional[bool] = Field(None, description="Filter by active flag")
+    name_filter: Optional[str] = Field(None, description="Filter by name (LIKE match)")
+
+
+def list_scheduled_scripts(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: ListScheduledScriptsParams,
+) -> dict:
+    """List scheduled script executions from sysauto_script. Read-only."""
+    try:
+        headers = auth_manager.get_headers()
+        query_parts: List[str] = []
+        if params.active is not None:
+            query_parts.append(f"active={str(params.active).lower()}")
+        if params.name_filter is not None:
+            query_parts.append(f"nameLIKE{params.name_filter}")
+
+        query_params: dict = {
+            "sysparm_limit": params.limit,
+            "sysparm_offset": params.offset,
+            "sysparm_display_value": "true",
+        }
+        if query_parts:
+            query_params["sysparm_query"] = "^".join(query_parts)
+
+        response = requests.get(
+            f"{config.api_url}/table/sysauto_script",
+            headers=headers,
+            params=query_params,
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        scripts = response.json().get("result", [])
+        logger.info("list_scheduled_scripts | count=%d", len(scripts))
+        return {"success": True, "scheduled_scripts": scripts, "count": len(scripts)}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("list_scheduled_scripts | failed | error=%s", err)
+        return {"success": False, "message": f"Error listing scheduled scripts: {err}"}

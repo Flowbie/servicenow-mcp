@@ -16,6 +16,12 @@ from servicenow_mcp.tools.change_tools import (
     submit_change_for_approval,
     approve_change,
     reject_change,
+    list_change_tasks,
+    get_change_task,
+    update_change_task,
+    close_change_task,
+    get_cab_schedule,
+    update_cab_details,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
 
@@ -604,6 +610,287 @@ class TestChangeTools(unittest.TestCase):
 
         self.assertFalse(result["success"])
         self.assertIn("Error rejecting change", result["message"])
+
+
+class TestChangeTaskTools(unittest.TestCase):
+    """Tests for Phase 3 change task and CAB tools."""
+
+    def setUp(self):
+        self.auth_config = AuthConfig(
+            type=AuthType.BASIC,
+            basic=BasicAuthConfig(username="test_user", password="test_password"),
+        )
+        self.server_config = ServerConfig(
+            instance_url="https://test.service-now.com",
+            auth=self.auth_config,
+        )
+        self.auth_manager = AuthManager(self.auth_config)
+
+    # --- list_change_tasks ---
+
+    @patch("servicenow_mcp.tools.change_tools.requests.get")
+    def test_list_change_tasks_success(self, mock_get):
+        """Test listing change tasks successfully."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": [
+                {"sys_id": "task1", "short_description": "Pre-check", "state": "1"},
+                {"sys_id": "task2", "short_description": "Deploy", "state": "1"},
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        result = list_change_tasks(self.auth_manager, self.server_config, {"change_request_id": "chg123"})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(len(result["change_tasks"]), 2)
+        self.assertEqual(result["count"], 2)
+
+    @patch("servicenow_mcp.tools.change_tools.requests.get")
+    def test_list_change_tasks_empty(self, mock_get):
+        """Test listing change tasks returns empty list."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": []}
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        result = list_change_tasks(self.auth_manager, self.server_config, {"change_request_id": "chg123"})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["count"], 0)
+
+    def test_list_change_tasks_missing_required(self):
+        """Test that missing change_request_id returns error."""
+        result = list_change_tasks(self.auth_manager, self.server_config, {})
+        self.assertFalse(result["success"])
+
+    @patch("servicenow_mcp.tools.change_tools.requests.get")
+    def test_list_change_tasks_http_error(self, mock_get):
+        """Test list_change_tasks handles HTTP errors."""
+        mock_get.side_effect = requests.exceptions.RequestException("connection error")
+        result = list_change_tasks(self.auth_manager, self.server_config, {"change_request_id": "chg123"})
+        self.assertFalse(result["success"])
+        self.assertIn("Error listing change tasks", result["message"])
+
+    # --- get_change_task ---
+
+    @patch("servicenow_mcp.tools.change_tools.requests.get")
+    def test_get_change_task_success(self, mock_get):
+        """Test getting a change task by sys_id."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": {"sys_id": "task1", "short_description": "Pre-check", "state": "1"}
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        result = get_change_task(self.auth_manager, self.server_config, {"task_id": "task1"})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["change_task"]["sys_id"], "task1")
+
+    def test_get_change_task_missing_required(self):
+        """Test that missing task_id returns error."""
+        result = get_change_task(self.auth_manager, self.server_config, {})
+        self.assertFalse(result["success"])
+
+    # --- update_change_task ---
+
+    @patch("servicenow_mcp.tools.change_tools.requests.patch")
+    def test_update_change_task_success(self, mock_patch):
+        """Test updating a change task state and assignment."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": {"sys_id": "task1", "state": "2", "assigned_to": "user1"}
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_patch.return_value = mock_response
+
+        result = update_change_task(
+            self.auth_manager,
+            self.server_config,
+            {"task_id": "task1", "state": "2", "assigned_to": "user1"},
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["message"], "Change task updated successfully")
+        self.assertEqual(result["change_task"]["state"], "2")
+
+    @patch("servicenow_mcp.tools.change_tools.requests.patch")
+    def test_update_change_task_http_error(self, mock_patch):
+        """Test update_change_task handles HTTP errors."""
+        mock_patch.side_effect = requests.exceptions.RequestException("timeout")
+        result = update_change_task(self.auth_manager, self.server_config, {"task_id": "task1", "state": "2"})
+        self.assertFalse(result["success"])
+        self.assertIn("Error updating change task", result["message"])
+
+    def test_update_change_task_missing_required(self):
+        """Test that missing task_id returns error."""
+        result = update_change_task(self.auth_manager, self.server_config, {"state": "2"})
+        self.assertFalse(result["success"])
+
+    # --- close_change_task ---
+
+    @patch("servicenow_mcp.tools.change_tools.requests.patch")
+    def test_close_change_task_success(self, mock_patch):
+        """Test closing a change task with required fields."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": {"sys_id": "task1", "state": "3", "close_code": "successful"}
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_patch.return_value = mock_response
+
+        result = close_change_task(
+            self.auth_manager,
+            self.server_config,
+            {"task_id": "task1", "state": "3", "close_code": "successful", "close_notes": "Done"},
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["message"], "Change task closed successfully")
+
+    def test_close_change_task_missing_close_code(self):
+        """Test that missing close_code returns error."""
+        result = close_change_task(
+            self.auth_manager, self.server_config, {"task_id": "task1", "state": "3"}
+        )
+        self.assertFalse(result["success"])
+
+    @patch("servicenow_mcp.tools.change_tools.requests.patch")
+    def test_close_change_task_http_error(self, mock_patch):
+        """Test close_change_task handles HTTP errors."""
+        mock_patch.side_effect = requests.exceptions.RequestException("error")
+        result = close_change_task(
+            self.auth_manager,
+            self.server_config,
+            {"task_id": "task1", "state": "4", "close_code": "unsuccessful"},
+        )
+        self.assertFalse(result["success"])
+        self.assertIn("Error closing change task", result["message"])
+
+    # --- get_cab_schedule ---
+
+    @patch("servicenow_mcp.tools.change_tools.requests.get")
+    def test_get_cab_schedule_success(self, mock_get):
+        """Test reading CAB schedule from a change request."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": {
+                "sys_id": "chg123",
+                "number": "CHG0010001",
+                "cab_required": "true",
+                "cab_date_time": "2026-04-01 10:00:00",
+                "short_description": "Deploy",
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        result = get_cab_schedule(self.auth_manager, self.server_config, {"change_id": "chg123"})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["cab_required"], "true")
+        self.assertEqual(result["cab_date_time"], "2026-04-01 10:00:00")
+        self.assertEqual(result["number"], "CHG0010001")
+
+    def test_get_cab_schedule_missing_required(self):
+        """Test that missing change_id returns error."""
+        result = get_cab_schedule(self.auth_manager, self.server_config, {})
+        self.assertFalse(result["success"])
+
+    @patch("servicenow_mcp.tools.change_tools.requests.get")
+    def test_get_cab_schedule_http_error(self, mock_get):
+        """Test get_cab_schedule handles HTTP errors."""
+        mock_get.side_effect = requests.exceptions.RequestException("timeout")
+        result = get_cab_schedule(self.auth_manager, self.server_config, {"change_id": "chg123"})
+        self.assertFalse(result["success"])
+        self.assertIn("Error getting CAB schedule", result["message"])
+
+    # --- update_cab_details ---
+
+    @patch("servicenow_mcp.tools.change_tools.requests.patch")
+    def test_update_cab_details_success(self, mock_patch):
+        """Test updating CAB details on a change request."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": {
+                "cab_required": "true",
+                "cab_date_time": "2026-04-15 14:00:00",
+            }
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_patch.return_value = mock_response
+
+        result = update_cab_details(
+            self.auth_manager,
+            self.server_config,
+            {"change_id": "chg123", "cab_required": True, "cab_date_time": "2026-04-15 14:00:00"},
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["message"], "CAB details updated successfully")
+        self.assertEqual(result["cab_date_time"], "2026-04-15 14:00:00")
+
+    def test_update_cab_details_missing_required(self):
+        """Test that missing change_id returns error."""
+        result = update_cab_details(self.auth_manager, self.server_config, {"cab_required": True})
+        self.assertFalse(result["success"])
+
+    @patch("servicenow_mcp.tools.change_tools.requests.patch")
+    def test_update_cab_details_http_error(self, mock_patch):
+        """Test update_cab_details handles HTTP errors."""
+        mock_patch.side_effect = requests.exceptions.RequestException("error")
+        result = update_cab_details(
+            self.auth_manager, self.server_config, {"change_id": "chg123", "cab_required": False}
+        )
+        self.assertFalse(result["success"])
+        self.assertIn("Error updating CAB details", result["message"])
+
+
+    def test_close_change_task_invalid_state_rejected(self):
+        """close_change_task rejects state values other than '3' or '4'."""
+        result = close_change_task(
+            self.auth_manager,
+            self.server_config,
+            {"task_id": "t1", "state": "open", "close_code": "successful"},
+        )
+        self.assertFalse(result["success"])
+        self.assertTrue(
+            "state" in result.get("message", "").lower()
+            or "validation" in result.get("message", "").lower(),
+            f"Expected state validation error, got: {result.get('message')}",
+        )
+
+    def test_close_change_task_invalid_close_code_rejected(self):
+        """close_change_task rejects close_code values outside the allowed set."""
+        result = close_change_task(
+            self.auth_manager,
+            self.server_config,
+            {"task_id": "t1", "state": "3", "close_code": "invalid_code"},
+        )
+        self.assertFalse(result["success"])
+        self.assertTrue(
+            "close_code" in result.get("message", "").lower()
+            or "validation" in result.get("message", "").lower(),
+            f"Expected close_code validation error, got: {result.get('message')}",
+        )
+
+    @patch("servicenow_mcp.tools.change_tools.requests.patch")
+    def test_close_change_task_valid_states_accepted(self, mock_patch):
+        """close_change_task accepts '3' and '4' as valid states."""
+        mock_patch.return_value = MagicMock(**{
+            "json.return_value": {"result": {"sys_id": "t1"}},
+            "raise_for_status": MagicMock(),
+        })
+        for valid_state in ["3", "4"]:
+            result = close_change_task(
+                self.auth_manager,
+                self.server_config,
+                {"task_id": "t1", "state": valid_state, "close_code": "successful"},
+            )
+            self.assertTrue(result["success"], f"state='{valid_state}' should be accepted")
 
 
 if __name__ == "__main__":

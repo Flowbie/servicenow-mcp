@@ -55,12 +55,18 @@ from servicenow_mcp.tools.catalog_variables import (
 from servicenow_mcp.tools.change_tools import (
     AddChangeTaskParams,
     ApproveChangeParams,
+    CloseChangeTaskParams,
     CreateChangeRequestParams,
+    GetCabScheduleParams,
     GetChangeRequestDetailsParams,
+    GetChangeTaskParams,
     ListChangeRequestsParams,
+    ListChangeTasksParams,
     RejectChangeParams,
     SubmitChangeForApprovalParams,
+    UpdateCabDetailsParams,
     UpdateChangeRequestParams,
+    UpdateChangeTaskParams,
 )
 from servicenow_mcp.tools.change_tools import (
     add_change_task as add_change_task_tool,
@@ -85,6 +91,24 @@ from servicenow_mcp.tools.change_tools import (
 )
 from servicenow_mcp.tools.change_tools import (
     update_change_request as update_change_request_tool,
+)
+from servicenow_mcp.tools.change_tools import (
+    list_change_tasks as list_change_tasks_tool,
+)
+from servicenow_mcp.tools.change_tools import (
+    get_change_task as get_change_task_tool,
+)
+from servicenow_mcp.tools.change_tools import (
+    update_change_task as update_change_task_tool,
+)
+from servicenow_mcp.tools.change_tools import (
+    close_change_task as close_change_task_tool,
+)
+from servicenow_mcp.tools.change_tools import (
+    get_cab_schedule as get_cab_schedule_tool,
+)
+from servicenow_mcp.tools.change_tools import (
+    update_cab_details as update_cab_details_tool,
 )
 from servicenow_mcp.tools.changeset_tools import (
     AddFileToChangesetParams,
@@ -150,19 +174,53 @@ from servicenow_mcp.tools.blueprint_tools import (
     list_table_relationships as list_table_relationships_tool,
     list_child_tables as list_child_tables_tool,
 )
+from servicenow_mcp.tools.automation_tools import (
+    ListScheduledJobsParams,
+    GetScheduledJobParams,
+    EnableScheduledJobParams,
+    DisableScheduledJobParams,
+    CreateScheduledScriptParams,
+    DeleteScheduledJobParams,
+    ListScheduledImportsParams,
+    ListScheduledExportsParams,
+    list_scheduled_jobs as list_scheduled_jobs_tool,
+    get_scheduled_job as get_scheduled_job_tool,
+    enable_scheduled_job as enable_scheduled_job_tool,
+    disable_scheduled_job as disable_scheduled_job_tool,
+    create_scheduled_script as create_scheduled_script_tool,
+    delete_scheduled_job as delete_scheduled_job_tool,
+    list_scheduled_imports as list_scheduled_imports_tool,
+    list_scheduled_exports as list_scheduled_exports_tool,
+)
 from servicenow_mcp.tools.customization_tools import (
+    CreateBusinessRuleParams,
+    CreateClientScriptParams,
+    CreateUIActionParams,
+    DeleteBusinessRuleParams,
+    ListAccessControlsParams,
     ListBusinessRulesParams,
-    ListUIPoliciesParams,
     ListClientScriptsParams,
     ListNotificationsParams,
+    ListScheduledScriptsParams,
     ListUIActionsParams,
-    ListAccessControlsParams,
+    ListUIPoliciesParams,
+    UpdateBusinessRuleParams,
+    UpdateClientScriptParams,
+    UpdateUIActionParams,
+    create_business_rule as create_business_rule_tool,
+    create_client_script as create_client_script_tool,
+    create_ui_action as create_ui_action_tool,
+    delete_business_rule as delete_business_rule_tool,
+    list_access_controls as list_access_controls_tool,
     list_business_rules as list_business_rules_tool,
-    list_ui_policies as list_ui_policies_tool,
     list_client_scripts as list_client_scripts_tool,
     list_notifications as list_notifications_tool,
+    list_scheduled_scripts as list_scheduled_scripts_tool,
     list_ui_actions as list_ui_actions_tool,
-    list_access_controls as list_access_controls_tool,
+    list_ui_policies as list_ui_policies_tool,
+    update_business_rule as update_business_rule_tool,
+    update_client_script as update_client_script_tool,
+    update_ui_action as update_ui_action_tool,
 )
 from servicenow_mcp.tools.incident_tools import (
     add_comment as add_comment_tool,
@@ -248,9 +306,15 @@ from servicenow_mcp.tools.user_tools import (
     CreateGroupParams,
     CreateUserParams,
     GetUserParams,
+    GrantRoleToGroupParams,
+    GrantRoleToUserParams,
+    ListGroupRolesParams,
     ListGroupsParams,
+    ListUserRolesParams,
     ListUsersParams,
     RemoveGroupMembersParams,
+    RevokeRoleFromGroupParams,
+    RevokeRoleFromUserParams,
     UpdateGroupParams,
     UpdateUserParams,
 )
@@ -280,6 +344,30 @@ from servicenow_mcp.tools.user_tools import (
 )
 from servicenow_mcp.tools.user_tools import (
     update_user as update_user_tool,
+)
+from servicenow_mcp.tools.user_tools import (
+    grant_role_to_group as grant_role_to_group_tool,
+    grant_role_to_user as grant_role_to_user_tool,
+    list_group_roles as list_group_roles_tool,
+    list_user_roles as list_user_roles_tool,
+    revoke_role_from_group as revoke_role_from_group_tool,
+    revoke_role_from_user as revoke_role_from_user_tool,
+)
+from servicenow_mcp.tools.risk_tools import (
+    AssignRiskResponseParams,
+    CreateRiskParams,
+    GetRiskParams,
+    ListRiskCriteriaParams,
+    ListRisksParams,
+    UpdateRiskStateParams,
+)
+from servicenow_mcp.tools.risk_tools import (
+    assign_risk_response as assign_risk_response_tool,
+    create_risk as create_risk_tool,
+    get_risk as get_risk_tool,
+    list_risk_criteria as list_risk_criteria_tool,
+    list_risks as list_risks_tool,
+    update_risk_state as update_risk_state_tool,
 )
 from servicenow_mcp.tools.workflow_tools import (
     ActivateWorkflowParams,
@@ -381,6 +469,7 @@ from servicenow_mcp.tools.agile_sprint_planning_tools import (
     recommend_sprint_stories as recommend_sprint_stories_tool,
 )
 from servicenow_mcp.tools.story_tools import (
+    AssignStoriesToSprintParams,
     CreateStoryParams,
     UpdateStoryParams,
     ListStoriesParams,
@@ -407,6 +496,7 @@ from servicenow_mcp.tools.story_tools import (
     assign_story as assign_story_tool,
     add_story_comment as add_story_comment_tool,
     list_story_blockers as list_story_blockers_tool,
+    assign_stories_to_sprint as assign_stories_to_sprint_tool,
 )
 from servicenow_mcp.tools.epic_tools import (
     CreateEpicParams,
@@ -447,12 +537,24 @@ from servicenow_mcp.tools.project_tools import (
 from servicenow_mcp.tools.flow_tools import (
     CreateFlowParams,
     CreateFlowResponse,
+    GetFlowActionsParams,
+    GetFlowParams,
+    GetFlowTriggersParams,
+    GetFlowVersionParams,
+    ListFlowsParams,
     ListTriggerTypesParams,
     ListTriggerTypesResult,
+    PublishFlowParams,
 )
 from servicenow_mcp.tools.flow_tools import (
     create_flow as create_flow_tool,
+    get_flow as get_flow_tool,
+    get_flow_actions as get_flow_actions_tool,
+    get_flow_triggers as get_flow_triggers_tool,
+    get_flow_version as get_flow_version_tool,
+    list_flows as list_flows_tool,
     list_trigger_types as list_trigger_types_tool,
+    publish_flow as publish_flow_tool,
 )
 from servicenow_mcp.tools.script_tools import (
     RunBackgroundScriptParams,
@@ -477,16 +579,26 @@ from servicenow_mcp.tools.table_tools import (
 )
 from servicenow_mcp.tools.cmdb_tools import (
     CreateCIParams,
+    CreateCIRelationshipParams,
+    DeleteCIRelationshipParams,
+    GetCIImpactGraphParams,
     GetCIParams,
     GetCIRelationshipsParams,
     ListCIParams,
+    ListCIRelationshipTypesParams,
+    SearchCIParams,
     UpdateCIParams,
 )
 from servicenow_mcp.tools.cmdb_tools import (
     create_ci as create_ci_tool,
+    create_ci_relationship as create_ci_relationship_tool,
+    delete_ci_relationship as delete_ci_relationship_tool,
     get_ci as get_ci_tool,
+    get_ci_impact_graph as get_ci_impact_graph_tool,
     get_ci_relationships as get_ci_relationships_tool,
     list_ci as list_ci_tool,
+    list_ci_relationship_types as list_ci_relationship_types_tool,
+    search_ci as search_ci_tool,
     update_ci as update_ci_tool,
 )
 from servicenow_mcp.tools.system_tools import (
@@ -855,6 +967,63 @@ def get_tool_definitions(
             ),
             "json",
         ),
+        # Platform Scripting Write Tools (Phase 6)
+        "create_business_rule": (
+            create_business_rule_tool,
+            CreateBusinessRuleParams,
+            dict,
+            "Create a Business Rule in sys_script. Note: the table field is 'collection' on sys_script.",
+            "json",
+        ),
+        "update_business_rule": (
+            update_business_rule_tool,
+            UpdateBusinessRuleParams,
+            dict,
+            "Update an existing Business Rule in sys_script by sys_id",
+            "json",
+        ),
+        "delete_business_rule": (
+            delete_business_rule_tool,
+            DeleteBusinessRuleParams,
+            dict,
+            "Delete a Business Rule from sys_script by sys_id",
+            "json",
+        ),
+        "create_client_script": (
+            create_client_script_tool,
+            CreateClientScriptParams,
+            dict,
+            "Create a Client Script in sys_script_client (onChange/onLoad/onSubmit/onCellEdit)",
+            "json",
+        ),
+        "update_client_script": (
+            update_client_script_tool,
+            UpdateClientScriptParams,
+            dict,
+            "Update an existing Client Script in sys_script_client by sys_id",
+            "json",
+        ),
+        "create_ui_action": (
+            create_ui_action_tool,
+            CreateUIActionParams,
+            dict,
+            "Create a UI Action in sys_ui_action. No action_type field — surfaces controlled by 14 boolean flags.",
+            "json",
+        ),
+        "update_ui_action": (
+            update_ui_action_tool,
+            UpdateUIActionParams,
+            dict,
+            "Update an existing UI Action in sys_ui_action by sys_id",
+            "json",
+        ),
+        "list_scheduled_scripts": (
+            list_scheduled_scripts_tool,
+            ListScheduledScriptsParams,
+            dict,
+            "List scheduled script executions from sysauto_script. Read-only.",
+            "json",
+        ),
         # Catalog Tools
         "list_catalog_items": (
             list_catalog_items_tool,
@@ -1071,6 +1240,105 @@ def get_tool_definitions(
             "Reject a change request",
             "str",  # Tool returns simple message
         ),
+        "list_change_tasks": (
+            list_change_tasks_tool,
+            ListChangeTasksParams,
+            str,
+            "List tasks for a specific change request",
+            "json",
+        ),
+        "get_change_task": (
+            get_change_task_tool,
+            GetChangeTaskParams,
+            str,
+            "Get details of a single change task by sys_id",
+            "json",
+        ),
+        "update_change_task": (
+            update_change_task_tool,
+            UpdateChangeTaskParams,
+            str,
+            "Update state, assignment, or close_code on a change task",
+            "json",
+        ),
+        "close_change_task": (
+            close_change_task_tool,
+            CloseChangeTaskParams,
+            str,
+            "Close a change task (requires state and close_code)",
+            "json",
+        ),
+        "get_cab_schedule": (
+            get_cab_schedule_tool,
+            GetCabScheduleParams,
+            str,
+            "Read CAB schedule (cab_required, cab_date_time) from a change request",
+            "json",
+        ),
+        "update_cab_details": (
+            update_cab_details_tool,
+            UpdateCabDetailsParams,
+            str,
+            "Update CAB details (cab_required, cab_date_time) on a change request",
+            "json",
+        ),
+        # Automation Platform Tools
+        "list_scheduled_jobs": (
+            list_scheduled_jobs_tool,
+            ListScheduledJobsParams,
+            str,
+            "List scheduled jobs from sys_trigger with optional type/active filters",
+            "json",
+        ),
+        "get_scheduled_job": (
+            get_scheduled_job_tool,
+            GetScheduledJobParams,
+            str,
+            "Get a single scheduled job by sys_id or name",
+            "json",
+        ),
+        "enable_scheduled_job": (
+            enable_scheduled_job_tool,
+            EnableScheduledJobParams,
+            str,
+            "Enable a scheduled job by setting active=true",
+            "json",
+        ),
+        "disable_scheduled_job": (
+            disable_scheduled_job_tool,
+            DisableScheduledJobParams,
+            str,
+            "Disable a scheduled job by setting trigger_type=2 (Once) — not active=false",
+            "json",
+        ),
+        "create_scheduled_script": (
+            create_scheduled_script_tool,
+            CreateScheduledScriptParams,
+            str,
+            "Create a scheduled script execution job (time_zone mandatory)",
+            "json",
+        ),
+        "delete_scheduled_job": (
+            delete_scheduled_job_tool,
+            DeleteScheduledJobParams,
+            str,
+            "Delete a scheduled job (refuses cluster-wide parent jobs)",
+            "json",
+        ),
+        "list_scheduled_imports": (
+            list_scheduled_imports_tool,
+            ListScheduledImportsParams,
+            str,
+            "List scheduled import sets from scheduled_import_set",
+            "json",
+        ),
+        "list_scheduled_exports": (
+            list_scheduled_exports_tool,
+            ListScheduledExportsParams,
+            str,
+            "List scheduled data exports from scheduled_data_export",
+            "json",
+        ),
         # Workflow Management Tools
         "list_workflows": (
             list_workflows_tool,
@@ -1199,6 +1467,48 @@ def get_tool_definitions(
                 "flow-designer-api.md memory file for known IDs for Look Up Record and "
                 "Create Record."
             ),
+            "json",
+        ),
+        "list_flows": (
+            list_flows_tool,
+            ListFlowsParams,
+            dict,
+            "List Flow Designer flows from sys_hub_flow with optional filters for type, status, scope, and name",
+            "json",
+        ),
+        "get_flow": (
+            get_flow_tool,
+            GetFlowParams,
+            dict,
+            "Get the detail view of a single Flow Designer flow by sys_id",
+            "json",
+        ),
+        "get_flow_triggers": (
+            get_flow_triggers_tool,
+            GetFlowTriggersParams,
+            dict,
+            "Get trigger instances attached to a flow from sys_hub_trigger_instance",
+            "json",
+        ),
+        "get_flow_actions": (
+            get_flow_actions_tool,
+            GetFlowActionsParams,
+            dict,
+            "Get action instances in a flow from sys_hub_action_instance",
+            "json",
+        ),
+        "get_flow_version": (
+            get_flow_version_tool,
+            GetFlowVersionParams,
+            dict,
+            "Get the latest or published version record for a flow from sys_hub_flow_version",
+            "json",
+        ),
+        "publish_flow": (
+            publish_flow_tool,
+            PublishFlowParams,
+            dict,
+            "Publish (activate) a Flow Designer flow by setting active=true on sys_hub_flow",
             "json",
         ),
         # Changeset Management Tools
@@ -1417,6 +1727,139 @@ def get_tool_definitions(
             "List groups from ServiceNow with optional filtering",
             "raw_dict",
         ),
+        # User/Group Role Tools (Phase 8)
+        "grant_role_to_user": (
+            grant_role_to_user_tool,
+            GrantRoleToUserParams,
+            dict,
+            (
+                "Grant a role to a user via sys_user_has_role. "
+                "Resolves role_name to sys_id automatically. "
+                "Never sets inherited=true — platform creates inherited records automatically."
+            ),
+            "json",
+        ),
+        "revoke_role_from_user": (
+            revoke_role_from_user_tool,
+            RevokeRoleFromUserParams,
+            dict,
+            (
+                "Revoke a directly-granted role from a user. "
+                "Only removes direct grants (inherited=false). "
+                "Inherited records are managed by the platform and cannot be removed directly."
+            ),
+            "json",
+        ),
+        "grant_role_to_group": (
+            grant_role_to_group_tool,
+            GrantRoleToGroupParams,
+            dict,
+            (
+                "Grant a role to a group via sys_group_has_role. "
+                "Resolves role_name to sys_id. "
+                "The platform propagates the role to group members automatically."
+            ),
+            "json",
+        ),
+        "revoke_role_from_group": (
+            revoke_role_from_group_tool,
+            RevokeRoleFromGroupParams,
+            dict,
+            (
+                "Revoke a directly-granted role from a group. "
+                "Only removes direct grants. Inherited records are managed by the platform."
+            ),
+            "json",
+        ),
+        "list_user_roles": (
+            list_user_roles_tool,
+            ListUserRolesParams,
+            dict,
+            (
+                "List roles granted to a user from sys_user_has_role. "
+                "Optionally filter to direct grants only (include_inherited=false). "
+                "Read-only."
+            ),
+            "json",
+        ),
+        "list_group_roles": (
+            list_group_roles_tool,
+            ListGroupRolesParams,
+            dict,
+            (
+                "List roles granted to a group from sys_group_has_role. "
+                "Optionally filter to direct grants only (include_inherited=false). "
+                "Read-only."
+            ),
+            "json",
+        ),
+        # GRC Risk Tools (Phase 9)
+        "list_risks": (
+            list_risks_tool,
+            ListRisksParams,
+            dict,
+            (
+                "List risks from sn_risk_risk. Filter by state (string label: draft/assess/respond/"
+                "monitor/review/retired) or framework. Returns display values for reference fields. "
+                "Read-only."
+            ),
+            "json",
+        ),
+        "get_risk": (
+            get_risk_tool,
+            GetRiskParams,
+            dict,
+            (
+                "Retrieve a single risk by sys_id from sn_risk_risk. "
+                "Returns all fields with display values. Likelihood, impact, score are "
+                "references to sn_risk_criteria. Read-only."
+            ),
+            "json",
+        ),
+        "create_risk": (
+            create_risk_tool,
+            CreateRiskParams,
+            dict,
+            (
+                "Create a new risk record in sn_risk_risk. "
+                "Likelihood and impact must be sys_ids from sn_risk_criteria — "
+                "use list_risk_criteria to resolve labels to sys_ids first."
+            ),
+            "json",
+        ),
+        "update_risk_state": (
+            update_risk_state_tool,
+            UpdateRiskStateParams,
+            dict,
+            (
+                "Update the state of a risk record. "
+                "State must be a string label: draft, assess, respond, monitor, review, or retired. "
+                "NOT a numeric code."
+            ),
+            "json",
+        ),
+        "list_risk_criteria": (
+            list_risk_criteria_tool,
+            ListRiskCriteriaParams,
+            dict,
+            (
+                "List risk criteria from sn_risk_criteria. "
+                "Use to resolve likelihood, impact, or score label names to sys_ids "
+                "before passing them to create_risk or assign_risk_response. Read-only."
+            ),
+            "json",
+        ),
+        "assign_risk_response": (
+            assign_risk_response_tool,
+            AssignRiskResponseParams,
+            dict,
+            (
+                "Assign a treatment response to a risk. "
+                "Response must be one of: Accept, Avoid, Mitigate, Transfer (string labels, "
+                "NOT numeric codes)."
+            ),
+            "json",
+        ),
         # Story Management Tools
         "create_story": (
             create_story_tool,
@@ -1525,6 +1968,18 @@ def get_tool_definitions(
                 "List all stories that are blocking the given story. "
                 "Returns dependency records from m2m_story_dependencies where the story "
                 "is the dependent (blocked) side. Read-only."
+            ),
+            "json",
+        ),
+        # Phase 10 — Agile Quick Win
+        "assign_stories_to_sprint": (
+            assign_stories_to_sprint_tool,
+            AssignStoriesToSprintParams,
+            dict,
+            (
+                "Bulk-assign a list of stories to a sprint. "
+                "Loops update_story per story_id setting sprint=sprint_id. "
+                "Returns {assigned, failed, errors} summary."
             ),
             "json",
         ),
@@ -1731,6 +2186,63 @@ def get_tool_definitions(
                 "Returns parent (CIs this one depends on), child (CIs that depend on this one), "
                 "or both directions. Optionally filter by relationship type. "
                 "Use to map service dependencies, infrastructure topology, and impact chains. "
+                "Read-only."
+            ),
+            "json",
+        ),
+        # CMDB Phase 7 enhancements
+        "search_ci": (
+            search_ci_tool,
+            SearchCIParams,
+            dict,
+            (
+                "Search CMDB Configuration Items with flexible filters. "
+                "Filter by ci_class, name (substring), install_status, and environment. "
+                "Returns matching CIs with display values. Read-only."
+            ),
+            "json",
+        ),
+        "create_ci_relationship": (
+            create_ci_relationship_tool,
+            CreateCIRelationshipParams,
+            dict,
+            (
+                "Create a relationship between two CIs in cmdb_rel_ci. "
+                "Accepts parent_id, child_id, and type_name (resolved to sys_id via cmdb_rel_type). "
+                "Use list_ci_relationship_types to discover valid type names."
+            ),
+            "json",
+        ),
+        "delete_ci_relationship": (
+            delete_ci_relationship_tool,
+            DeleteCIRelationshipParams,
+            dict,
+            (
+                "Delete a CI relationship record from cmdb_rel_ci by sys_id. "
+                "Use get_ci_relationships to find the relationship sys_id before deleting."
+            ),
+            "json",
+        ),
+        "list_ci_relationship_types": (
+            list_ci_relationship_types_tool,
+            ListCIRelationshipTypesParams,
+            dict,
+            (
+                "List available CI relationship types from cmdb_rel_type. "
+                "Returns sys_id and name (outbound::inbound format) for each type. "
+                "Use to discover valid type_name values for create_ci_relationship. Read-only."
+            ),
+            "json",
+        ),
+        "get_ci_impact_graph": (
+            get_ci_impact_graph_tool,
+            GetCIImpactGraphParams,
+            dict,
+            (
+                "Traverse the CI relationship graph to build an impact map. "
+                "BFS traversal through cmdb_rel_ci up to max_depth hops (default 3). "
+                "Returns nodes and edges. Supports upstream, downstream, and both directions. "
+                "Useful for impact analysis — e.g., which services fail if a server goes down. "
                 "Read-only."
             ),
             "json",

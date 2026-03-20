@@ -908,3 +908,64 @@ def list_story_blockers(
             "success": False,
             "message": f"Error listing blockers: {str(e)}" + (f" | {body_text}" if body_text else ""),
         }
+
+
+# ---------------------------------------------------------------------------
+# assign_stories_to_sprint
+# ---------------------------------------------------------------------------
+
+
+class AssignStoriesToSprintParams(BaseModel):
+    """Parameters for bulk-assigning stories to a sprint."""
+
+    sprint_id: str = Field(
+        ...,
+        description="sys_id of the rm_sprint_2 sprint to assign the stories to.",
+    )
+    story_ids: List[str] = Field(
+        ...,
+        min_length=1,
+        description="List of story sys_ids (rm_story) to assign to the sprint.",
+    )
+
+
+def assign_stories_to_sprint(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: AssignStoriesToSprintParams,
+) -> Dict[str, Any]:
+    """
+    Bulk-assign a list of stories to a sprint.
+
+    Loops update_story for each story_id setting sprint=sprint_id.
+    Returns a summary with assigned count, list of failed story_ids, and
+    any error messages encountered.
+    """
+    assigned: int = 0
+    failed: List[str] = []
+    errors: List[str] = []
+
+    for story_id in params.story_ids:
+        result = update_story(
+            config,
+            auth_manager,
+            UpdateStoryParams(story_id=story_id, sprint=params.sprint_id),
+        )
+        if result.get("success"):
+            assigned += 1
+        else:
+            failed.append(story_id)
+            errors.append(result.get("message", f"Unknown error for story {story_id}"))
+
+    return {
+        "success": len(failed) == 0,
+        "message": (
+            f"Assigned {assigned}/{len(params.story_ids)} stories to sprint {params.sprint_id}."
+            + (f" Failed: {len(failed)}." if failed else "")
+        ),
+        "sprint_id": params.sprint_id,
+        "assigned": assigned,
+        "failed": failed,
+        "errors": errors,
+    }
+

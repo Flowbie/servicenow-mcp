@@ -1214,6 +1214,288 @@ def _release_flow_edit_lock(
     return None
 
 
+# ---------------------------------------------------------------------------
+# Phase 5 — Flow read + publish tools
+# ---------------------------------------------------------------------------
+
+
+class ListFlowsParams(BaseModel):
+    """Parameters for listing Flow Designer flows."""
+
+    limit: int = Field(10, description="Maximum number of records to return")
+    offset: int = Field(0, description="Pagination offset")
+    flow_type: str | None = Field(
+        None,
+        description="Filter by flow type: 'flow' or 'subflow'",
+    )
+    status: str | None = Field(
+        None,
+        description="Filter by status: 'draft', 'published', 'published_and_draft'",
+    )
+    scope: str | None = Field(
+        None,
+        description="Filter by application scope (e.g. 'global' or a scope sys_id)",
+    )
+    name_filter: str | None = Field(None, description="Filter by name (LIKE match)")
+
+
+class GetFlowParams(BaseModel):
+    """Parameters for getting a single flow's detail view."""
+
+    flow_sys_id: str = Field(..., description="sys_id of the flow (sys_hub_flow)")
+
+
+class GetFlowTriggersParams(BaseModel):
+    """Parameters for getting trigger instances attached to a flow."""
+
+    flow_sys_id: str = Field(..., description="sys_id of the flow (sys_hub_flow / sys_hub_flow_base)")
+
+
+class GetFlowActionsParams(BaseModel):
+    """Parameters for getting action instances in a flow."""
+
+    flow_sys_id: str = Field(..., description="sys_id of the flow (sys_hub_flow / sys_hub_flow_base)")
+
+
+class GetFlowVersionParams(BaseModel):
+    """Parameters for getting a flow version record.
+
+    Returns the latest version by default. Set published_only=True to return only
+    the published version (which may differ from the latest draft).
+    """
+
+    flow_sys_id: str = Field(..., description="sys_id of the flow (sys_hub_flow)")
+    published_only: bool = Field(
+        False,
+        description="When True, return only the published version rather than the latest",
+    )
+
+
+class PublishFlowParams(BaseModel):
+    """Parameters for publishing (activating) a Flow Designer flow.
+
+    Sets active=true on sys_hub_flow. The platform then marks the current
+    draft version as published. The sys_hub_flow_version.published field is
+    read-only via the Table API and cannot be set directly.
+    """
+
+    flow_sys_id: str = Field(..., description="sys_id of the flow to publish (sys_hub_flow)")
+
+
+def list_flows(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: ListFlowsParams,
+) -> dict:
+    """List Flow Designer flows from sys_hub_flow with optional filters."""
+    try:
+        url = f"{config.instance_url}/api/now/table/sys_hub_flow"
+        headers = auth_manager.get_headers()
+
+        query_parts: list[str] = []
+        if params.flow_type is not None:
+            query_parts.append(f"flow_type={params.flow_type}")
+        if params.status is not None:
+            query_parts.append(f"status={params.status}")
+        if params.scope is not None:
+            query_parts.append(f"sys_scope={params.scope}")
+        if params.name_filter is not None:
+            query_parts.append(f"nameLIKE{params.name_filter}")
+
+        query_params: dict = {
+            "sysparm_limit": params.limit,
+            "sysparm_offset": params.offset,
+            "sysparm_fields": "sys_id,name,internal_name,flow_type,status,active,sys_scope,sys_created_on,sys_updated_on",
+            "sysparm_display_value": "true",
+        }
+        if query_parts:
+            query_params["sysparm_query"] = "^".join(query_parts)
+
+        response = requests.get(url, headers=headers, params=query_params, timeout=config.timeout)
+        response.raise_for_status()
+        flows = response.json().get("result", [])
+        return {"success": True, "flows": flows, "count": len(flows)}
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("list_flows | error=%s%s", e, f" | body={_body}" if _body else "")
+        return {"success": False, "message": f"Error listing flows: {e}" + (f" | {_body}" if _body else "")}
+
+
+def get_flow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: GetFlowParams,
+) -> dict:
+    """Get detail view of a single flow from sys_hub_flow."""
+    try:
+        url = f"{config.instance_url}/api/now/table/sys_hub_flow/{params.flow_sys_id}"
+        headers = auth_manager.get_headers()
+        response = requests.get(
+            url,
+            headers=headers,
+            params={"sysparm_display_value": "true"},
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        return {"success": True, "flow": record}
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("get_flow | flow_sys_id=%s | error=%s%s", params.flow_sys_id, e, f" | body={_body}" if _body else "")
+        return {"success": False, "message": f"Error getting flow: {e}" + (f" | {_body}" if _body else "")}
+
+
+def get_flow_triggers(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: GetFlowTriggersParams,
+) -> dict:
+    """Get trigger instances for a flow from sys_hub_trigger_instance.
+
+    sys_hub_trigger_instance.flow references sys_hub_flow_base (the parent table of
+    sys_hub_flow and sys_hub_subflow), so the flow sys_id is used directly.
+    """
+    try:
+        url = f"{config.instance_url}/api/now/table/sys_hub_trigger_instance"
+        headers = auth_manager.get_headers()
+        response = requests.get(
+            url,
+            headers=headers,
+            params={
+                "sysparm_query": f"flow={params.flow_sys_id}",
+                "sysparm_display_value": "true",
+            },
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        triggers = response.json().get("result", [])
+        return {"success": True, "flow_sys_id": params.flow_sys_id, "triggers": triggers, "count": len(triggers)}
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("get_flow_triggers | flow_sys_id=%s | error=%s%s", params.flow_sys_id, e, f" | body={_body}" if _body else "")
+        return {"success": False, "message": f"Error getting flow triggers: {e}" + (f" | {_body}" if _body else "")}
+
+
+def get_flow_actions(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: GetFlowActionsParams,
+) -> dict:
+    """Get action instances in a flow from sys_hub_action_instance.
+
+    sys_hub_action_instance.flow references sys_hub_flow_base (the parent table of
+    sys_hub_flow and sys_hub_subflow), so the flow sys_id is used directly.
+    """
+    try:
+        url = f"{config.instance_url}/api/now/table/sys_hub_action_instance"
+        headers = auth_manager.get_headers()
+        response = requests.get(
+            url,
+            headers=headers,
+            params={
+                "sysparm_query": f"flow={params.flow_sys_id}",
+                "sysparm_display_value": "true",
+            },
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        actions = response.json().get("result", [])
+        return {"success": True, "flow_sys_id": params.flow_sys_id, "actions": actions, "count": len(actions)}
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("get_flow_actions | flow_sys_id=%s | error=%s%s", params.flow_sys_id, e, f" | body={_body}" if _body else "")
+        return {"success": False, "message": f"Error getting flow actions: {e}" + (f" | {_body}" if _body else "")}
+
+
+def get_flow_version(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: GetFlowVersionParams,
+) -> dict:
+    """Get the latest (or published) version record for a flow from sys_hub_flow_version.
+
+    Note: sys_hub_flow_version.published is read-only via the Table API.
+    Use publish_flow to activate a flow rather than attempting to write this field.
+    """
+    try:
+        url = f"{config.instance_url}/api/now/table/sys_hub_flow_version"
+        headers = auth_manager.get_headers()
+
+        query = f"flow={params.flow_sys_id}"
+        if params.published_only:
+            query += "^published=true"
+
+        response = requests.get(
+            url,
+            headers=headers,
+            params={
+                "sysparm_query": query + "^ORDERBYDESCsys_created_on",
+                "sysparm_limit": 1,
+                "sysparm_display_value": "true",
+            },
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        records = response.json().get("result", [])
+        if not records:
+            label = "published" if params.published_only else "latest"
+            return {
+                "success": False,
+                "message": f"No {label} version found for flow {params.flow_sys_id}",
+            }
+        return {"success": True, "flow_sys_id": params.flow_sys_id, "version": records[0]}
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("get_flow_version | flow_sys_id=%s | error=%s%s", params.flow_sys_id, e, f" | body={_body}" if _body else "")
+        return {"success": False, "message": f"Error getting flow version: {e}" + (f" | {_body}" if _body else "")}
+
+
+def publish_flow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: PublishFlowParams,
+) -> dict:
+    """Publish (activate) a Flow Designer flow by setting active=true on sys_hub_flow.
+
+    The sys_hub_flow_version.published field is read-only via the Table API and cannot
+    be set directly. Setting active=true on the flow record triggers the platform to
+    mark the current version as published.
+
+    Note: For flows that require the FlowDesignerAPI.publishFlow() server-side method
+    (e.g. complex flows with ACL constraints), use run_background_script instead with
+    the script: FlowDesignerAPI.publishFlow('<flow_sys_id>');
+    """
+    try:
+        url = f"{config.instance_url}/api/now/table/sys_hub_flow/{params.flow_sys_id}"
+        headers = auth_manager.get_headers()
+        headers["Content-Type"] = "application/json"
+        response = requests.patch(
+            url,
+            json={"active": "true", "status": "published"},
+            headers=headers,
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        return {
+            "success": True,
+            "message": f"Flow {params.flow_sys_id} published (active=true, status=published)",
+            "flow": record,
+        }
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("publish_flow | flow_sys_id=%s | error=%s%s", params.flow_sys_id, e, f" | body={_body}" if _body else "")
+        return {
+            "success": False,
+            "message": (
+                f"Error publishing flow: {e}"
+                + (f" | {_body}" if _body else "")
+                + " — If this fails due to ACL constraints, use run_background_script with: "
+                f"FlowDesignerAPI.publishFlow('{params.flow_sys_id}');"
+            ),
+        }
+
+
 def _build_action_instances(flow_sys_id: str, actions: list[ActionInstanceParam] | None) -> list[dict]:
     """Convert ActionInstanceParam list into the actionInstances array for the PUT body.
 
