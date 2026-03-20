@@ -1331,3 +1331,195 @@ def disable_ui_action(
         err = _request_error(e)
         logger.error("disable_ui_action | failed | sys_id=%s | error=%s", params.action_sys_id, err)
         return {"success": False, "message": f"Error disabling UI action: {err}"}
+
+
+# ---------------------------------------------------------------------------
+# UI Policy write tools  (story 13.4)
+# Tables: sys_ui_policy, sys_ui_policy_action
+# ---------------------------------------------------------------------------
+
+
+class GetUiPolicyParams(BaseModel):
+    """Parameters for getting a UI policy by sys_id."""
+
+    policy_sys_id: str = Field(..., description="sys_id of the UI policy (sys_ui_policy)")
+
+
+class CreateUiPolicyParams(BaseModel):
+    """Parameters for creating a UI policy."""
+
+    table_name: str = Field(..., description="Table this UI policy applies to (e.g. 'incident')")
+    short_description: str = Field(..., description="Label / description for the policy")
+    conditions: Optional[str] = Field(None, description="Encoded query condition (e.g. 'state=6')")
+    active: bool = Field(True, description="Whether the policy is active on creation")
+    applies_to: str = Field("all", description="'all', 'insert_only', or 'update_only'")
+
+
+class UpdateUiPolicyParams(BaseModel):
+    """Parameters for updating a UI policy."""
+
+    policy_sys_id: str = Field(..., description="sys_id of the UI policy to update")
+    short_description: Optional[str] = Field(None, description="New label/description")
+    conditions: Optional[str] = Field(None, description="New encoded query condition")
+    active: Optional[bool] = Field(None, description="New active state")
+
+
+class CreateUiPolicyActionParams(BaseModel):
+    """Parameters for creating a UI policy action (field-level rule)."""
+
+    policy_sys_id: str = Field(..., description="sys_id of the parent UI policy")
+    field: str = Field(..., description="Field name the action controls")
+    mandatory: Optional[bool] = Field(None, description="Set mandatory state (True/False/None=leave unchanged)")
+    visible: Optional[bool] = Field(None, description="Set visibility state (True/False/None=leave unchanged)")
+    disabled: Optional[bool] = Field(None, description="Set disabled state (True/False/None=leave unchanged)")
+
+
+class ListUiPolicyActionsParams(BaseModel):
+    """Parameters for listing field-level actions of a UI policy."""
+
+    policy_sys_id: str = Field(..., description="sys_id of the parent UI policy")
+
+
+def get_ui_policy(
+    config: ServerConfig, auth_manager: AuthManager, params: GetUiPolicyParams
+) -> Dict[str, Any]:
+    """Get a single UI policy record by sys_id from sys_ui_policy."""
+    url = f"{config.api_url}/table/sys_ui_policy/{params.policy_sys_id}"
+    try:
+        headers = auth_manager.get_headers()
+        response = requests.get(url, headers=headers, timeout=config.timeout)
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info("get_ui_policy | sys_id=%s", params.policy_sys_id)
+        return {"success": True, "ui_policy": record}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("get_ui_policy | failed | sys_id=%s | error=%s", params.policy_sys_id, err)
+        return {"success": False, "message": f"Error retrieving UI policy: {err}"}
+
+
+def create_ui_policy(
+    config: ServerConfig, auth_manager: AuthManager, params: CreateUiPolicyParams
+) -> Dict[str, Any]:
+    """Create a new UI policy on sys_ui_policy."""
+    url = f"{config.api_url}/table/sys_ui_policy"
+    payload: Dict[str, Any] = {
+        "table_name": params.table_name,
+        "short_description": params.short_description,
+        "active": str(params.active).lower(),
+        "applies_to": params.applies_to,
+    }
+    if params.conditions:
+        payload["conditions"] = params.conditions
+    try:
+        headers = auth_manager.get_headers()
+        response = requests.post(url, headers=headers, json=payload, timeout=config.timeout)
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info("create_ui_policy | created | table=%s | sys_id=%s", params.table_name, record.get("sys_id"))
+        return {"success": True, "message": f"UI policy '{params.short_description}' created", "ui_policy": record}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("create_ui_policy | failed | table=%s | error=%s", params.table_name, err)
+        return {"success": False, "message": f"Error creating UI policy: {err}"}
+
+
+def update_ui_policy(
+    config: ServerConfig, auth_manager: AuthManager, params: UpdateUiPolicyParams
+) -> Dict[str, Any]:
+    """Update an existing UI policy via PATCH on sys_ui_policy."""
+    url = f"{config.api_url}/table/sys_ui_policy/{params.policy_sys_id}"
+    payload: Dict[str, Any] = {}
+    if params.short_description is not None:
+        payload["short_description"] = params.short_description
+    if params.conditions is not None:
+        payload["conditions"] = params.conditions
+    if params.active is not None:
+        payload["active"] = str(params.active).lower()
+    try:
+        headers = auth_manager.get_headers()
+        response = requests.patch(url, headers=headers, json=payload, timeout=config.timeout)
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info("update_ui_policy | updated | sys_id=%s", params.policy_sys_id)
+        return {"success": True, "message": f"UI policy {params.policy_sys_id} updated", "ui_policy": record}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("update_ui_policy | failed | sys_id=%s | error=%s", params.policy_sys_id, err)
+        return {"success": False, "message": f"Error updating UI policy: {err}"}
+
+
+def create_ui_policy_action(
+    config: ServerConfig, auth_manager: AuthManager, params: CreateUiPolicyActionParams
+) -> Dict[str, Any]:
+    """Create a UI policy action (field-level rule) on sys_ui_policy_action.
+
+    Uses "leave" as the ServiceNow sentinel for "don't change this field".
+    """
+    url = f"{config.api_url}/table/sys_ui_policy_action"
+
+    def _bool_to_sn(value: Optional[bool]) -> str:
+        if value is True:
+            return "true"
+        if value is False:
+            return "false"
+        return "leave"
+
+    payload: Dict[str, Any] = {
+        "ui_policy": params.policy_sys_id,
+        "field": params.field,
+        "mandatory": _bool_to_sn(params.mandatory),
+        "visible": _bool_to_sn(params.visible),
+        "disabled": _bool_to_sn(params.disabled),
+    }
+    try:
+        headers = auth_manager.get_headers()
+        response = requests.post(url, headers=headers, json=payload, timeout=config.timeout)
+        response.raise_for_status()
+        record = response.json().get("result", {})
+        logger.info(
+            "create_ui_policy_action | created | policy=%s | field=%s | sys_id=%s",
+            params.policy_sys_id,
+            params.field,
+            record.get("sys_id"),
+        )
+        return {
+            "success": True,
+            "message": f"UI policy action for field '{params.field}' created",
+            "ui_policy_action": record,
+        }
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error(
+            "create_ui_policy_action | failed | policy=%s | field=%s | error=%s",
+            params.policy_sys_id,
+            params.field,
+            err,
+        )
+        return {"success": False, "message": f"Error creating UI policy action: {err}"}
+
+
+def list_ui_policy_actions(
+    config: ServerConfig, auth_manager: AuthManager, params: ListUiPolicyActionsParams
+) -> Dict[str, Any]:
+    """List field-level actions for a given UI policy from sys_ui_policy_action."""
+    url = f"{config.api_url}/table/sys_ui_policy_action"
+    try:
+        headers = auth_manager.get_headers()
+        response = requests.get(
+            url,
+            headers=headers,
+            params={
+                "sysparm_query": f"ui_policy={params.policy_sys_id}",
+                "sysparm_fields": "sys_id,field,mandatory,visible,disabled",
+            },
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        data = response.json().get("result", [])
+        logger.info("list_ui_policy_actions | policy=%s | count=%d", params.policy_sys_id, len(data))
+        return {"success": True, "count": len(data), "ui_policy_actions": data}
+    except requests.RequestException as e:
+        err = _request_error(e)
+        logger.error("list_ui_policy_actions | failed | policy=%s | error=%s", params.policy_sys_id, err)
+        return {"success": False, "message": f"Error listing UI policy actions: {err}"}
