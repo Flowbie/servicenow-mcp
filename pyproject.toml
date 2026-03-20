@@ -73,4 +73,7 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-addopts = "--ignore=examples" 
+addopts = "--ignore=examples"
+markers = [
+    "integration: marks tests as integration tests requiring a live ServiceNow instance (deselect with '-m not integration')",
+]
