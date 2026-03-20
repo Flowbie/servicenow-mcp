@@ -195,11 +195,11 @@ class TestCatalogTools(unittest.TestCase):
         params = GetCatalogItemParams(item_id="item1")
         result = get_catalog_item(self.config, self.auth_manager, params)
 
-        self.assertTrue(result.success)
-        self.assertEqual(result.data["name"], "Laptop")
-        self.assertEqual(result.data["category"], "Hardware")
-        self.assertEqual(len(result.data["variables"]), 1)
-        self.assertEqual(result.data["variables"][0]["name"], "model")
+        self.assertTrue(result["success"])
+        self.assertEqual(result["item"]["name"], "Laptop")
+        self.assertEqual(result["item"]["category"], "Hardware")
+        self.assertEqual(len(result["item"]["variables"]), 1)
+        self.assertEqual(result["item"]["variables"][0]["name"], "model")
 
         mock_get.assert_called_once()
         args, kwargs = mock_get.call_args
@@ -216,9 +216,9 @@ class TestCatalogTools(unittest.TestCase):
         params = GetCatalogItemParams(item_id="nonexistent")
         result = get_catalog_item(self.config, self.auth_manager, params)
 
-        self.assertFalse(result.success)
-        self.assertIn("not found", result.message)
-        self.assertIsNone(result.data)
+        self.assertFalse(result["success"])
+        self.assertIn("not found", result["message"])
+        self.assertNotIn("item", result)
 
     @patch("servicenow_mcp.tools.catalog_tools.requests.get")
     def test_get_catalog_item_error(self, mock_get):
@@ -228,9 +228,9 @@ class TestCatalogTools(unittest.TestCase):
         params = GetCatalogItemParams(item_id="item1")
         result = get_catalog_item(self.config, self.auth_manager, params)
 
-        self.assertFalse(result.success)
-        self.assertIn("Error", result.message)
-        self.assertIsNone(result.data)
+        self.assertFalse(result["success"])
+        self.assertIn("Error", result["message"])
+        self.assertNotIn("item", result)
 
     @patch("servicenow_mcp.tools.catalog_tools.requests.get")
     def test_get_catalog_item_network_error(self, mock_get):
@@ -240,9 +240,9 @@ class TestCatalogTools(unittest.TestCase):
         params = GetCatalogItemParams(item_id="item1")
         result = get_catalog_item(self.config, self.auth_manager, params)
 
-        self.assertFalse(result.success)
-        self.assertIsNone(result.data)
-        self.assertIn("Error getting catalog item", result.message)
+        self.assertFalse(result["success"])
+        self.assertNotIn("item", result)
+        self.assertIn("Error getting catalog item", result["message"])
 
     @patch("servicenow_mcp.tools.catalog_tools.get_catalog_item_variables")
     @patch("servicenow_mcp.tools.catalog_tools.requests.get")
@@ -271,12 +271,12 @@ class TestCatalogTools(unittest.TestCase):
         params = GetCatalogItemParams(item_id="item2")
         result = get_catalog_item(self.config, self.auth_manager, params)
 
-        self.assertTrue(result.success)
+        self.assertTrue(result["success"])
         expected_fields = ["sys_id", "name", "short_description", "description",
                            "category", "price", "picture", "active", "order",
                            "delivery_time", "availability", "variables"]
         for field in expected_fields:
-            self.assertIn(field, result.data, f"Missing field: {field}")
+            self.assertIn(field, result["item"], f"Missing field: {field}")
 
     # --- get_catalog_item_variables tests ---
 
@@ -472,9 +472,9 @@ class TestCatalogTools(unittest.TestCase):
         )
         result = create_catalog_category(self.config, self.auth_manager, params)
 
-        self.assertTrue(result.success)
-        self.assertEqual(result.data["title"], "Test Category")
-        self.assertEqual(result.data["sys_id"], "test_sys_id")
+        self.assertTrue(result["success"])
+        self.assertEqual(result["category"]["title"], "Test Category")
+        self.assertEqual(result["category"]["sys_id"], "test_sys_id")
 
         mock_post.assert_called_once()
         args, kwargs = mock_post.call_args
@@ -502,8 +502,8 @@ class TestCatalogTools(unittest.TestCase):
         params = CreateCatalogCategoryParams(title="Minimal Category")
         result = create_catalog_category(self.config, self.auth_manager, params)
 
-        self.assertTrue(result.success)
-        self.assertEqual(result.data["title"], "Minimal Category")
+        self.assertTrue(result["success"])
+        self.assertEqual(result["category"]["title"], "Minimal Category")
 
     @patch("servicenow_mcp.tools.catalog_tools.requests.post")
     def test_create_catalog_category_network_error(self, mock_post):
@@ -513,9 +513,9 @@ class TestCatalogTools(unittest.TestCase):
         params = CreateCatalogCategoryParams(title="Test Category")
         result = create_catalog_category(self.config, self.auth_manager, params)
 
-        self.assertFalse(result.success)
-        self.assertIsNone(result.data)
-        self.assertIn("Error creating catalog category", result.message)
+        self.assertFalse(result["success"])
+        self.assertNotIn("category", result)
+        self.assertIn("Error creating catalog category", result["message"])
 
     # --- update_catalog_category tests ---
 
@@ -544,10 +544,10 @@ class TestCatalogTools(unittest.TestCase):
         )
         result = update_catalog_category(self.config, self.auth_manager, params)
 
-        self.assertTrue(result.success)
-        self.assertEqual(result.data["title"], "Updated Category")
-        self.assertEqual(result.data["description"], "Updated Description")
-        self.assertEqual(result.data["order"], "200")
+        self.assertTrue(result["success"])
+        self.assertEqual(result["category"]["title"], "Updated Category")
+        self.assertEqual(result["category"]["description"], "Updated Description")
+        self.assertEqual(result["category"]["order"], "200")
 
         mock_patch.assert_called_once()
         args, kwargs = mock_patch.call_args
@@ -580,7 +580,7 @@ class TestCatalogTools(unittest.TestCase):
         )
         result = update_catalog_category(self.config, self.auth_manager, params)
 
-        self.assertTrue(result.success)
+        self.assertTrue(result["success"])
         args, kwargs = mock_patch.call_args
         # Only description should be in the body
         self.assertIn("description", kwargs["json"])
@@ -598,9 +598,9 @@ class TestCatalogTools(unittest.TestCase):
         )
         result = update_catalog_category(self.config, self.auth_manager, params)
 
-        self.assertFalse(result.success)
-        self.assertIsNone(result.data)
-        self.assertIn("Error updating catalog category", result.message)
+        self.assertFalse(result["success"])
+        self.assertNotIn("category", result)
+        self.assertIn("Error updating catalog category", result["message"])
 
     # --- move_catalog_items tests ---
 
@@ -617,8 +617,8 @@ class TestCatalogTools(unittest.TestCase):
         )
         result = move_catalog_items(self.config, self.auth_manager, params)
 
-        self.assertTrue(result.success)
-        self.assertEqual(result.data["moved_items_count"], 3)
+        self.assertTrue(result["success"])
+        self.assertEqual(result["moved_count"], 3)
 
         self.assertEqual(mock_patch.call_count, 3)
         for i, call in enumerate(mock_patch.call_args_list):
@@ -648,9 +648,9 @@ class TestCatalogTools(unittest.TestCase):
         result = move_catalog_items(self.config, self.auth_manager, params)
 
         # Partial success still returns success=True
-        self.assertTrue(result.success)
-        self.assertEqual(result.data["moved_items_count"], 1)
-        self.assertIn("failed_items", result.data)
+        self.assertTrue(result["success"])
+        self.assertEqual(result["moved_count"], 1)
+        self.assertIn("failed_items", result)
 
     @patch("servicenow_mcp.tools.catalog_tools.requests.patch")
     def test_move_catalog_items_all_fail(self, mock_patch):
@@ -663,8 +663,8 @@ class TestCatalogTools(unittest.TestCase):
         )
         result = move_catalog_items(self.config, self.auth_manager, params)
 
-        self.assertFalse(result.success)
-        self.assertIn("Failed to move any catalog items", result.message)
+        self.assertFalse(result["success"])
+        self.assertIn("Failed to move any catalog items", result["message"])
 
     @patch("servicenow_mcp.tools.catalog_tools.requests.patch")
     def test_move_catalog_items_single_item(self, mock_patch):
@@ -680,8 +680,8 @@ class TestCatalogTools(unittest.TestCase):
         )
         result = move_catalog_items(self.config, self.auth_manager, params)
 
-        self.assertTrue(result.success)
-        self.assertEqual(result.data["moved_items_count"], 1)
+        self.assertTrue(result["success"])
+        self.assertEqual(result["moved_count"], 1)
         mock_patch.assert_called_once()
 
 

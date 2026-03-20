@@ -62,11 +62,7 @@ class TestCatalogIntegration:
             assert field in first, f"Missing expected field: {field}"
 
     def test_get_catalog_item(self, live_config, live_auth):
-        """Verify get_catalog_item returns full item details.
-
-        Note: get_catalog_item returns a CatalogResponse Pydantic model, not a plain
-        dict. Access result fields via attribute access (.success, .data, .message).
-        """
+        """Verify get_catalog_item returns full item details."""
         list_result = list_catalog_items(live_config, live_auth, ListCatalogItemsParams(limit=1))
         assert list_result["success"] is True
 
@@ -78,13 +74,12 @@ class TestCatalogIntegration:
         params = GetCatalogItemParams(item_id=sys_id)
         result = get_catalog_item(live_config, live_auth, params)
 
-        # get_catalog_item returns a CatalogResponse Pydantic model
         print(f"\n--- get_catalog_item({sys_id}) response ---")
-        print(json.dumps(result.model_dump(), indent=2, default=str))
+        print(json.dumps(result, indent=2, default=str))
 
-        assert result.success is True, f"Expected success, got: {result.message}"
-        assert result.data is not None, "Expected data payload, got None"
-        assert result.data["sys_id"] == sys_id
+        assert result["success"] is True, f"Expected success, got: {result.get('message')}"
+        assert "item" in result, "Expected 'item' key in response"
+        assert result["item"]["sys_id"] == sys_id
 
     def test_list_catalog_items_active_filter(self, live_config, live_auth):
         """Verify active=True filter runs without error."""

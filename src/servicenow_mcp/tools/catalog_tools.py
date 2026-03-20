@@ -41,13 +41,6 @@ class ListCatalogCategoriesParams(BaseModel):
     active: bool = Field(True, description="Whether to only return active categories")
 
 
-class CatalogResponse(BaseModel):
-    """Response from catalog operations."""
-
-    success: bool = Field(..., description="Whether the operation was successful")
-    message: str = Field(..., description="Message describing the result")
-    data: Optional[Dict[str, Any]] = Field(None, description="Response data")
-
 
 class CreateCatalogCategoryParams(BaseModel):
     """Parameters for creating a new service catalog category."""
@@ -171,7 +164,7 @@ def get_catalog_item(
     config: ServerConfig,
     auth_manager: AuthManager,
     params: GetCatalogItemParams,
-) -> CatalogResponse:
+) -> dict:
     """
     Get a specific service catalog item from ServiceNow.
 
@@ -207,11 +200,7 @@ def get_catalog_item(
         item = result.get("result", {})
         
         if not item:
-            return CatalogResponse(
-                success=False,
-                message=f"Catalog item not found: {params.item_id}",
-                data=None,
-            )
+            return {"success": False, "message": f"Catalog item not found: {params.item_id}"}
         
         # Format the response
         formatted_item = {
@@ -229,19 +218,15 @@ def get_catalog_item(
             "variables": get_catalog_item_variables(config, auth_manager, params.item_id),
         }
         
-        return CatalogResponse(
-            success=True,
-            message=f"Retrieved catalog item: {item.get('name', '')}",
-            data=formatted_item,
-        )
-    
+        return {
+            "success": True,
+            "message": f"Retrieved catalog item: {item.get('name', '')}",
+            "item": formatted_item,
+        }
+
     except requests.exceptions.RequestException as e:
         logger.error(f"Error getting catalog item: {str(e)}")
-        return CatalogResponse(
-            success=False,
-            message=f"Error getting catalog item: {str(e)}",
-            data=None,
-        )
+        return {"success": False, "message": f"Error getting catalog item: {str(e)}"}
 
 
 def get_catalog_item_variables(
@@ -394,7 +379,7 @@ def create_catalog_category(
     config: ServerConfig,
     auth_manager: AuthManager,
     params: CreateCatalogCategoryParams,
-) -> CatalogResponse:
+) -> dict:
     """
     Create a new service catalog category in ServiceNow.
 
@@ -451,26 +436,22 @@ def create_catalog_category(
             "order": category.get("order", ""),
         }
         
-        return CatalogResponse(
-            success=True,
-            message=f"Created catalog category: {params.title}",
-            data=formatted_category,
-        )
-    
+        return {
+            "success": True,
+            "message": f"Created catalog category: {params.title}",
+            "category": formatted_category,
+        }
+
     except requests.exceptions.RequestException as e:
         logger.error(f"Error creating catalog category: {str(e)}")
-        return CatalogResponse(
-            success=False,
-            message=f"Error creating catalog category: {str(e)}",
-            data=None,
-        )
+        return {"success": False, "message": f"Error creating catalog category: {str(e)}"}
 
 
 def update_catalog_category(
     config: ServerConfig,
     auth_manager: AuthManager,
     params: UpdateCatalogCategoryParams,
-) -> CatalogResponse:
+) -> dict:
     """
     Update an existing service catalog category in ServiceNow.
 
@@ -526,19 +507,15 @@ def update_catalog_category(
             "order": category.get("order", ""),
         }
         
-        return CatalogResponse(
-            success=True,
-            message=f"Updated catalog category: {params.category_id}",
-            data=formatted_category,
-        )
-    
+        return {
+            "success": True,
+            "message": f"Updated catalog category: {params.category_id}",
+            "category": formatted_category,
+        }
+
     except requests.exceptions.RequestException as e:
         logger.error(f"Error updating catalog category: {str(e)}")
-        return CatalogResponse(
-            success=False,
-            message=f"Error updating catalog category: {str(e)}",
-            data=None,
-        )
+        return {"success": False, "message": f"Error updating catalog category: {str(e)}"}
 
 
 class UpdateCatalogItemParams(BaseModel):
@@ -556,7 +533,7 @@ class UpdateCatalogItemParams(BaseModel):
 
 def update_catalog_item(
     config: ServerConfig, auth_manager: AuthManager, params: UpdateCatalogItemParams
-) -> CatalogResponse:
+) -> dict:
     """
     Update a catalog item.
 
@@ -615,7 +592,7 @@ def move_catalog_items(
     config: ServerConfig,
     auth_manager: AuthManager,
     params: MoveCatalogItemsParams,
-) -> CatalogResponse:
+) -> dict:
     """
     Move catalog items to a different category.
 
@@ -657,34 +634,28 @@ def move_catalog_items(
         
         # Prepare the response
         if success_count == len(params.item_ids):
-            return CatalogResponse(
-                success=True,
-                message=f"Successfully moved {success_count} catalog items to category {params.target_category_id}",
-                data={"moved_items_count": success_count},
-            )
+            return {
+                "success": True,
+                "message": f"Successfully moved {success_count} catalog items to category {params.target_category_id}",
+                "moved_count": success_count,
+            }
         elif success_count > 0:
-            return CatalogResponse(
-                success=True,
-                message=f"Partially moved catalog items. {success_count} succeeded, {len(failed_items)} failed.",
-                data={
-                    "moved_items_count": success_count,
-                    "failed_items": failed_items,
-                },
-            )
+            return {
+                "success": True,
+                "message": f"Partially moved catalog items. {success_count} succeeded, {len(failed_items)} failed.",
+                "moved_count": success_count,
+                "failed_items": failed_items,
+            }
         else:
-            return CatalogResponse(
-                success=False,
-                message="Failed to move any catalog items",
-                data={"failed_items": failed_items},
-            )
-    
+            return {
+                "success": False,
+                "message": "Failed to move any catalog items",
+                "failed_items": failed_items,
+            }
+
     except Exception as e:
         logger.error(f"Error moving catalog items: {str(e)}")
-        return CatalogResponse(
-            success=False,
-            message=f"Error moving catalog items: {str(e)}",
-            data=None,
-        )
+        return {"success": False, "message": f"Error moving catalog items: {str(e)}"}
 
 
 class CreateCatalogItemParams(BaseModel):
