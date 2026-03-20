@@ -451,3 +451,89 @@ def list_scheduled_exports(
     except Exception as e:
         logger.error(f"Error listing scheduled exports: {e}")
         return {"success": False, "message": f"Error: {e}"}
+
+
+# ---------------------------------------------------------------------------
+# update_scheduled_job — Story 12.1
+# ---------------------------------------------------------------------------
+
+
+class UpdateScheduledJobParams(BaseModel):
+    """Parameters for updating a scheduled job.
+
+    Only fields provided (non-None) are included in the PATCH payload.
+    """
+
+    job_sys_id: str = Field(..., description="sys_id of the scheduled job to update")
+    name: Optional[str] = Field(None, description="New name for the job")
+    script: Optional[str] = Field(None, description="New server-side script body")
+    run_start: Optional[str] = Field(None, description="New start time (ISO 8601 or SN datetime)")
+    time_zone: Optional[str] = Field(None, description="Time zone (e.g. 'US/Eastern')")
+
+
+def update_scheduled_job(
+    config: ServerConfig, auth_manager: AuthManager, params: UpdateScheduledJobParams
+) -> Dict[str, Any]:
+    """Update a scheduled job record (sys_trigger) via PATCH.
+
+    Only the fields explicitly provided (non-None) are sent in the payload.
+    """
+    url = f"{config.instance_url}/api/now/table/sys_trigger/{params.job_sys_id}"
+    headers = auth_manager.get_headers()
+    payload: Dict[str, Any] = {}
+    if params.name is not None:
+        payload["name"] = params.name
+    if params.script is not None:
+        payload["script"] = params.script
+    if params.run_start is not None:
+        payload["run_start"] = params.run_start
+    if params.time_zone is not None:
+        payload["time_zone"] = params.time_zone
+
+    try:
+        response = requests.patch(url, headers=headers, json=payload)
+        response.raise_for_status()
+        return {"success": True, "scheduled_job": response.json().get("result", {})}
+    except requests.HTTPError as e:
+        logger.error(f"HTTP error updating scheduled job {params.job_sys_id}: {e}")
+        return {"success": False, "message": f"HTTP error: {e}"}
+    except Exception as e:
+        logger.error(f"Error updating scheduled job {params.job_sys_id}: {e}")
+        return {"success": False, "message": f"Error: {e}"}
+
+
+# ---------------------------------------------------------------------------
+# run_scheduled_job_now — Story 12.1
+# ---------------------------------------------------------------------------
+
+
+class RunScheduledJobNowParams(BaseModel):
+    """Parameters for triggering a scheduled job to run immediately."""
+
+    job_sys_id: str = Field(..., description="sys_id of the scheduled job to run now")
+
+
+def run_scheduled_job_now(
+    config: ServerConfig, auth_manager: AuthManager, params: RunScheduledJobNowParams
+) -> Dict[str, Any]:
+    """Trigger a scheduled job to run immediately.
+
+    Sets trigger=true on the sys_trigger record, which causes the scheduler
+    to execute the job on its next poll cycle (typically within ~1 minute).
+    """
+    url = f"{config.instance_url}/api/now/table/sys_trigger/{params.job_sys_id}"
+    headers = auth_manager.get_headers()
+    try:
+        response = requests.patch(url, headers=headers, json={"trigger": "true"})
+        response.raise_for_status()
+        return {
+            "success": True,
+            "scheduled_job": response.json().get("result", {}),
+            "message": "Job queued for immediate execution (runs on next scheduler poll)",
+        }
+    except requests.HTTPError as e:
+        logger.error(f"HTTP error triggering scheduled job {params.job_sys_id}: {e}")
+        return {"success": False, "message": f"HTTP error: {e}"}
+    except Exception as e:
+        logger.error(f"Error triggering scheduled job {params.job_sys_id}: {e}")
+        return {"success": False, "message": f"Error: {e}"}

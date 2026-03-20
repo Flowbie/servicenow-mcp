@@ -17,6 +17,8 @@ from servicenow_mcp.tools.automation_tools import (
     ListScheduledExportsParams,
     ListScheduledImportsParams,
     ListScheduledJobsParams,
+    RunScheduledJobNowParams,
+    UpdateScheduledJobParams,
     create_scheduled_script,
     delete_scheduled_job,
     disable_scheduled_job,
@@ -25,6 +27,8 @@ from servicenow_mcp.tools.automation_tools import (
     list_scheduled_exports,
     list_scheduled_imports,
     list_scheduled_jobs,
+    run_scheduled_job_now,
+    update_scheduled_job,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
 
@@ -396,6 +400,67 @@ class TestAutomationTools(unittest.TestCase):
         params = ListScheduledExportsParams()
         result = list_scheduled_exports(self.config, self.auth_manager, params)
         self.assertFalse(result["success"])
+
+    # --- update_scheduled_job ---
+
+    @patch("servicenow_mcp.tools.automation_tools.requests.patch")
+    def test_update_scheduled_job_success(self, mock_patch):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": {"sys_id": "job1", "name": "Updated Job", "script": "gs.info('updated');"}
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_patch.return_value = mock_response
+
+        params = UpdateScheduledJobParams(job_sys_id="job1", name="Updated Job")
+        result = update_scheduled_job(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["scheduled_job"]["name"], "Updated Job")
+
+    @patch("servicenow_mcp.tools.automation_tools.requests.patch")
+    def test_update_scheduled_job_updates_script(self, mock_patch):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": {"sys_id": "job1", "script": "gs.info('new');"}}
+        mock_response.raise_for_status = MagicMock()
+        mock_patch.return_value = mock_response
+
+        params = UpdateScheduledJobParams(job_sys_id="job1", script="gs.info('new');")
+        result = update_scheduled_job(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        call_payload = mock_patch.call_args[1]["json"]
+        self.assertIn("script", call_payload)
+
+    @patch("servicenow_mcp.tools.automation_tools.requests.patch")
+    def test_update_scheduled_job_http_error(self, mock_patch):
+        mock_patch.side_effect = requests.HTTPError("Timeout")
+        params = UpdateScheduledJobParams(job_sys_id="job1", name="Fail")
+        result = update_scheduled_job(self.config, self.auth_manager, params)
+        self.assertFalse(result["success"])
+        self.assertIn("message", result)
+
+    @patch("servicenow_mcp.tools.automation_tools.requests.patch")
+    def test_run_scheduled_job_now_success(self, mock_patch):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": {"sys_id": "job1", "name": "My Job"}}
+        mock_response.raise_for_status = MagicMock()
+        mock_patch.return_value = mock_response
+
+        params = RunScheduledJobNowParams(job_sys_id="job1")
+        result = run_scheduled_job_now(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        call_payload = mock_patch.call_args[1]["json"]
+        self.assertIn("trigger", call_payload)
+
+    @patch("servicenow_mcp.tools.automation_tools.requests.patch")
+    def test_run_scheduled_job_now_http_error(self, mock_patch):
+        mock_patch.side_effect = requests.HTTPError("Connection refused")
+        params = RunScheduledJobNowParams(job_sys_id="job1")
+        result = run_scheduled_job_now(self.config, self.auth_manager, params)
+        self.assertFalse(result["success"])
+        self.assertIn("message", result)
 
 
 if __name__ == "__main__":
