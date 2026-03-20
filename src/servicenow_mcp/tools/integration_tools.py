@@ -17,7 +17,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 import requests
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.config import ServerConfig
@@ -658,31 +658,41 @@ class RunImportParams(BaseModel):
     staging_table: str = Field(..., description="Name of the staging/import set table")
     payload: Dict[str, Any] = Field(..., description="Field name to value dict for the staging row")
 
+    @field_validator("staging_table")
+    @classmethod
+    def validate_staging_table(cls, v: str) -> str:
+        import re
+        if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", v):
+            raise ValueError(
+                f"staging_table must be a valid ServiceNow table name (alphanumeric + underscore): {v!r}"
+            )
+        return v
+
 
 def list_transform_maps(
     config: ServerConfig, auth_manager: AuthManager, params: ListTransformMapsParams
-) -> dict:
+) -> Dict[str, Any]:
     """List transform maps from sys_transform_map."""
-    url = f"{config.instance_url}/api/now/table/sys_transform_map"
-    query_parts: List[str] = []
-    if params.source_table_filter:
-        query_parts.append(f"source_tableLIKE{params.source_table_filter}")
-    if params.active is not None:
-        query_parts.append(f"active={str(params.active).lower()}")
-
-    request_params: Dict[str, Any] = {
-        "sysparm_limit": params.limit,
-        "sysparm_offset": params.offset,
-        "sysparm_fields": "sys_id,name,source_table,target_table,active,run_business_rules",
-    }
-    if query_parts:
-        request_params["sysparm_query"] = "^".join(query_parts)
-
     try:
+        url = f"{config.instance_url}/api/now/table/sys_transform_map"
+        query_parts: List[str] = []
+        if params.source_table_filter:
+            query_parts.append(f"source_tableLIKE{params.source_table_filter}")
+        if params.active is not None:
+            query_parts.append(f"active={str(params.active).lower()}")
+
+        request_params: Dict[str, Any] = {
+            "sysparm_limit": params.limit,
+            "sysparm_offset": params.offset,
+            "sysparm_fields": "sys_id,name,source_table,target_table,active,run_business_rules",
+        }
+        if query_parts:
+            request_params["sysparm_query"] = "^".join(query_parts)
+
         response = requests.get(url, headers=auth_manager.get_headers(), params=request_params)
         response.raise_for_status()
         data = response.json().get("result", [])
-        return {"success": True, "count": len(data), "transform_maps": data}
+        return {"success": True, "count": len(data), "transform_maps": data, "message": f"Found {len(data)} transform map(s)"}
     except requests.HTTPError as e:
         logger.error(f"HTTP error listing transform maps: {e}")
         return {"success": False, "message": f"HTTP error: {e}"}
@@ -693,45 +703,48 @@ def list_transform_maps(
 
 def create_transform_map(
     config: ServerConfig, auth_manager: AuthManager, params: CreateTransformMapParams
-) -> dict:
+) -> Dict[str, Any]:
     """Create a new transform map on sys_transform_map."""
-    url = f"{config.instance_url}/api/now/table/sys_transform_map"
-    payload = {
-        "name": params.name,
-        "source_table": params.source_table,
-        "target_table": params.target_table,
-        "active": str(params.active).lower(),
-        "run_business_rules": str(params.run_business_rules).lower(),
-        "copy_empty_fields": str(params.copy_empty_fields).lower(),
-    }
     try:
+        url = f"{config.instance_url}/api/now/table/sys_transform_map"
+        payload = {
+            "name": params.name,
+            "source_table": params.source_table,
+            "target_table": params.target_table,
+            "active": params.active,
+            "run_business_rules": params.run_business_rules,
+            "copy_empty_fields": params.copy_empty_fields,
+        }
         response = requests.post(url, headers=auth_manager.get_headers(), json=payload)
         response.raise_for_status()
-        return {"success": True, "transform_map": response.json().get("result", {})}
+        record = response.json().get("result", {})
+        return {"success": True, "message": f"Transform map '{params.name}' created", "transform_map": record}
     except requests.HTTPError as e:
-        logger.error(f"HTTP error creating transform map: {e}")
+        logger.error(f"HTTP error creating transform map '{params.name}': {e}")
         return {"success": False, "message": f"HTTP error: {e}"}
     except Exception as e:
-        logger.error(f"Error creating transform map: {e}")
+        logger.error(f"Error creating transform map '{params.name}': {e}")
         return {"success": False, "message": f"Error: {e}"}
 
 
 def run_transform(
     config: ServerConfig, auth_manager: AuthManager, params: RunTransformParams
-) -> dict:
+) -> Dict[str, Any]:
     """Trigger transform map processing for an existing import set.
 
-    PATCHes the import set record to state=loaded, which triggers the platform
-    to run all active transform maps (or a specific one if transform_map_sys_id is given).
+    Creates a sys_import_set_run record that causes the ServiceNow scheduler
+    to process the specified import set through the given transform map.
     """
-    url = f"{config.instance_url}/api/now/table/sys_import_set/{params.import_set_sys_id}"
-    payload: Dict[str, Any] = {"state": "loaded"}
-    if params.transform_map_sys_id:
-        payload["transform_map"] = params.transform_map_sys_id
     try:
-        response = requests.patch(url, headers=auth_manager.get_headers(), json=payload)
+        url = f"{config.instance_url}/api/now/table/sys_import_set_run"
+        payload: Dict[str, Any] = {
+            "import_set": params.import_set_sys_id,
+        }
+        if params.transform_map_sys_id:
+            payload["transform_map"] = params.transform_map_sys_id
+        response = requests.post(url, headers=auth_manager.get_headers(), json=payload)
         response.raise_for_status()
-        return {"success": True, "result": response.json().get("result", {})}
+        return {"success": True, "message": "Transform run queued", "result": response.json().get("result", {})}
     except requests.HTTPError as e:
         logger.error(f"HTTP error running transform for import set {params.import_set_sys_id}: {e}")
         return {"success": False, "message": f"HTTP error: {e}"}
@@ -742,7 +755,7 @@ def run_transform(
 
 def run_import(
     config: ServerConfig, auth_manager: AuthManager, params: RunImportParams
-) -> dict:
+) -> Dict[str, Any]:
     """Insert a row into a staging table and trigger its transform maps.
 
     Uses the ServiceNow Import Set API: POST /api/now/import/{staging_table}
@@ -756,7 +769,7 @@ def run_import(
         result = response.json().get("result", [])
         if isinstance(result, dict):
             result = [result]
-        return {"success": True, "count": len(result), "results": result}
+        return {"success": True, "count": len(result), "results": result, "message": f"Import completed: {len(result)} row(s) processed"}
     except requests.HTTPError as e:
         logger.error(f"HTTP error running import for table {params.staging_table}: {e}")
         return {"success": False, "message": f"HTTP error: {e}"}

@@ -576,23 +576,24 @@ class TestRunTransform(unittest.TestCase):
         self.auth_manager = MagicMock(spec=AuthManager)
         self.auth_manager.get_headers.return_value = {"Authorization": "Bearer FAKE_TOKEN"}
 
-    @patch("servicenow_mcp.tools.integration_tools.requests.patch")
-    def test_run_transform_success(self, mock_patch):
+    @patch("servicenow_mcp.tools.integration_tools.requests.post")
+    def test_run_transform_success(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {
-            "result": {"sys_id": "is1", "state": "complete"}
+            "result": {"sys_id": "run1", "import_set": "is1", "transform_map": "tm1"}
         }
         mock_response.raise_for_status = MagicMock()
-        mock_patch.return_value = mock_response
+        mock_post.return_value = mock_response
 
         params = RunTransformParams(import_set_sys_id="is1", transform_map_sys_id="tm1")
         result = run_transform(self.config, self.auth_manager, params)
 
         self.assertTrue(result["success"])
+        self.assertIn("message", result)
 
-    @patch("servicenow_mcp.tools.integration_tools.requests.patch")
-    def test_run_transform_http_error(self, mock_patch):
-        mock_patch.side_effect = requests.HTTPError("Timeout")
+    @patch("servicenow_mcp.tools.integration_tools.requests.post")
+    def test_run_transform_http_error(self, mock_post):
+        mock_post.side_effect = requests.HTTPError("Timeout")
         params = RunTransformParams(import_set_sys_id="is1")
         result = run_transform(self.config, self.auth_manager, params)
         self.assertFalse(result["success"])
