@@ -1409,7 +1409,7 @@ def create_ui_policy(
         "active": str(params.active).lower(),
         "applies_to": params.applies_to,
     }
-    if params.conditions:
+    if params.conditions is not None:
         payload["conditions"] = params.conditions
     try:
         headers = auth_manager.get_headers()
