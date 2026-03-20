@@ -32,8 +32,12 @@ catalog_builder:
   - delete_catalog_item
   - list_catalogs
   - create_catalog
-  # planned: Epic 13 — create_ui_policy, create_ui_policy_action,
-  #                     create_user_criteria, create_user_criteria_condition
+  # UI Policies (Epic 13)
+  - get_ui_policy
+  - create_ui_policy
+  - update_ui_policy
+  - list_ui_policy_actions
+  - create_ui_policy_action
   # Categories
   - list_catalog_categories
   - create_catalog_category
@@ -93,6 +97,8 @@ automation_developer:
   # Scheduled Integrations
   - list_scheduled_imports
   - list_scheduled_exports
+  - update_scheduled_job
+  - run_scheduled_job_now
 
 knowledge_author:
   # KB Management
@@ -182,6 +188,16 @@ platform_developer:
   - update_client_script
   - create_ui_action
   - update_ui_action
+  - enable_client_script
+  - disable_client_script
+  - delete_client_script
+  - enable_ui_action
+  - disable_ui_action
+  - get_ui_policy
+  - create_ui_policy
+  - update_ui_policy
+  - create_ui_policy_action
+  - list_ui_policy_actions
   - list_scheduled_scripts
   # Generic Table API
   - query_records
@@ -356,6 +372,10 @@ integration_developer:
   - list_import_sets
   - list_mid_servers
   - get_mid_server_status
+  - list_transform_maps
+  - create_transform_map
+  - run_transform
+  - run_import
   # Core tools needed alongside integration work
   - query_records
   - get_record
@@ -581,8 +601,25 @@ full:
   - list_import_sets
   - list_mid_servers
   - get_mid_server_status
-  # planned: Epic 13 — create_ui_policy, create_ui_policy_action,
-  #                     create_user_criteria, create_user_criteria_condition
+  # Integration — Transform Maps & Import (Epic 8)
+  - list_transform_maps
+  - create_transform_map
+  - run_transform
+  - run_import
+  # Automation — Scheduled Jobs (Epic 12)
+  - update_scheduled_job
+  - run_scheduled_job_now
+  # Customization — Client Scripts / UI Actions / UI Policies (Epic 13)
+  - enable_client_script
+  - disable_client_script
+  - delete_client_script
+  - enable_ui_action
+  - disable_ui_action
+  - get_ui_policy
+  - create_ui_policy
+  - update_ui_policy
+  - create_ui_policy_action
+  - list_ui_policy_actions
   # Story Management
   - get_story
   - create_story
