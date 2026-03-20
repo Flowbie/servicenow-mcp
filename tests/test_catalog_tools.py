@@ -712,7 +712,7 @@ class TestCatalogTools(unittest.TestCase):
         result = update_catalog_item(self.config, self.auth_manager, params)
 
         self.assertTrue(result["success"])
-        self.assertEqual(result["data"]["short_description"], "Updated laptop description")
+        self.assertEqual(result["item"]["short_description"], "Updated laptop description")
 
         mock_patch.assert_called_once()
         args, kwargs = mock_patch.call_args
@@ -746,9 +746,9 @@ class TestCatalogTools(unittest.TestCase):
         result = update_catalog_item(self.config, self.auth_manager, params)
 
         self.assertTrue(result["success"])
-        self.assertEqual(result["data"]["name"], "Updated Laptop")
-        self.assertEqual(result["data"]["short_description"], "Updated laptop description")
-        self.assertEqual(result["data"]["price"], "1099.99")
+        self.assertEqual(result["item"]["name"], "Updated Laptop")
+        self.assertEqual(result["item"]["short_description"], "Updated laptop description")
+        self.assertEqual(result["item"]["price"], "1099.99")
 
         mock_patch.assert_called_once()
         args, kwargs = mock_patch.call_args
@@ -772,7 +772,6 @@ class TestCatalogTools(unittest.TestCase):
 
         self.assertFalse(result["success"])
         self.assertIn("Error updating catalog item", result["message"])
-        self.assertIsNone(result["data"])
 
 
     # --- create_catalog_item tests ---

@@ -576,7 +576,7 @@ def update_catalog_item(
         return {
             "success": True,
             "message": "Catalog item updated successfully",
-            "data": response.json()["result"],
+            "item": response.json()["result"],
         }
 
     except Exception as e:
@@ -584,7 +584,6 @@ def update_catalog_item(
         return {
             "success": False,
             "message": f"Error updating catalog item: {str(e)}",
-            "data": None,
         }
 
 
