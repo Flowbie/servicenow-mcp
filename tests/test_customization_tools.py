@@ -254,6 +254,14 @@ class TestUiPolicyTools(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertEqual(result["ui_policy_action"]["field"], "priority")
 
+        # Verify the None→"leave" and bool→string mapping
+        call_payload = mock_post.call_args[1]["json"]
+        self.assertEqual(call_payload["mandatory"], "true")
+        self.assertEqual(call_payload["visible"], "true")
+        self.assertEqual(call_payload["disabled"], "false")
+        self.assertEqual(call_payload["ui_policy"], "up1")
+        self.assertEqual(call_payload["field"], "priority")
+
     @patch("servicenow_mcp.tools.customization_tools.requests.get")
     def test_list_ui_policy_actions_success(self, mock_get):
         mock_response = MagicMock()
@@ -285,6 +293,30 @@ class TestUiPolicyTools(unittest.TestCase):
         mock_get.side_effect = requests.RequestException("Not found")
         params = GetUiPolicyParams(policy_sys_id="bad_id")
         result = get_ui_policy(self.config, self.auth_manager, params)
+        self.assertFalse(result["success"])
+        self.assertIn("message", result)
+
+    @patch("servicenow_mcp.tools.customization_tools.requests.patch")
+    def test_update_ui_policy_request_error(self, mock_patch):
+        mock_patch.side_effect = requests.RequestException("Timeout")
+        params = UpdateUiPolicyParams(policy_sys_id="up1", active=False)
+        result = update_ui_policy(self.config, self.auth_manager, params)
+        self.assertFalse(result["success"])
+        self.assertIn("message", result)
+
+    @patch("servicenow_mcp.tools.customization_tools.requests.post")
+    def test_create_ui_policy_action_request_error(self, mock_post):
+        mock_post.side_effect = requests.RequestException("Connection refused")
+        params = CreateUiPolicyActionParams(policy_sys_id="up1", field="priority")
+        result = create_ui_policy_action(self.config, self.auth_manager, params)
+        self.assertFalse(result["success"])
+        self.assertIn("message", result)
+
+    @patch("servicenow_mcp.tools.customization_tools.requests.get")
+    def test_list_ui_policy_actions_request_error(self, mock_get):
+        mock_get.side_effect = requests.RequestException("Timeout")
+        params = ListUiPolicyActionsParams(policy_sys_id="up1")
+        result = list_ui_policy_actions(self.config, self.auth_manager, params)
         self.assertFalse(result["success"])
         self.assertIn("message", result)
 
