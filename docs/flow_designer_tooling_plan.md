@@ -215,3 +215,43 @@ Deliver minimal viable parity for day-1 prompts:
 2. Wire tools into `tool_utils.py` and `tools/__init__.py`.
 3. Add unit/integration tests for create/update/read lifecycles and step graph validation.
 4. Add `docs/flow_designer_management.md` with examples for each supported construct.
+
+---
+
+## Implementation Status Tracker
+
+Legend: `⬜` not started, `🧩` implemented with partial validation, `✅` implemented and tested.
+
+### Flow tools in `flow_tools.py`
+
+- `✅` `list_flows`
+- `✅` `get_flow`
+- `✅` `update_flow`
+- `✅` `publish_flow`
+- `✅` `create_subflow`
+- `✅` `list_subflows`
+- `✅` `get_subflow`
+- `✅` `update_subflow`
+- `✅` `publish_subflow`
+- `✅` `create_action`
+- `✅` `list_actions`
+- `✅` `get_action`
+- `✅` `update_action`
+- `✅` `publish_action`
+
+### Tests in `tests/flow_tests.py`
+
+- `✅` test for `list_flows`
+- `✅` test for `get_flow`
+- `✅` test for `update_flow`
+- `✅` test for `publish_flow`
+- `✅` test for `create_subflow`
+- `✅` test for `list_subflows`
+- `✅` test for `get_subflow`
+- `✅` test for `update_subflow`
+- `✅` test for `publish_subflow`
+- `✅` test for `create_action`
+- `✅` test for `list_actions`
+- `✅` test for `get_action`
+- `✅` test for `update_action`
+- `✅` test for `publish_action`

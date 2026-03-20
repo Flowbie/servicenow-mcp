@@ -202,14 +202,25 @@ platform_developer:
   # Background Script Execution
   - run_background_script
   # Flow Designer
-  - create_flow
   - list_trigger_types
+  - create_flow
   - list_flows
   - get_flow
   - get_flow_triggers
   - get_flow_actions
   - get_flow_version
+  - update_flow
   - publish_flow
+  - create_subflow
+  - list_subflows
+  - get_subflow
+  - update_subflow
+  - publish_subflow
+  - create_action
+  - list_actions
+  - get_action
+  - update_action
+  - publish_action
   # Workflows
   - list_workflows
   - get_workflow_details
@@ -481,8 +492,25 @@ full:
   # Background Script Execution
   - run_background_script
   # Flow Designer
-  - create_flow
   - list_trigger_types
+  - create_flow
+  - list_flows
+  - get_flow
+  - get_flow_triggers
+  - get_flow_actions
+  - get_flow_version
+  - update_flow
+  - publish_flow
+  - create_subflow
+  - list_subflows
+  - get_subflow
+  - update_subflow
+  - publish_subflow
+  - create_action
+  - list_actions
+  - get_action
+  - update_action
+  - publish_action
   # Workflow
   - list_workflows
   - get_workflow_details

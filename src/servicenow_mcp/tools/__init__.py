@@ -113,6 +113,24 @@ from servicenow_mcp.tools.project_tools import (
     update_project,
     list_projects,
 )
+from servicenow_mcp.tools.flow_tools import (
+    create_flow,
+    list_trigger_types,
+    list_flows,
+    get_flow,
+    update_flow,
+    publish_flow,
+    create_subflow,
+    list_subflows,
+    get_subflow,
+    update_subflow,
+    publish_subflow,
+    create_action,
+    list_actions,
+    get_action,
+    update_action,
+    publish_action,
+)
 # from servicenow_mcp.tools.problem_tools import create_problem, update_problem
 # from servicenow_mcp.tools.request_tools import create_request, update_request
 
@@ -222,6 +240,24 @@ __all__ = [
     "create_project",
     "update_project",
     "list_projects",
+
+    # Flow Designer tools
+    "list_trigger_types",
+    "create_flow",
+    "list_flows",
+    "get_flow",
+    "update_flow",
+    "publish_flow",
+    "create_subflow",
+    "list_subflows",
+    "get_subflow",
+    "update_subflow",
+    "publish_subflow",
+    "create_action",
+    "list_actions",
+    "get_action",
+    "update_action",
+    "publish_action",
 
     
     # Future tools

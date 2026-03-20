@@ -20,7 +20,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Literal
+from typing import Any, Literal
 
 import requests
 from pydantic import BaseModel, Field, field_validator
@@ -262,6 +262,162 @@ class CreateFlowResponse(BaseModel):
     flow_sys_id: str | None = Field(None, description="sys_id of the created flow (sys_hub_flow)")
     flow_name: str | None = Field(None, description="Name of the created flow")
     flow_internal_name: str | None = Field(None, description="Auto-generated internal name of the flow")
+
+
+class ListArtifactsParams(BaseModel):
+    """Common pagination/filter parameters for flow artifacts."""
+
+    limit: int = Field(20, ge=1, le=200, description="Maximum number of records to return")
+    offset: int = Field(0, ge=0, description="Zero-based record offset")
+    query: str | None = Field(
+        None,
+        description="Additional encoded query fragment appended with '^'",
+    )
+    active: bool | None = Field(
+        None,
+        description="Optional active-state filter",
+    )
+
+
+class ListFlowsParams(ListArtifactsParams):
+    """Parameters for list_flows."""
+
+
+class ListSubflowsParams(ListArtifactsParams):
+    """Parameters for list_subflows."""
+
+
+class ListActionsParams(ListArtifactsParams):
+    """Parameters for list_actions."""
+
+
+class GetArtifactParams(BaseModel):
+    """Common lookup parameter for flow artifacts."""
+
+    sys_id: str = Field(..., description="sys_id of the artifact")
+
+
+class GetFlowParams(GetArtifactParams):
+    """Parameters for get_flow."""
+
+
+class GetSubflowParams(GetArtifactParams):
+    """Parameters for get_subflow."""
+
+
+class GetActionParams(GetArtifactParams):
+    """Parameters for get_action."""
+
+
+class CreateArtifactParams(BaseModel):
+    """Common create parameters for flow/subflow/action artifacts."""
+
+    name: str = Field(..., description="Artifact display name")
+    description: str | None = Field(None, description="Artifact description")
+    scope: str = Field("global", description="Application scope sys_id or 'global'")
+    run_as: Literal["user", "system"] = Field(
+        "user",
+        description="Execution context",
+    )
+    access: Literal["public", "package_private", "private"] = Field(
+        "public",
+        description="Artifact access level",
+    )
+    flow_priority: Literal["LOW", "MEDIUM", "HIGH"] = Field(
+        "MEDIUM",
+        description="Default run priority",
+    )
+
+
+class CreateSubflowParams(CreateArtifactParams):
+    """Parameters for create_subflow."""
+
+
+class CreateActionParams(CreateArtifactParams):
+    """Parameters for create_action."""
+
+
+class UpdateArtifactParams(BaseModel):
+    """Common update parameters for flow/subflow/action artifacts."""
+
+    sys_id: str = Field(..., description="sys_id of the artifact to update")
+    name: str | None = Field(None, description="Updated name")
+    description: str | None = Field(None, description="Updated description")
+    run_as: Literal["user", "system"] | None = Field(None, description="Updated execution context")
+    access: Literal["public", "package_private", "private"] | None = Field(
+        None, description="Updated access level"
+    )
+    flow_priority: Literal["LOW", "MEDIUM", "HIGH"] | None = Field(
+        None, description="Updated run priority"
+    )
+    active: bool | None = Field(None, description="Updated active state")
+
+
+class UpdateFlowParams(UpdateArtifactParams):
+    """Parameters for update_flow."""
+
+
+class UpdateSubflowParams(UpdateArtifactParams):
+    """Parameters for update_subflow."""
+
+
+class UpdateActionParams(UpdateArtifactParams):
+    """Parameters for update_action."""
+
+
+class PublishArtifactParams(BaseModel):
+    """Common publish parameters for flow/subflow/action artifacts."""
+
+    sys_id: str = Field(..., description="sys_id of the artifact to publish")
+    annotation: str | None = Field("", description="Optional publish note/annotation")
+
+
+class PublishFlowParams(PublishArtifactParams):
+    """Parameters for publish_flow."""
+
+
+class PublishSubflowParams(PublishArtifactParams):
+    """Parameters for publish_subflow."""
+
+
+class PublishActionParams(PublishArtifactParams):
+    """Parameters for publish_action."""
+
+
+class ArtifactSummary(BaseModel):
+    """Compact artifact summary used by list_* tools."""
+
+    sys_id: str
+    name: str
+    artifact_type: str
+    description: str | None = None
+    active: bool = False
+    published: bool = False
+    internal_name: str | None = None
+
+
+class ListArtifactsResponse(BaseModel):
+    """List response model for artifact list tools."""
+
+    artifacts: list[ArtifactSummary]
+    count: int
+    message: str
+
+
+class GetArtifactResponse(BaseModel):
+    """Get response model for artifact read tools."""
+
+    artifact: dict[str, Any] | None = None
+    message: str
+
+
+class MutationResponse(BaseModel):
+    """Response model for create/update/publish operations."""
+
+    success: bool
+    message: str
+    sys_id: str | None = None
+    name: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -888,6 +1044,388 @@ def create_flow(
         flow_name=params.name,
         flow_internal_name=flow_internal_name,
     )
+
+
+# ---------------------------------------------------------------------------
+# Generic artifact lifecycle tools (flow/subflow/action)
+# ---------------------------------------------------------------------------
+
+_ARTIFACT_TYPE_MAP = {
+    "flow": "flow",
+    "subflow": "subflow",
+    "action": "action",
+}
+
+
+def _coerce_bool(value: Any) -> bool:
+    """Normalize ServiceNow truthy string/boolean values to bool."""
+    if isinstance(value, bool):
+        return value
+    return str(value).lower() in {"1", "true", "yes"}
+
+
+def _build_artifact_query(artifact_type: str, params: ListArtifactsParams) -> str:
+    """Build encoded query for sys_hub_flow artifact filtering."""
+    clauses = [f"type={artifact_type}"]
+    if params.active is not None:
+        clauses.append(f"active={str(params.active).lower()}")
+    if params.query:
+        clauses.append(params.query)
+    return "^".join(clauses)
+
+
+def _list_artifacts(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    artifact_type: str,
+    params: ListArtifactsParams,
+) -> ListArtifactsResponse:
+    """List flow/subflow/action artifacts from sys_hub_flow."""
+    try:
+        response = requests.get(
+            f"{config.api_url}/table/sys_hub_flow",
+            params={
+                "sysparm_query": _build_artifact_query(artifact_type, params),
+                "sysparm_fields": (
+                    "sys_id,name,internal_name,description,type,active,published"
+                ),
+                "sysparm_limit": params.limit,
+                "sysparm_offset": params.offset,
+                "sysparm_orderby": "name",
+            },
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        return ListArtifactsResponse(
+            artifacts=[],
+            count=0,
+            message=f"Failed to list {artifact_type}s: {e}" + (f" | response: {_body}" if _body else ""),
+        )
+
+    records = response.json().get("result", [])
+    artifacts = [
+        ArtifactSummary(
+            sys_id=r.get("sys_id", ""),
+            name=r.get("name", ""),
+            artifact_type=r.get("type", artifact_type),
+            description=r.get("description"),
+            active=_coerce_bool(r.get("active", False)),
+            published=_coerce_bool(r.get("published", False)),
+            internal_name=r.get("internal_name"),
+        )
+        for r in records
+    ]
+    return ListArtifactsResponse(
+        artifacts=artifacts,
+        count=len(artifacts),
+        message=f"Found {len(artifacts)} {artifact_type}(s).",
+    )
+
+
+def _get_artifact(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    artifact_type: str,
+    sys_id: str,
+) -> GetArtifactResponse:
+    """Get one flow/subflow/action artifact from sys_hub_flow."""
+    try:
+        response = requests.get(
+            f"{config.api_url}/table/sys_hub_flow/{sys_id}",
+            params={
+                "sysparm_fields": (
+                    "sys_id,name,internal_name,description,type,active,published,"
+                    "access,run_as,flow_priority,sys_created_on,sys_updated_on"
+                )
+            },
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        return GetArtifactResponse(
+            artifact=None,
+            message=f"Failed to get {artifact_type} '{sys_id}': {e}" + (f" | response: {_body}" if _body else ""),
+        )
+
+    record = response.json().get("result", {})
+    actual_type = record.get("type")
+    if actual_type and actual_type != artifact_type:
+        return GetArtifactResponse(
+            artifact=record,
+            message=(
+                f"Record '{sys_id}' exists but type is '{actual_type}', not expected '{artifact_type}'."
+            ),
+        )
+
+    return GetArtifactResponse(
+        artifact=record,
+        message=f"Retrieved {artifact_type} '{sys_id}'.",
+    )
+
+
+def _create_artifact(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    artifact_type: str,
+    params: CreateArtifactParams,
+) -> MutationResponse:
+    """Create a flow/subflow/action shell via processflow API."""
+    processflow_base = f"{config.api_url}/processflow"
+    body = {
+        "name": params.name,
+        "type": _ARTIFACT_TYPE_MAP[artifact_type],
+        "scope": params.scope,
+        "runAs": params.run_as,
+        "access": params.access,
+        "flowPriority": params.flow_priority,
+        "status": "draft",
+        "active": False,
+        "deleted": False,
+        "security": {"can_read": True, "can_write": True},
+        "scopeName": "",
+        "scopeDisplayName": "",
+        "userHasRolesAssignedToFlow": True,
+        "runWithRoles": {"value": "", "displayValue": ""},
+        "description": params.description or "",
+        "protection": "",
+    }
+    try:
+        response = requests.post(
+            f"{processflow_base}/flow",
+            params={
+                "param_only_properties": "true",
+                "sysparm_transaction_scope": "global",
+            },
+            json=body,
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        return MutationResponse(
+            success=False,
+            message=f"Failed to create {artifact_type}: {e}" + (f" | response: {_body}" if _body else ""),
+        )
+
+    data = response.json().get("result", {}).get("data", {})
+    artifact_sys_id = data.get("id")
+    if not artifact_sys_id:
+        return MutationResponse(
+            success=False,
+            message=f"{artifact_type.capitalize()} shell create returned no sys_id.",
+        )
+
+    return MutationResponse(
+        success=True,
+        message=f"Created {artifact_type} '{params.name}' in draft state.",
+        sys_id=artifact_sys_id,
+        name=params.name,
+    )
+
+
+def _update_artifact(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    artifact_type: str,
+    params: UpdateArtifactParams,
+) -> MutationResponse:
+    """Patch mutable fields on a flow/subflow/action record."""
+    patch_fields: dict[str, Any] = {}
+    if params.name is not None:
+        patch_fields["name"] = params.name
+    if params.description is not None:
+        patch_fields["description"] = params.description
+    if params.run_as is not None:
+        patch_fields["run_as"] = params.run_as
+    if params.access is not None:
+        patch_fields["access"] = params.access
+    if params.flow_priority is not None:
+        patch_fields["flow_priority"] = params.flow_priority
+    if params.active is not None:
+        patch_fields["active"] = params.active
+
+    if not patch_fields:
+        return MutationResponse(
+            success=False,
+            message=f"No update fields provided for {artifact_type} '{params.sys_id}'.",
+            sys_id=params.sys_id,
+        )
+
+    try:
+        response = requests.patch(
+            f"{config.api_url}/table/sys_hub_flow/{params.sys_id}",
+            json=patch_fields,
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        return MutationResponse(
+            success=False,
+            message=f"Failed to update {artifact_type} '{params.sys_id}': {e}" + (f" | response: {_body}" if _body else ""),
+            sys_id=params.sys_id,
+        )
+
+    return MutationResponse(
+        success=True,
+        message=f"Updated {artifact_type} '{params.sys_id}'.",
+        sys_id=params.sys_id,
+        name=params.name,
+    )
+
+
+def _publish_artifact(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    artifact_type: str,
+    params: PublishArtifactParams,
+) -> MutationResponse:
+    """Publish a flow/subflow/action via versioning API."""
+    processflow_base = f"{config.api_url}/processflow"
+    try:
+        version_response = requests.post(
+            f"{processflow_base}/versioning/create_version",
+            params={"sysparm_transaction_scope": "global"},
+            json={
+                "item_sys_id": params.sys_id,
+                "type": "Publish",
+                "annotation": params.annotation or "",
+                "favorite": False,
+            },
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        version_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        return MutationResponse(
+            success=False,
+            message=f"Failed to publish {artifact_type} '{params.sys_id}': {e}" + (f" | response: {_body}" if _body else ""),
+            sys_id=params.sys_id,
+        )
+
+    # Best effort state sync on the parent record.
+    try:
+        requests.patch(
+            f"{config.api_url}/table/sys_hub_flow/{params.sys_id}",
+            json={"active": True, "published": True},
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        ).raise_for_status()
+    except requests.RequestException as e:
+        logger.warning("_publish_artifact | record patch failed | artifact=%s | sys_id=%s | error=%s", artifact_type, params.sys_id, e)
+
+    return MutationResponse(
+        success=True,
+        message=f"Published {artifact_type} '{params.sys_id}'.",
+        sys_id=params.sys_id,
+    )
+
+
+def update_flow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: UpdateFlowParams,
+) -> MutationResponse:
+    """Update a flow artifact."""
+    return _update_artifact(config, auth_manager, "flow", params)
+
+
+def create_subflow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: CreateSubflowParams,
+) -> MutationResponse:
+    """Create a subflow artifact shell."""
+    return _create_artifact(config, auth_manager, "subflow", params)
+
+
+def list_subflows(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: ListSubflowsParams,
+) -> ListArtifactsResponse:
+    """List subflow artifacts."""
+    return _list_artifacts(config, auth_manager, "subflow", params)
+
+
+def get_subflow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: GetSubflowParams,
+) -> GetArtifactResponse:
+    """Get a subflow artifact by sys_id."""
+    return _get_artifact(config, auth_manager, "subflow", params.sys_id)
+
+
+def update_subflow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: UpdateSubflowParams,
+) -> MutationResponse:
+    """Update a subflow artifact."""
+    return _update_artifact(config, auth_manager, "subflow", params)
+
+
+def publish_subflow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: PublishSubflowParams,
+) -> MutationResponse:
+    """Publish a subflow artifact."""
+    return _publish_artifact(config, auth_manager, "subflow", params)
+
+
+def create_action(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: CreateActionParams,
+) -> MutationResponse:
+    """Create a custom action artifact shell."""
+    return _create_artifact(config, auth_manager, "action", params)
+
+
+def list_actions(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: ListActionsParams,
+) -> ListArtifactsResponse:
+    """List custom action artifacts."""
+    return _list_artifacts(config, auth_manager, "action", params)
+
+
+def get_action(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: GetActionParams,
+) -> GetArtifactResponse:
+    """Get a custom action artifact by sys_id."""
+    return _get_artifact(config, auth_manager, "action", params.sys_id)
+
+
+def update_action(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: UpdateActionParams,
+) -> MutationResponse:
+    """Update a custom action artifact."""
+    return _update_artifact(config, auth_manager, "action", params)
+
+
+def publish_action(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: PublishActionParams,
+) -> MutationResponse:
+    """Publish a custom action artifact."""
+    return _publish_artifact(config, auth_manager, "action", params)
 
 
 # ---------------------------------------------------------------------------
