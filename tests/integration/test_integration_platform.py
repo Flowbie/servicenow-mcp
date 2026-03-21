@@ -39,17 +39,17 @@ class TestIntegrationPlatformIntegration:
         print(json.dumps(result, indent=2, default=str))
 
         assert result["success"] is True, f"Expected success, got: {result.get('message')}"
-        assert "rest_messages" in result
+        assert "items" in result
 
     def test_get_rest_message_by_sys_id(self, live_config, live_auth):
         """Verify get_rest_message returns full REST message details."""
         list_result = list_rest_messages(live_config, live_auth, ListRestMessagesParams(limit=1))
         assert list_result["success"] is True
 
-        if not list_result["rest_messages"]:
+        if not list_result["items"]:
             pytest.skip("No REST messages on this instance.")
 
-        sys_id = list_result["rest_messages"][0]["sys_id"]
+        sys_id = list_result["items"][0]["sys_id"]
 
         params = GetRestMessageParams(message_sys_id=sys_id)
         result = get_rest_message(live_config, live_auth, params)
@@ -58,7 +58,7 @@ class TestIntegrationPlatformIntegration:
         print(json.dumps(result, indent=2, default=str))
 
         assert result["success"] is True
-        assert "rest_message" in result
+        assert "message_record" in result
 
     def test_list_scripted_rest_apis_returns_results(self, live_config, live_auth):
         """Verify list_scripted_rest_apis returns records."""

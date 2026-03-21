@@ -31,8 +31,8 @@ class TestAutomationIntegration:
         print(json.dumps(result, indent=2, default=str))
 
         assert result["success"] is True, f"Expected success, got: {result.get('message')}"
-        assert "jobs" in result
-        assert isinstance(result["jobs"], list)
+        assert "scheduled_jobs" in result
+        assert isinstance(result["scheduled_jobs"], list)
 
     def test_list_scheduled_jobs_shape(self, live_config, live_auth):
         """Verify scheduled job records have expected fields."""
@@ -40,7 +40,7 @@ class TestAutomationIntegration:
         result = list_scheduled_jobs(live_config, live_auth, params)
 
         assert result["success"] is True
-        jobs = result["jobs"]
+        jobs = result["scheduled_jobs"]
 
         if not jobs:
             pytest.skip("No scheduled jobs found on this instance.")
@@ -57,10 +57,10 @@ class TestAutomationIntegration:
         list_result = list_scheduled_jobs(live_config, live_auth, ListScheduledJobsParams(limit=1))
         assert list_result["success"] is True
 
-        if not list_result["jobs"]:
+        if not list_result["scheduled_jobs"]:
             pytest.skip("No scheduled jobs on this instance.")
 
-        sys_id = list_result["jobs"][0]["sys_id"]
+        sys_id = list_result["scheduled_jobs"][0]["sys_id"]
 
         params = GetScheduledJobParams(job_sys_id=sys_id)
         result = get_scheduled_job(live_config, live_auth, params)
@@ -69,7 +69,7 @@ class TestAutomationIntegration:
         print(json.dumps(result, indent=2, default=str))
 
         assert result["success"] is True
-        assert "job" in result
+        assert "scheduled_job" in result
 
     def test_list_scheduled_imports_returns_results(self, live_config, live_auth):
         """Verify list_scheduled_imports returns records."""
@@ -97,4 +97,4 @@ class TestAutomationIntegration:
         result = list_scheduled_jobs(live_config, live_auth, params)
 
         assert result["success"] is True
-        assert len(result["jobs"]) <= 2
+        assert len(result["scheduled_jobs"]) <= 2
