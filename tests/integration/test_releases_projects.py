@@ -45,7 +45,7 @@ class TestReleasesIntegration:
         print(f"\n--- get_release({release_id}) response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True, f"Expected success, got: {result.get('message')}"
 
     def test_get_release_not_found(self, live_config, live_auth):
         """Verify graceful not-found handling for a nonexistent release."""
@@ -89,8 +89,7 @@ class TestProjectsIntegration:
         print("\n--- first project fields ---")
         print(json.dumps(first, indent=2, default=str))
 
-        for field in ["sys_id"]:
-            assert field in first, f"Missing expected field: {field}"
+        assert "sys_id" in first, "Missing expected field: sys_id"
 
     def test_list_projects_limit_respected(self, live_config, live_auth):
         """Verify limit param is respected."""
