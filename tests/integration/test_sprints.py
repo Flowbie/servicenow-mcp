@@ -18,10 +18,10 @@ from servicenow_mcp.tools.sprint_tools import (
 
 def _fetch_any_sprint_sys_id(live_config, live_auth):
     """
-    Helper: query rm_sprint_2 directly via Table API to get one real sys_id.
+    Helper: query rm_sprint directly via Table API to get one real sys_id.
     Returns None if no sprints exist on the instance.
     """
-    url = f"{live_config.instance_url}/api/now/table/rm_sprint_2"
+    url = f"{live_config.instance_url}/api/now/table/rm_sprint"
     headers = live_auth.get_headers()
     try:
         resp = requests.get(
@@ -47,8 +47,8 @@ def _fetch_any_sprint_sys_id(live_config, live_auth):
 class TestSprintIntegration:
 
     def test_list_sprints_via_table_api(self, live_config, live_auth):
-        """Verify rm_sprint_2 Table API is accessible and returns records."""
-        url = f"{live_config.instance_url}/api/now/table/rm_sprint_2"
+        """Verify rm_sprint Table API is accessible and returns records."""
+        url = f"{live_config.instance_url}/api/now/table/rm_sprint"
         headers = live_auth.get_headers()
 
         resp = requests.get(
@@ -62,18 +62,18 @@ class TestSprintIntegration:
             timeout=live_config.timeout,
         )
 
-        print("\n--- rm_sprint_2 table API response ---")
+        print("\n--- rm_sprint table API response ---")
         print(json.dumps(resp.json(), indent=2, default=str))
 
         if resp.status_code == 400 and "Invalid table" in resp.text:
-            pytest.skip("rm_sprint_2 table not available on this instance.")
+            pytest.skip("rm_sprint table not available on this instance.")
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
         result = resp.json().get("result")
         assert isinstance(result, list), "Expected result to be a list"
 
     def test_list_sprints_returns_expected_fields(self, live_config, live_auth):
         """Verify sprint records contain core fields."""
-        url = f"{live_config.instance_url}/api/now/table/rm_sprint_2"
+        url = f"{live_config.instance_url}/api/now/table/rm_sprint"
         headers = live_auth.get_headers()
 
         resp = requests.get(
@@ -87,7 +87,7 @@ class TestSprintIntegration:
             timeout=live_config.timeout,
         )
         if resp.status_code == 400 and "Invalid table" in resp.text:
-            pytest.skip("rm_sprint_2 table not available on this instance.")
+            pytest.skip("rm_sprint table not available on this instance.")
         assert resp.status_code == 200
         records = resp.json().get("result", [])
 
@@ -229,11 +229,11 @@ class TestSprintIntegration:
     # list_sprints tests
 
     def _skip_if_table_unavailable(self, result):
-        """Skip the test if rm_sprint_2 is not available on this instance."""
+        """Skip the test if rm_sprint is not available on this instance."""
         if not result["success"]:
             msg = result.get("message", "")
             if "Invalid table" in msg or "400" in msg:
-                pytest.skip(f"rm_sprint_2 table not available on this instance: {msg}")
+                pytest.skip(f"rm_sprint table not available on this instance: {msg}")
 
     def test_list_sprints_returns_results(self, live_config, live_auth):
         """Verify list_sprints connects and returns a list."""

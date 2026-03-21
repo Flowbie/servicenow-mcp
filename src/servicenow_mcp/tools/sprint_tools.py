@@ -1,7 +1,7 @@
 """
 Sprint management tools for the ServiceNow MCP server.
 
-Provides create, get, and summary operations against the rm_sprint_2 table.
+Provides create, get, and summary operations against the rm_sprint table.
 Sprint-to-story association is handled via update_story(sprint=sprint_id).
 """
 
@@ -24,10 +24,10 @@ from servicenow_mcp.tools.agile_constants import (
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Sprint state constants (rm_sprint_2.state)
+# Sprint state constants (rm_sprint.state)
 # ---------------------------------------------------------------------------
 
-# Numeric state values for rm_sprint_2
+# Numeric state values for rm_sprint
 SPRINT_STATE_PLANNING = "1"
 SPRINT_STATE_ACTIVE = "2"
 SPRINT_STATE_COMPLETED = "3"
@@ -196,7 +196,7 @@ def create_sprint(
     if params.capacity is not None:
         data["capacity"] = params.capacity
 
-    url = f"{config.instance_url}/api/now/table/rm_sprint_2"
+    url = f"{config.instance_url}/api/now/table/rm_sprint"
     headers = {**auth_manager.get_headers(), "Content-Type": "application/json"}
 
     try:
@@ -241,7 +241,7 @@ def get_sprint(
     """
     sprint_id = params.sprint_id.strip()
     headers = auth_manager.get_headers()
-    base_url = f"{config.instance_url}/api/now/table/rm_sprint_2"
+    base_url = f"{config.instance_url}/api/now/table/rm_sprint"
 
     # Attempt 1: direct sys_id lookup
     try:
@@ -446,7 +446,7 @@ def list_sprints(
     if query_parts:
         query += "^ORDERBYDESCstart_date"
 
-    url = f"{config.instance_url}/api/now/table/rm_sprint_2"
+    url = f"{config.instance_url}/api/now/table/rm_sprint"
     headers = auth_manager.get_headers()
 
     try:
@@ -542,7 +542,7 @@ def start_sprint(
         pass  # non-fatal; proceed with the transition
 
     # Patch sprint to Active
-    url = f"{config.instance_url}/api/now/table/rm_sprint_2/{sprint_sys_id}"
+    url = f"{config.instance_url}/api/now/table/rm_sprint/{sprint_sys_id}"
     headers = {**auth_manager.get_headers(), "Content-Type": "application/json"}
     try:
         response = requests.patch(url, json={"state": SPRINT_STATE_ACTIVE}, headers=headers, timeout=config.timeout)
@@ -642,7 +642,7 @@ def close_sprint(
         }
 
     # Patch sprint to Completed
-    url = f"{config.instance_url}/api/now/table/rm_sprint_2/{sprint_sys_id}"
+    url = f"{config.instance_url}/api/now/table/rm_sprint/{sprint_sys_id}"
     headers = {**auth_manager.get_headers(), "Content-Type": "application/json"}
     try:
         response = requests.patch(url, json={"state": SPRINT_STATE_COMPLETED}, headers=headers, timeout=config.timeout)
