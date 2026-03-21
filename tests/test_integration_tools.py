@@ -86,8 +86,8 @@ class TestListRestMessages(unittest.TestCase):
         result = list_rest_messages(self.config, self.auth_manager, params)
 
         self.assertTrue(result["success"])
-        self.assertEqual(len(result["items"]), 1)
-        self.assertEqual(result["items"][0]["name"], "MyRestMsg")
+        self.assertEqual(len(result["rest_messages"]), 1)
+        self.assertEqual(result["rest_messages"][0]["name"], "MyRestMsg")
 
     @patch("servicenow_mcp.tools.integration_tools.requests.get")
     def test_empty_results(self, mock_get):
@@ -96,7 +96,7 @@ class TestListRestMessages(unittest.TestCase):
         result = list_rest_messages(self.config, self.auth_manager, params)
 
         self.assertTrue(result["success"])
-        self.assertEqual(len(result["items"]), 0)
+        self.assertEqual(len(result["rest_messages"]), 0)
         self.assertIn("0", result["message"])
 
     @patch("servicenow_mcp.tools.integration_tools.requests.get")
@@ -242,7 +242,7 @@ class TestListScriptedRestApis(unittest.TestCase):
         result = list_scripted_rest_apis(self.config, self.auth_manager, params)
 
         self.assertTrue(result["success"])
-        self.assertEqual(len(result["items"]), 1)
+        self.assertEqual(len(result["scripted_rest_apis"]), 1)
 
     @patch("servicenow_mcp.tools.integration_tools.requests.get")
     def test_active_filter_in_query(self, mock_get):
@@ -360,7 +360,7 @@ class TestListImportSets(unittest.TestCase):
         result = list_import_sets(self.config, self.auth_manager, params)
 
         self.assertTrue(result["success"])
-        self.assertEqual(len(result["items"]), 1)
+        self.assertEqual(len(result["import_sets"]), 1)
 
     @patch("servicenow_mcp.tools.integration_tools.requests.get")
     def test_state_filter_applied(self, mock_get):
@@ -401,8 +401,8 @@ class TestListMidServers(unittest.TestCase):
         result = list_mid_servers(self.config, self.auth_manager, params)
 
         self.assertTrue(result["success"])
-        self.assertEqual(len(result["items"]), 1)
-        self.assertEqual(result["items"][0]["name"], "MID-PROD-01")
+        self.assertEqual(len(result["mid_servers"]), 1)
+        self.assertEqual(result["mid_servers"][0]["name"], "MID-PROD-01")
 
     @patch("servicenow_mcp.tools.integration_tools.requests.get")
     def test_status_filter_applied(self, mock_get):

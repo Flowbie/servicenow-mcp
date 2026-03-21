@@ -79,7 +79,9 @@ class TestAutomationIntegration:
         print("\n--- list_scheduled_imports response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True
+        assert "scheduled_imports" in result
+        assert isinstance(result["scheduled_imports"], list)
 
     def test_list_scheduled_exports_returns_results(self, live_config, live_auth):
         """Verify list_scheduled_exports returns records."""
@@ -89,7 +91,9 @@ class TestAutomationIntegration:
         print("\n--- list_scheduled_exports response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True
+        assert "scheduled_exports" in result
+        assert isinstance(result["scheduled_exports"], list)
 
     def test_list_scheduled_jobs_limit_respected(self, live_config, live_auth):
         """Verify limit param is respected."""

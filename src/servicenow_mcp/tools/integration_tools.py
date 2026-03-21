@@ -205,7 +205,7 @@ def list_rest_messages(
         return {
             "success": True,
             "message": f"Found {len(items)} REST message(s)",
-            "items": items,
+            "rest_messages": items,
         }
     except requests.HTTPError as e:
         logger.error(f"HTTP error listing REST messages: {e}")
@@ -371,7 +371,7 @@ def list_scripted_rest_apis(
         return {
             "success": True,
             "message": f"Found {len(items)} Scripted REST API(s)",
-            "items": items,
+            "scripted_rest_apis": items,
         }
     except requests.HTTPError as e:
         logger.error(f"HTTP error listing Scripted REST APIs: {e}")
@@ -532,7 +532,7 @@ def list_import_sets(
         return {
             "success": True,
             "message": f"Found {len(items)} import set(s)",
-            "items": items,
+            "import_sets": items,
         }
     except requests.HTTPError as e:
         logger.error(f"HTTP error listing import sets: {e}")
@@ -565,7 +565,7 @@ def list_mid_servers(
         return {
             "success": True,
             "message": f"Found {len(items)} MID server(s)",
-            "items": items,
+            "mid_servers": items,
         }
     except requests.HTTPError as e:
         logger.error(f"HTTP error listing MID servers: {e}")

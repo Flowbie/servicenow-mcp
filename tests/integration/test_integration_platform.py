@@ -39,17 +39,18 @@ class TestIntegrationPlatformIntegration:
         print(json.dumps(result, indent=2, default=str))
 
         assert result["success"] is True, f"Expected success, got: {result.get('message')}"
-        assert "items" in result
+        assert "rest_messages" in result
+        assert isinstance(result["rest_messages"], list)
 
     def test_get_rest_message_by_sys_id(self, live_config, live_auth):
         """Verify get_rest_message returns full REST message details."""
         list_result = list_rest_messages(live_config, live_auth, ListRestMessagesParams(limit=1))
         assert list_result["success"] is True
 
-        if not list_result["items"]:
+        if not list_result["rest_messages"]:
             pytest.skip("No REST messages on this instance.")
 
-        sys_id = list_result["items"][0]["sys_id"]
+        sys_id = list_result["rest_messages"][0]["sys_id"]
 
         params = GetRestMessageParams(message_sys_id=sys_id)
         result = get_rest_message(live_config, live_auth, params)
@@ -68,7 +69,9 @@ class TestIntegrationPlatformIntegration:
         print("\n--- list_scripted_rest_apis response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True
+        assert "scripted_rest_apis" in result
+        assert isinstance(result["scripted_rest_apis"], list)
 
     def test_list_mid_servers_returns_results(self, live_config, live_auth):
         """Verify list_mid_servers returns MID server records."""
@@ -78,7 +81,9 @@ class TestIntegrationPlatformIntegration:
         print("\n--- list_mid_servers response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True
+        assert "mid_servers" in result
+        assert isinstance(result["mid_servers"], list)
 
     def test_list_import_sets_returns_results(self, live_config, live_auth):
         """Verify list_import_sets returns records."""
@@ -88,7 +93,9 @@ class TestIntegrationPlatformIntegration:
         print("\n--- list_import_sets response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True
+        assert "import_sets" in result
+        assert isinstance(result["import_sets"], list)
 
     def test_list_transform_maps_returns_results(self, live_config, live_auth):
         """Verify list_transform_maps returns records."""
@@ -98,7 +105,9 @@ class TestIntegrationPlatformIntegration:
         print("\n--- list_transform_maps response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True
+        assert "transform_maps" in result
+        assert isinstance(result["transform_maps"], list)
 
     def test_get_mid_server_status(self, live_config, live_auth):
         """Verify get_mid_server_status returns status for a real MID server."""
