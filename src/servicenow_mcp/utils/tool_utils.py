@@ -470,10 +470,12 @@ from servicenow_mcp.tools.agile_planning_tools import (
 from servicenow_mcp.tools.release_tools import (
     CreateReleaseParams,
     GetReleaseParams,
+    ListReleasesParams,
     ValidateReleaseReadinessParams,
     CompileReleaseNotesParams,
     create_release as create_release_tool,
     get_release as get_release_tool,
+    list_releases as list_releases_tool,
     validate_release_readiness as validate_release_readiness_tool,
     compile_release_notes as compile_release_notes_tool,
 )
@@ -554,11 +556,11 @@ from servicenow_mcp.tools.project_tools import (
     CreateProjectParams,
     UpdateProjectParams,
     ListProjectsParams,
-)
-from servicenow_mcp.tools.project_tools import (
+    GetProjectParams,
     create_project as create_project_tool,
     update_project as update_project_tool,
     list_projects as list_projects_tool,
+    get_project as get_project_tool,
 )
 from servicenow_mcp.tools.flow_tools import (
     CreateActionParams,
@@ -2292,6 +2294,16 @@ def get_tool_definitions(
             "List projects from ServiceNow",
             "json",  # Tool returns list/dict
         ),
+        "get_project": (
+            get_project_tool,
+            GetProjectParams,
+            dict,
+            (
+                "Retrieve a single project from ServiceNow by sys_id or number. "
+                "Tries sys_id lookup first, falls back to number query."
+            ),
+            "json",
+        ),
         # Generic Table API Tools
         "query_records": (
             query_records_tool,
@@ -2643,6 +2655,16 @@ def get_tool_definitions(
             (
                 "Retrieve a single release by sys_id, release number (e.g. REL0001234), or name. "
                 "Attempts a direct sys_id lookup first; falls back to number/name query. Read-only."
+            ),
+            "json",
+        ),
+        "list_releases": (
+            list_releases_tool,
+            ListReleasesParams,
+            dict,
+            (
+                "List releases from ServiceNow (rm_release) with optional state/query filters. "
+                "Returns releases list with count."
             ),
             "json",
         ),

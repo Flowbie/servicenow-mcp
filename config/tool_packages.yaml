@@ -302,6 +302,7 @@ agile_management:
   # Release Management
   - create_release
   - get_release
+  - list_releases
   - validate_release_readiness
   - compile_release_notes
   # Agile Reporting
@@ -330,6 +331,7 @@ agile_management:
   - create_project
   - update_project
   - list_projects
+  - get_project
 
 agile_readonly:
   # Read-only subset — safe for reporting agents and dashboards
@@ -346,6 +348,7 @@ agile_readonly:
   - identify_story_risks
   - generate_test_scenarios
   - get_release
+  - list_releases
   - get_release_status
   - get_blocked_work
   - get_my_work
@@ -357,6 +360,7 @@ agile_readonly:
   - list_scrum_tasks
   - get_scrum_task
   - list_projects
+  - get_project
 
 risk_manager:
   # GRC Risk Management (Phase 9)
@@ -679,6 +683,7 @@ full:
   # Release Management
   - create_release
   - get_release
+  - list_releases
   - validate_release_readiness
   - compile_release_notes
   # Agile Reporting
@@ -707,3 +712,4 @@ full:
   - create_project
   - update_project
   - list_projects
+  - get_project
