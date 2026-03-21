@@ -158,7 +158,7 @@ class TestFlowIntegration:
 
         print("\n--- list_trigger_types response ---")
         # result is a Pydantic model, not a dict
-        print(result)
+        print(result.model_dump_json(indent=2))
 
         assert hasattr(result, "trigger_types"), "Result missing 'trigger_types' attribute"
         assert isinstance(result.trigger_types, list)
@@ -169,7 +169,7 @@ class TestFlowIntegration:
         result = list_subflows(live_config, live_auth, params)
 
         print("\n--- list_subflows response ---")
-        print(result)
+        print(result.model_dump_json(indent=2))
 
         assert hasattr(result, "artifacts"), "Result missing 'artifacts' attribute"
         assert isinstance(result.artifacts, list)
@@ -180,7 +180,7 @@ class TestFlowIntegration:
         result = list_actions(live_config, live_auth, params)
 
         print("\n--- list_actions response ---")
-        print(result)
+        print(result.model_dump_json(indent=2))
 
         assert hasattr(result, "artifacts"), "Result missing 'artifacts' attribute"
         assert isinstance(result.artifacts, list)
