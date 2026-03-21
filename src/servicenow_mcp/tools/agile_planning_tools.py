@@ -374,12 +374,16 @@ def identify_story_risks(
 
     # Delegate blocker resolution to the governance tool
     dep_result = validate_story_dependencies(config, auth_manager, params)
+    dependency_check_warning: Optional[str] = None
     if not dep_result.get("success"):
         open_blockers: List[Dict] = []
+        dependency_check_warning = dep_result.get(
+            "message", "Dependency check failed — blocker list may be incomplete."
+        )
         logger.warning(
             "identify_story_risks | story=%s | dependency check failed: %s",
             story_sys_id,
-            dep_result.get("message"),
+            dependency_check_warning,
         )
     else:
         # Remap governance open_blocker shape to planning output contract:
@@ -402,7 +406,7 @@ def identify_story_risks(
         "Identify integration dependencies with external teams early.",
     ]
 
-    return {
+    result: Dict[str, Any] = {
         "success": True,
         "story": story,
         "open_blocker_count": len(open_blockers),
@@ -410,6 +414,9 @@ def identify_story_risks(
         "existing_task_count": existing_task_count,
         "risk_analysis_hints": risk_analysis_hints,
     }
+    if dependency_check_warning:
+        result["dependency_check_warning"] = dependency_check_warning
+    return result
 
 
 # ---------------------------------------------------------------------------

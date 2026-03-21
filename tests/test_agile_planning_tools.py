@@ -390,6 +390,29 @@ class TestIdentifyStoryRisks(unittest.TestCase):
         self.assertIsInstance(result["risk_analysis_hints"], list)
         self.assertGreater(len(result["risk_analysis_hints"]), 0)
 
+    @patch("requests.get")
+    def test_governance_failure_sets_dependency_check_warning(self, mock_get):
+        """When the dep-check API call fails, the result should still succeed
+        but include a dependency_check_warning field so callers know the blocker
+        list may be incomplete."""
+        import requests as req_module
+
+        mock_get.side_effect = [
+            _ok_response(_story_fixture()),  # story lookup
+            _ok_response([]),                # tasks
+            req_module.RequestException("timeout"),  # deps API call fails
+        ]
+        result = identify_story_risks(
+            _make_config(), _make_auth(), StoryIdParams(story_id="story_001")
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["open_blockers"], [])
+        self.assertEqual(result["open_blocker_count"], 0)
+        self.assertIn("dependency_check_warning", result)
+        self.assertIsInstance(result["dependency_check_warning"], str)
+        self.assertGreater(len(result["dependency_check_warning"]), 0)
+
 
 # ---------------------------------------------------------------------------
 # generate_test_scenarios
