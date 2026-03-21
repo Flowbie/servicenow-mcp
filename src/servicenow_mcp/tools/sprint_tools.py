@@ -104,6 +104,23 @@ class GetSprintSummaryParams(BaseModel):
     )
 
 
+class ListSprintsParams(BaseModel):
+    """Parameters for listing sprints."""
+
+    limit: Optional[int] = Field(10, ge=1, le=100, description="Maximum number of records to return")
+    offset: Optional[int] = Field(0, ge=0, description="Offset for pagination")
+    state: Optional[str] = Field(
+        None,
+        description="Filter by sprint state: 1=Planning, 2=Active, 3=Completed, 4=Cancelled",
+    )
+    release_id: Optional[str] = Field(
+        None, description="Filter by parent release sys_id"
+    )
+    query: Optional[str] = Field(
+        None, description="Additional encoded query string (appended with ^AND)"
+    )
+
+
 class StartSprintParams(BaseModel):
     """Parameters for starting a sprint."""
 
@@ -399,6 +416,66 @@ def get_sprint_summary(
         result["stories"] = stories
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# list_sprints
+# ---------------------------------------------------------------------------
+
+
+def list_sprints(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: ListSprintsParams,
+) -> Dict[str, Any]:
+    """
+    List sprints from ServiceNow (rm_sprint_2).
+
+    Supports filtering by state and/or release. Returns sprints ordered by
+    start_date descending so the most recent sprint is first.
+    """
+    query_parts: List[str] = []
+    if params.state:
+        query_parts.append(f"state={params.state}")
+    if params.release_id:
+        query_parts.append(f"release={params.release_id}")
+    if params.query:
+        query_parts.append(params.query)
+
+    query = "^".join(query_parts) if query_parts else "ORDERBYDESCstart_date"
+    if query_parts:
+        query += "^ORDERBYDESCstart_date"
+
+    url = f"{config.instance_url}/api/now/table/rm_sprint_2"
+    headers = auth_manager.get_headers()
+
+    try:
+        response = requests.get(
+            url,
+            headers=headers,
+            params={
+                "sysparm_query": query,
+                "sysparm_limit": params.limit,
+                "sysparm_offset": params.offset,
+                "sysparm_display_value": "true",
+            },
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        sprints: List[Dict] = response.json().get("result", [])
+        return {
+            "success": True,
+            "sprints": sprints,
+            "count": len(sprints),
+        }
+    except requests.RequestException as e:
+        body = getattr(e, "response", None)
+        body_text = (body.text[:2000] if body and hasattr(body, "text") else "") or ""
+        logger.error("list_sprints | error=%s", e)
+        return {
+            "success": False,
+            "message": f"Failed to list sprints: {e}" + (f" | {body_text}" if body_text else ""),
+        }
 
 
 # ---------------------------------------------------------------------------

@@ -287,6 +287,7 @@ agile_management:
   - create_story_dependency
   - delete_story_dependency
   # Sprint Management
+  - list_sprints
   - create_sprint
   - get_sprint
   - get_sprint_summary
@@ -336,6 +337,7 @@ agile_readonly:
   - list_stories
   - list_story_dependencies
   - list_story_blockers
+  - list_sprints
   - get_sprint
   - get_sprint_summary
   - story_breakdown
@@ -662,6 +664,7 @@ full:
   - create_story_dependency
   - delete_story_dependency
   # Sprint Management
+  - list_sprints
   - create_sprint
   - get_sprint
   - get_sprint_summary

@@ -400,5 +400,109 @@ class TestGetSprintSummary(unittest.TestCase):
         self.assertEqual(result["points"]["total"], 0)
 
 
+# ---------------------------------------------------------------------------
+# list_sprints
+# ---------------------------------------------------------------------------
+
+from servicenow_mcp.tools.sprint_tools import ListSprintsParams, list_sprints
+
+
+class TestListSprints(unittest.TestCase):
+
+    @patch("requests.get")
+    def test_returns_sprints(self, mock_get):
+        config = _make_config()
+        auth = _make_auth()
+        sprints = [_sprint_fixture(state="2"), _sprint_fixture(state="1", sys_id="s2", name="Sprint 13")]
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"result": sprints}
+        mock_get.return_value = mock_response
+
+        result = list_sprints(config, auth, ListSprintsParams())
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(len(result["sprints"]), 2)
+
+    @patch("requests.get")
+    def test_empty_list(self, mock_get):
+        config = _make_config()
+        auth = _make_auth()
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"result": []}
+        mock_get.return_value = mock_response
+
+        result = list_sprints(config, auth, ListSprintsParams())
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["count"], 0)
+        self.assertEqual(result["sprints"], [])
+
+    @patch("requests.get")
+    def test_state_filter_passed_in_query(self, mock_get):
+        config = _make_config()
+        auth = _make_auth()
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"result": [_sprint_fixture(state="2")]}
+        mock_get.return_value = mock_response
+
+        result = list_sprints(config, auth, ListSprintsParams(state="2"))
+
+        self.assertTrue(result["success"])
+        call_kwargs = mock_get.call_args
+        query = call_kwargs[1]["params"]["sysparm_query"]
+        self.assertIn("state=2", query)
+
+    @patch("requests.get")
+    def test_release_filter_passed_in_query(self, mock_get):
+        config = _make_config()
+        auth = _make_auth()
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"result": []}
+        mock_get.return_value = mock_response
+
+        result = list_sprints(config, auth, ListSprintsParams(release_id="rel_001"))
+
+        self.assertTrue(result["success"])
+        call_kwargs = mock_get.call_args
+        query = call_kwargs[1]["params"]["sysparm_query"]
+        self.assertIn("release=rel_001", query)
+
+    @patch("requests.get")
+    def test_limit_passed_to_api(self, mock_get):
+        config = _make_config()
+        auth = _make_auth()
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"result": []}
+        mock_get.return_value = mock_response
+
+        list_sprints(config, auth, ListSprintsParams(limit=5))
+
+        call_kwargs = mock_get.call_args
+        self.assertEqual(call_kwargs[1]["params"]["sysparm_limit"], 5)
+
+    @patch("requests.get")
+    def test_request_error_returns_failure(self, mock_get):
+        import requests as req
+        config = _make_config()
+        auth = _make_auth()
+        mock_get.side_effect = req.RequestException("connection refused")
+
+        result = list_sprints(config, auth, ListSprintsParams())
+
+        self.assertFalse(result["success"])
+        self.assertIn("message", result)
+
+
 if __name__ == "__main__":
     unittest.main()

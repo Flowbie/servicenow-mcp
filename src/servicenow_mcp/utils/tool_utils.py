@@ -447,6 +447,7 @@ from servicenow_mcp.tools.sprint_tools import (
     CreateSprintParams,
     GetSprintParams,
     GetSprintSummaryParams,
+    ListSprintsParams,
     StartSprintParams,
     CloseSprintParams,
 )
@@ -454,6 +455,7 @@ from servicenow_mcp.tools.sprint_tools import (
     create_sprint as create_sprint_tool,
     get_sprint as get_sprint_tool,
     get_sprint_summary as get_sprint_summary_tool,
+    list_sprints as list_sprints_tool,
     start_sprint as start_sprint_tool,
     close_sprint as close_sprint_tool,
 )
@@ -2504,6 +2506,17 @@ def get_tool_definitions(
                 "Optionally attach to a release via release_id and set a sprint goal. "
                 "Sprint is created in Planning state. "
                 "To add stories to the sprint use update_story with the sprint field."
+            ),
+            "json",
+        ),
+        "list_sprints": (
+            list_sprints_tool,
+            ListSprintsParams,
+            dict,
+            (
+                "List sprints from ServiceNow (rm_sprint_2), ordered by start_date descending. "
+                "Filter by state (1=Planning, 2=Active, 3=Completed, 4=Cancelled) or release_id. "
+                "Returns sprints array with count. Read-only."
             ),
             "json",
         ),

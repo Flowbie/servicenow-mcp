@@ -9,8 +9,10 @@ import requests
 from servicenow_mcp.tools.sprint_tools import (
     get_sprint,
     get_sprint_summary,
+    list_sprints,
     GetSprintParams,
     GetSprintSummaryParams,
+    ListSprintsParams,
 )
 
 
@@ -63,6 +65,8 @@ class TestSprintIntegration:
         print("\n--- rm_sprint_2 table API response ---")
         print(json.dumps(resp.json(), indent=2, default=str))
 
+        if resp.status_code == 400 and "Invalid table" in resp.text:
+            pytest.skip("rm_sprint_2 table not available on this instance.")
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
         result = resp.json().get("result")
         assert isinstance(result, list), "Expected result to be a list"
@@ -82,6 +86,8 @@ class TestSprintIntegration:
             },
             timeout=live_config.timeout,
         )
+        if resp.status_code == 400 and "Invalid table" in resp.text:
+            pytest.skip("rm_sprint_2 table not available on this instance.")
         assert resp.status_code == 200
         records = resp.json().get("result", [])
 
@@ -219,3 +225,71 @@ class TestSprintIntegration:
         assert forecast in valid_forecasts, (
             f"Unexpected forecast value '{forecast}'. Expected one of {valid_forecasts}"
         )
+
+    # list_sprints tests
+
+    def _skip_if_table_unavailable(self, result):
+        """Skip the test if rm_sprint_2 is not available on this instance."""
+        if not result["success"]:
+            msg = result.get("message", "")
+            if "Invalid table" in msg or "400" in msg:
+                pytest.skip(f"rm_sprint_2 table not available on this instance: {msg}")
+
+    def test_list_sprints_returns_results(self, live_config, live_auth):
+        """Verify list_sprints connects and returns a list."""
+        params = ListSprintsParams(limit=5)
+        result = list_sprints(live_config, live_auth, params)
+
+        print("\n--- list_sprints response ---")
+        print(json.dumps(result, indent=2, default=str))
+
+        self._skip_if_table_unavailable(result)
+        assert result["success"] is True, f"Expected success, got: {result.get('message')}"
+        assert "sprints" in result
+        assert isinstance(result["sprints"], list)
+        assert "count" in result
+
+    def test_list_sprints_shape(self, live_config, live_auth):
+        """Verify sprint records have expected fields."""
+        params = ListSprintsParams(limit=3)
+        result = list_sprints(live_config, live_auth, params)
+
+        self._skip_if_table_unavailable(result)
+        assert result["success"] is True
+        sprints = result["sprints"]
+
+        if not sprints:
+            pytest.skip("No sprints found on this instance.")
+
+        first = sprints[0]
+        print("\n--- first sprint fields ---")
+        print(json.dumps(first, indent=2, default=str))
+
+        for field in ["sys_id", "name", "state"]:
+            assert field in first, f"Missing expected field: {field}"
+
+    def test_list_sprints_limit_respected(self, live_config, live_auth):
+        """Verify limit param is respected."""
+        params = ListSprintsParams(limit=2)
+        result = list_sprints(live_config, live_auth, params)
+
+        self._skip_if_table_unavailable(result)
+        assert result["success"] is True
+        assert len(result["sprints"]) <= 2
+
+    def test_list_sprints_filter_by_state(self, live_config, live_auth):
+        """Verify state filter works — active sprints only."""
+        params = ListSprintsParams(state="2", limit=10)  # state=2 is Active
+        result = list_sprints(live_config, live_auth, params)
+
+        print("\n--- list_sprints state=Active response ---")
+        print(json.dumps(result, indent=2, default=str))
+
+        self._skip_if_table_unavailable(result)
+        assert result["success"] is True
+        # If any active sprints come back, confirm they all have state=2
+        for sprint in result["sprints"]:
+            raw_state = sprint.get("state", {})
+            state_val = raw_state.get("value", raw_state) if isinstance(raw_state, dict) else str(raw_state)
+            assert state_val == "2", f"Expected state=2, got {state_val}"
+
