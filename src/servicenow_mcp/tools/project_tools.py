@@ -59,6 +59,18 @@ class ListProjectsParams(BaseModel):
     query: Optional[str] = Field(None, description="Additional query string")
 
 
+class GetProjectParams(BaseModel):
+    """Parameters for retrieving a single project."""
+
+    project_id: str = Field(
+        ...,
+        description=(
+            "Project sys_id or number. "
+            "sys_id lookup is tried first; number query is used as fallback."
+        ),
+    )
+
+
 def create_project(
     config: ServerConfig,
     auth_manager: AuthManager,
@@ -254,3 +266,55 @@ def list_projects(
             "success": False,
             "message": f"Error listing projects: {str(e)}",
         }
+
+
+def get_project(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: GetProjectParams,
+) -> Dict:
+    """
+    Retrieve a single project by sys_id or number.
+
+    Attempts a direct sys_id lookup first; falls back to a query by number.
+    """
+    headers = auth_manager.get_headers()
+    base_url = f"{config.instance_url}/api/now/table/pm_project"
+
+    # Try direct sys_id lookup first
+    try:
+        response = requests.get(
+            f"{base_url}/{params.project_id}",
+            headers=headers,
+            params={"sysparm_display_value": "true"},
+        )
+        if response.status_code == 200:
+            result = response.json().get("result", {})
+            if result:
+                return {"success": True, "project": result}
+    except requests.exceptions.RequestException:
+        pass
+
+    # Fallback: query by number
+    try:
+        response = requests.get(
+            base_url,
+            headers=headers,
+            params={
+                "sysparm_query": f"number={params.project_id}",
+                "sysparm_limit": 1,
+                "sysparm_display_value": "true",
+            },
+        )
+        response.raise_for_status()
+        records = response.json().get("result", [])
+        if records:
+            return {"success": True, "project": records[0]}
+    except requests.exceptions.RequestException as e:
+        logger.error("get_project | error=%s", e)
+
+    return {
+        "success": False,
+        "error_code": "PROJECT_NOT_FOUND",
+        "message": f"No project found with id or number '{params.project_id}'",
+    }
