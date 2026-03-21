@@ -98,7 +98,7 @@ class TestCustomizationIntegration:
         print("\n--- list_ui_actions response ---")
         print(result.model_dump())
         assert result.fetch_error is None, f"Expected no fetch error, got: {result.fetch_error}"
-        assert isinstance(result.ui_actions, list)
+        assert isinstance(result.actions, list)
 
     def test_list_access_controls_returns_results(self, live_config, live_auth):
         params = ListAccessControlsParams(table="incident")
@@ -106,7 +106,7 @@ class TestCustomizationIntegration:
         print("\n--- list_access_controls response ---")
         print(result.model_dump())
         assert result.fetch_error is None, f"Expected no fetch error, got: {result.fetch_error}"
-        assert isinstance(result.acls, list)
+        assert isinstance(result.rules, list)
 
     def test_list_access_controls_total_is_int(self, live_config, live_auth):
         params = ListAccessControlsParams(table="incident")
