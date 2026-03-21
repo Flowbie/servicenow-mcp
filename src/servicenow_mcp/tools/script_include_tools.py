@@ -16,6 +16,17 @@ from servicenow_mcp.utils.config import ServerConfig
 logger = logging.getLogger(__name__)
 
 
+def _as_str(val) -> str:
+    """Return a string from a ServiceNow field that may be a plain string or a
+    display_value dict (the latter only appears when sysparm_display_value is
+    NOT set to 'true'; with display_value=true reference fields come back as
+    plain strings already).
+    """
+    if isinstance(val, dict):
+        return val.get("display_value") or val.get("value") or ""
+    return val or ""
+
+
 class ListScriptIncludesParams(BaseModel):
     """Parameters for listing script includes."""
     
@@ -140,8 +151,8 @@ def list_script_includes(
                 "access": item.get("access"),
                 "created_on": item.get("sys_created_on"),
                 "updated_on": item.get("sys_updated_on"),
-                "created_by": item.get("sys_created_by", {}).get("display_value"),
-                "updated_by": item.get("sys_updated_by", {}).get("display_value"),
+                "created_by": _as_str(item.get("sys_created_by")),
+                "updated_by": _as_str(item.get("sys_updated_by")),
             }
             script_includes.append(script_include)
             
@@ -241,10 +252,10 @@ def get_script_include(
             "access": item.get("access"),
             "created_on": item.get("sys_created_on"),
             "updated_on": item.get("sys_updated_on"),
-            "created_by": item.get("sys_created_by", {}).get("display_value"),
-            "updated_by": item.get("sys_updated_by", {}).get("display_value"),
+            "created_by": _as_str(item.get("sys_created_by")),
+            "updated_by": _as_str(item.get("sys_updated_by")),
         }
-        
+
         return {
             "success": True,
             "message": f"Found script include: {item.get('name')}",
