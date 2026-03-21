@@ -40,7 +40,7 @@ class TestAgilePlanningIntegration:
         print(f"\n--- story_breakdown({sys_id}) response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True, f"Expected success, got: {result.get('message')}"
 
     def test_generate_acceptance_criteria_returns_response(self, live_config, live_auth):
         """Verify generate_acceptance_criteria returns a structured response."""
@@ -51,7 +51,7 @@ class TestAgilePlanningIntegration:
         print(f"\n--- generate_acceptance_criteria({sys_id}) response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True, f"Expected success, got: {result.get('message')}"
 
     def test_estimate_story_points_returns_response(self, live_config, live_auth):
         """Verify estimate_story_points returns a structured response."""
@@ -62,7 +62,7 @@ class TestAgilePlanningIntegration:
         print(f"\n--- estimate_story_points({sys_id}) response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True, f"Expected success, got: {result.get('message')}"
 
     def test_identify_story_risks_returns_response(self, live_config, live_auth):
         """Verify identify_story_risks returns a structured response."""
@@ -73,7 +73,7 @@ class TestAgilePlanningIntegration:
         print(f"\n--- identify_story_risks({sys_id}) response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True, f"Expected success, got: {result.get('message')}"
 
     def test_generate_test_scenarios_returns_response(self, live_config, live_auth):
         """Verify generate_test_scenarios returns a structured response."""
@@ -84,4 +84,4 @@ class TestAgilePlanningIntegration:
         print(f"\n--- generate_test_scenarios({sys_id}) response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True, f"Expected success, got: {result.get('message')}"
