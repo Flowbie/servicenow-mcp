@@ -110,11 +110,16 @@ class TestIntegrationPlatformIntegration:
         assert isinstance(result["transform_maps"], list)
 
     def test_get_mid_server_status(self, live_config, live_auth):
-        """Verify get_mid_server_status returns status for a real MID server."""
+        """Verify get_mid_server_status returns status for a real MID server.
+
+        Always skips on a standard PDI — MID servers are self-hosted processes
+        that connect from inside a customer network and are never present on PDIs.
+        This test will run automatically on any instance where ecc_agent has records.
+        """
         mid_result = list_mid_servers(live_config, live_auth, ListMidServersParams())
 
         if not mid_result.get("success") or not mid_result.get("mid_servers"):
-            pytest.skip("No MID servers found on this instance.")
+            pytest.skip("No MID servers on this instance (expected on PDIs).")
 
         mid_id = mid_result["mid_servers"][0]["sys_id"]
 
@@ -124,4 +129,8 @@ class TestIntegrationPlatformIntegration:
         print(f"\n--- get_mid_server_status({mid_id}) response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True
+        assert "server" in result
+        assert isinstance(result["server"], dict)
+        for field in ["sys_id", "name", "status"]:
+            assert field in result["server"], f"Missing expected field: {field}"
