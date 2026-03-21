@@ -38,6 +38,9 @@ class TestCMDBIntegration:
         assert "cis" in result
         assert isinstance(result["cis"], list)
 
+        if not result["cis"]:
+            pytest.skip("No CIs found on this instance.")
+
     def test_list_ci_shape(self, live_config, live_auth):
         """Verify CI records have expected fields."""
         params = ListCIParams(limit=3)
@@ -83,7 +86,7 @@ class TestCMDBIntegration:
         print("\n--- search_ci response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True
 
     def test_list_ci_relationship_types(self, live_config, live_auth):
         """Verify list_ci_relationship_types returns OOB relationship type records."""
@@ -113,7 +116,7 @@ class TestCMDBIntegration:
         print(f"\n--- get_ci_relationships({sys_id}) response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True
 
     def test_get_ci_impact_graph(self, live_config, live_auth):
         """Verify get_ci_impact_graph returns impact data for a real CI."""
@@ -131,4 +134,4 @@ class TestCMDBIntegration:
         print(f"\n--- get_ci_impact_graph({sys_id}) response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        assert "success" in result
+        assert result["success"] is True
