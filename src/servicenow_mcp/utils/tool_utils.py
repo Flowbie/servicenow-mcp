@@ -265,7 +265,7 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
                 "Returns read_only, calculated, mandatory, max_length, internal_type, and "
                 "attributes. If read_only=true or calculated=true, do not write the field "
                 "directly — the write will be silently discarded. If internal_type='choice', "
-                "call get_field_choices to validate the value before writing. Automatically "
+                "use query_records on sys_choice (filter: name=<table>^element=<field>^inactive=false) to validate the value before writing. Automatically "
                 "falls back to the 'task' parent table for task-hierarchy tables (incident, "
                 "change_request, problem, sc_task)."
             ),

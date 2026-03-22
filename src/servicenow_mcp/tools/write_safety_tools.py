@@ -312,7 +312,7 @@ class FieldMetadataResult(BaseModel):
     Metadata for a single field from sys_dictionary.
 
     Use read_only and calculated to determine whether a direct write is safe.
-    Use internal_type to identify choice fields that need get_field_choices.
+    Use internal_type to identify choice fields — use query_records on sys_choice to validate values.
     """
 
     table: str = Field(..., description="Table the dictionary entry was found on.")
@@ -358,7 +358,7 @@ class FieldMetadataResult(BaseModel):
             "Field data type as stored in sys_glide_object "
             "(e.g., 'string', 'integer', 'choice', 'reference', 'boolean', "
             "'glide_date_time'). 'choice' indicates the field has a restricted "
-            "value set — call get_field_choices before writing."
+            "value set — use query_records on sys_choice (filter: name=<table>^element=<field>^inactive=false) to validate before writing."
         ),
     )
     attributes: str = Field(
@@ -387,7 +387,7 @@ def get_field_metadata(
     Query sys_dictionary for a field's metadata before attempting a write.
 
     Determines whether the field is read_only or calculated (do not write),
-    and what internal_type it is (use get_field_choices for 'choice' fields).
+    and what internal_type it is (for 'choice' fields, use query_records on sys_choice to validate values).
 
     Automatically falls back to the 'task' parent table if the field is not
     found on the requested table directly (covers incident, change_request,
