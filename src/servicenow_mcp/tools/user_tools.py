@@ -131,7 +131,7 @@ def grant_role_to_user(
     Grant a role to a user by creating a sys_user_has_role record.
 
     The platform automatically creates inherited records for contained roles —
-    this tool never sets inherited=true. Use list_user_roles to confirm the grant.
+    this tool never sets inherited=true. Use query_records on sys_user_has_role to confirm the grant.
     """
     role_id = get_role_id(config, auth_manager, params.role_name)
     if not role_id:
