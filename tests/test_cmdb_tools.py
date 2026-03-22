@@ -1,45 +1,32 @@
 """
-Tests for Phase 7 CMDB enhancements.
+Tests for CMDB compound tools.
 
-Covers: search_ci, create_ci_relationship, delete_ci_relationship,
-list_ci_relationship_types, get_ci_impact_graph.
-Also includes basic smoke tests for the pre-existing tools (list_ci, get_ci,
-create_ci, update_ci, get_ci_relationships).
+Covers: get_ci_relationships, create_ci_relationship, get_ci_impact_graph.
+
+Simple CI CRUD (list_ci, get_ci, create_ci, update_ci, search_ci) is handled
+by table_tools; delete_ci_relationship and list_ci_relationship_types are CRUD
+on cmdb_rel_ci / cmdb_rel_type and are also handled by table_tools.
 """
 
 import unittest
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import requests
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.cmdb_tools import (
-    CreateCIParams,
     CreateCIRelationshipParams,
-    DeleteCIRelationshipParams,
     GetCIImpactGraphParams,
-    GetCIParams,
     GetCIRelationshipsParams,
-    ListCIParams,
-    ListCIRelationshipTypesParams,
-    SearchCIParams,
-    UpdateCIParams,
-    create_ci,
     create_ci_relationship,
-    delete_ci_relationship,
-    get_ci,
     get_ci_impact_graph,
     get_ci_relationships,
-    list_ci,
-    list_ci_relationship_types,
-    search_ci,
-    update_ci,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
 
 
 class TestCMDBTools(unittest.TestCase):
-    """Tests for CMDB tools — both existing and Phase 7 additions."""
+    """Tests for CMDB compound tools."""
 
     def setUp(self):
         self.auth_config = AuthConfig(
@@ -54,94 +41,79 @@ class TestCMDBTools(unittest.TestCase):
         self.auth_manager.get_headers.return_value = {"Authorization": "Bearer FAKE_TOKEN"}
 
     # -----------------------------------------------------------------------
-    # Smoke tests for existing tools
+    # get_ci_relationships
     # -----------------------------------------------------------------------
 
     @patch("servicenow_mcp.tools.cmdb_tools.requests.get")
-    def test_list_ci_success(self, mock_get):
+    def test_get_ci_relationships_both_directions(self, mock_get):
+        """get_ci_relationships issues child= and parent= queries for direction=both."""
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {"result": [{"sys_id": "ci1", "name": "web01"}]}
+        mock_resp.json.return_value = {"result": [{"sys_id": "rel1"}]}
         mock_resp.raise_for_status = MagicMock()
         mock_get.return_value = mock_resp
 
-        result = list_ci(self.config, self.auth_manager, ListCIParams())
-        self.assertTrue(result["success"])
-        self.assertEqual(result["count"], 1)
+        params = GetCIRelationshipsParams(sys_id="ci1", direction="both")
+        result = get_ci_relationships(self.config, self.auth_manager, params)
 
-    @patch("servicenow_mcp.tools.cmdb_tools.requests.get")
-    def test_get_ci_success(self, mock_get):
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"result": {"sys_id": "ci1", "name": "web01"}}
-        mock_resp.raise_for_status = MagicMock()
-        mock_get.return_value = mock_resp
-
-        result = get_ci(self.config, self.auth_manager, GetCIParams(sys_id="ci1"))
         self.assertTrue(result["success"])
         self.assertEqual(result["sys_id"], "ci1")
-
-    # -----------------------------------------------------------------------
-    # search_ci
-    # -----------------------------------------------------------------------
+        self.assertGreaterEqual(result["relationship_count"], 1)
+        self.assertEqual(mock_get.call_count, 2)  # parent + child
 
     @patch("servicenow_mcp.tools.cmdb_tools.requests.get")
-    def test_search_ci_no_filters(self, mock_get):
-        """search_ci with no filters returns all CIs."""
+    def test_get_ci_relationships_parent_only(self, mock_get):
+        """get_ci_relationships with direction=parent issues one child= query."""
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "result": [{"sys_id": "ci1"}, {"sys_id": "ci2"}]
-        }
+        mock_resp.json.return_value = {"result": [{"sys_id": "rel2"}]}
         mock_resp.raise_for_status = MagicMock()
         mock_get.return_value = mock_resp
 
-        result = search_ci(self.config, self.auth_manager, SearchCIParams())
-        self.assertTrue(result["success"])
-        self.assertEqual(result["count"], 2)
-        called_url = mock_get.call_args[0][0]
-        self.assertIn("cmdb_ci", called_url)
-
-    @patch("servicenow_mcp.tools.cmdb_tools.requests.get")
-    def test_search_ci_name_filter(self, mock_get):
-        """search_ci name filter uses nameLIKE."""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"result": [{"sys_id": "ci1", "name": "web-server-01"}]}
-        mock_resp.raise_for_status = MagicMock()
-        mock_get.return_value = mock_resp
-
-        params = SearchCIParams(name="web-server", ci_class="cmdb_ci_server")
-        result = search_ci(self.config, self.auth_manager, params)
+        params = GetCIRelationshipsParams(sys_id="ci1", direction="parent")
+        result = get_ci_relationships(self.config, self.auth_manager, params)
 
         self.assertTrue(result["success"])
-        call_kwargs = mock_get.call_args[1]["params"]
-        self.assertIn("nameLIKEweb-server", call_kwargs["sysparm_query"])
-        called_url = mock_get.call_args[0][0]
-        self.assertIn("cmdb_ci_server", called_url)
+        self.assertEqual(mock_get.call_count, 1)
+        called_query = mock_get.call_args[1]["params"]["sysparm_query"]
+        self.assertIn("child=ci1", called_query)
 
     @patch("servicenow_mcp.tools.cmdb_tools.requests.get")
-    def test_search_ci_multiple_filters(self, mock_get):
-        """search_ci combines multiple filters with ^."""
+    def test_get_ci_relationships_empty(self, mock_get):
+        """get_ci_relationships returns success with zero relationships."""
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"result": []}
         mock_resp.raise_for_status = MagicMock()
         mock_get.return_value = mock_resp
 
-        params = SearchCIParams(
-            name="db", install_status="1", environment="Production"
-        )
-        search_ci(self.config, self.auth_manager, params)
+        params = GetCIRelationshipsParams(sys_id="isolated_ci")
+        result = get_ci_relationships(self.config, self.auth_manager, params)
 
-        call_kwargs = mock_get.call_args[1]["params"]
-        query = call_kwargs["sysparm_query"]
-        self.assertIn("nameLIKEdb", query)
-        self.assertIn("install_status=1", query)
-        self.assertIn("environment=Production", query)
+        self.assertTrue(result["success"])
+        self.assertEqual(result["relationship_count"], 0)
 
     @patch("servicenow_mcp.tools.cmdb_tools.requests.get")
-    def test_search_ci_http_error(self, mock_get):
-        """search_ci handles HTTP errors."""
-        mock_get.side_effect = requests.RequestException("503 error")
-        result = search_ci(self.config, self.auth_manager, SearchCIParams(name="test"))
-        self.assertFalse(result["success"])
-        self.assertIn("error", result)
+    def test_get_ci_relationships_type_filter(self, mock_get):
+        """get_ci_relationships appends type.name filter to query."""
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"result": []}
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        params = GetCIRelationshipsParams(sys_id="ci1", relationship_type="Runs on::Runs", direction="child")
+        get_ci_relationships(self.config, self.auth_manager, params)
+
+        called_query = mock_get.call_args[1]["params"]["sysparm_query"]
+        self.assertIn("type.name=Runs on::Runs", called_query)
+
+    @patch("servicenow_mcp.tools.cmdb_tools.requests.get")
+    def test_get_ci_relationships_http_error_returns_empty(self, mock_get):
+        """get_ci_relationships returns success with empty list on HTTP error (graceful)."""
+        mock_get.side_effect = requests.RequestException("500 error")
+
+        params = GetCIRelationshipsParams(sys_id="ci1")
+        result = get_ci_relationships(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["relationship_count"], 0)
 
     # -----------------------------------------------------------------------
     # create_ci_relationship
@@ -151,7 +123,6 @@ class TestCMDBTools(unittest.TestCase):
     @patch("servicenow_mcp.tools.cmdb_tools.requests.post")
     def test_create_ci_relationship_success(self, mock_post, mock_get):
         """create_ci_relationship resolves type_name then POSTs to cmdb_rel_ci."""
-        # First call: type lookup; second call: not needed (POST)
         mock_type_resp = MagicMock()
         mock_type_resp.json.return_value = {
             "result": [{"sys_id": "type1", "name": "Runs on::Runs"}]
@@ -175,12 +146,10 @@ class TestCMDBTools(unittest.TestCase):
 
         self.assertTrue(result["success"])
         self.assertIn("rel1", result["sys_id"])
-        # Verify POST body uses resolved type sys_id
         sent_data = mock_post.call_args[1]["json"]
         self.assertEqual(sent_data["parent"], "ci_parent")
         self.assertEqual(sent_data["child"], "ci_child")
         self.assertEqual(sent_data["type"], "type1")
-        # Verify POST goes to cmdb_rel_ci
         called_url = mock_post.call_args[0][0]
         self.assertIn("cmdb_rel_ci", called_url)
 
@@ -230,93 +199,12 @@ class TestCMDBTools(unittest.TestCase):
         self.assertFalse(result["success"])
 
     # -----------------------------------------------------------------------
-    # delete_ci_relationship
-    # -----------------------------------------------------------------------
-
-    @patch("servicenow_mcp.tools.cmdb_tools.requests.delete")
-    def test_delete_ci_relationship_success(self, mock_delete):
-        """delete_ci_relationship DELETEs cmdb_rel_ci/{sys_id}."""
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-        mock_delete.return_value = mock_resp
-
-        result = delete_ci_relationship(
-            self.config, self.auth_manager, DeleteCIRelationshipParams(sys_id="rel1")
-        )
-
-        self.assertTrue(result["success"])
-        self.assertIn("deleted", result["message"])
-        called_url = mock_delete.call_args[0][0]
-        self.assertIn("cmdb_rel_ci/rel1", called_url)
-
-    @patch("servicenow_mcp.tools.cmdb_tools.requests.delete")
-    def test_delete_ci_relationship_http_error(self, mock_delete):
-        """delete_ci_relationship handles HTTP errors."""
-        mock_delete.side_effect = requests.RequestException("404 error")
-        result = delete_ci_relationship(
-            self.config, self.auth_manager, DeleteCIRelationshipParams(sys_id="missing")
-        )
-        self.assertFalse(result["success"])
-
-    # -----------------------------------------------------------------------
-    # list_ci_relationship_types
-    # -----------------------------------------------------------------------
-
-    @patch("servicenow_mcp.tools.cmdb_tools.requests.get")
-    def test_list_ci_relationship_types_success(self, mock_get):
-        """list_ci_relationship_types queries cmdb_rel_type."""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "result": [
-                {"sys_id": "t1", "name": "Runs on::Runs"},
-                {"sys_id": "t2", "name": "Hosted on::Hosts"},
-            ]
-        }
-        mock_resp.raise_for_status = MagicMock()
-        mock_get.return_value = mock_resp
-
-        result = list_ci_relationship_types(
-            self.config, self.auth_manager, ListCIRelationshipTypesParams()
-        )
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["count"], 2)
-        called_url = mock_get.call_args[0][0]
-        self.assertIn("cmdb_rel_type", called_url)
-
-    @patch("servicenow_mcp.tools.cmdb_tools.requests.get")
-    def test_list_ci_relationship_types_name_filter(self, mock_get):
-        """list_ci_relationship_types passes name_filter as nameLIKE query."""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"result": [{"sys_id": "t1", "name": "Runs on::Runs"}]}
-        mock_resp.raise_for_status = MagicMock()
-        mock_get.return_value = mock_resp
-
-        result = list_ci_relationship_types(
-            self.config, self.auth_manager, ListCIRelationshipTypesParams(name_filter="Runs")
-        )
-
-        self.assertTrue(result["success"])
-        call_kwargs = mock_get.call_args[1]["params"]
-        self.assertIn("nameLIKERuns", call_kwargs["sysparm_query"])
-
-    @patch("servicenow_mcp.tools.cmdb_tools.requests.get")
-    def test_list_ci_relationship_types_http_error(self, mock_get):
-        """list_ci_relationship_types handles HTTP errors."""
-        mock_get.side_effect = requests.RequestException("500 error")
-        result = list_ci_relationship_types(
-            self.config, self.auth_manager, ListCIRelationshipTypesParams()
-        )
-        self.assertFalse(result["success"])
-
-    # -----------------------------------------------------------------------
     # get_ci_impact_graph
     # -----------------------------------------------------------------------
 
     @patch("servicenow_mcp.tools.cmdb_tools.requests.get")
     def test_get_ci_impact_graph_downstream(self, mock_get):
         """get_ci_impact_graph traverses downstream (parent= queries)."""
-        # Depth 1: return one child; depth 2: no children
         responses = [
             MagicMock(
                 **{
@@ -347,7 +235,7 @@ class TestCMDBTools(unittest.TestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(result["root_sys_id"], "root_ci")
-        self.assertGreaterEqual(result["node_count"], 2)  # root + child_ci
+        self.assertGreaterEqual(result["node_count"], 2)
         self.assertEqual(result["edge_count"], 1)
 
     @patch("servicenow_mcp.tools.cmdb_tools.requests.get")
@@ -381,7 +269,6 @@ class TestCMDBTools(unittest.TestCase):
         params = GetCIImpactGraphParams(sys_id="root", max_depth=1, direction="downstream")
         result = get_ci_impact_graph(self.config, self.auth_manager, params)
 
-        # Should have made exactly 1 GET call (depth=1, only one frontier item)
         self.assertEqual(mock_get.call_count, 1)
         self.assertTrue(result["success"])
 
@@ -396,7 +283,6 @@ class TestCMDBTools(unittest.TestCase):
         params = GetCIImpactGraphParams(sys_id="mid_ci", direction="both", max_depth=1)
         get_ci_impact_graph(self.config, self.auth_manager, params)
 
-        # Both 'parent=mid_ci' and 'child=mid_ci' queries should be issued
         all_queries = [
             c[1]["params"]["sysparm_query"] for c in mock_get.call_args_list
         ]
@@ -411,7 +297,6 @@ class TestCMDBTools(unittest.TestCase):
         params = GetCIImpactGraphParams(sys_id="root_ci", max_depth=1)
         result = get_ci_impact_graph(self.config, self.auth_manager, params)
 
-        # Should still return success with just the root node
         self.assertTrue(result["success"])
         self.assertEqual(result["node_count"], 1)
 

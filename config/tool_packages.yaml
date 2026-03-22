@@ -253,25 +253,18 @@ risk_manager:
   - get_field_metadata
 
 integration_developer:
-  # Integration Platform — outbound REST, Scripted REST APIs, Import Sets, MID Servers
-  - list_rest_messages
+  # Integration Platform — compound inspection tools
+  # CRUD for sys_rest_message, sys_ws_definition, sys_import_set, ecc_agent,
+  # sys_transform_map via table_tools + integration architecture blueprint
   - get_rest_message
-  - create_rest_message
-  - add_http_method
-  - list_scripted_rest_apis
   - get_scripted_rest_api
-  - create_scripted_rest_api
-  - add_rest_resource
-  - list_import_sets
-  - list_mid_servers
-  - get_mid_server_status
-  - list_transform_maps
-  - create_transform_map
-  - run_transform
-  - run_import
-  # Core tools needed alongside integration work
+  # Generic Table API (CRUD for all integration tables)
   - query_records
   - get_record
+  - create_record
+  - update_record
+  - delete_record
+  # Core tools needed alongside integration work
   - verify_fields
   - get_field_metadata
 
@@ -382,40 +375,18 @@ full:
   - create_record
   - update_record
   - delete_record
-  # CMDB
-  - list_ci
-  - get_ci
-  - create_ci
-  - update_ci
+  # CMDB — compound only; CI CRUD via table_tools + CMDB architecture blueprint
   - get_ci_relationships
-  # CMDB Phase 7
-  - search_ci
   - create_ci_relationship
-  - delete_ci_relationship
-  - list_ci_relationship_types
   - get_ci_impact_graph
   # System
   - get_system_properties
   - get_current_user
   # Update Set Activation
   - set_current_update_set
-  # Integration Platform
-  - list_rest_messages
+  # Integration Platform — compound only; CRUD via table_tools + integration architecture blueprint
   - get_rest_message
-  - create_rest_message
-  - add_http_method
-  - list_scripted_rest_apis
   - get_scripted_rest_api
-  - create_scripted_rest_api
-  - add_rest_resource
-  - list_import_sets
-  - list_mid_servers
-  - get_mid_server_status
-  # Integration — Transform Maps & Import (Epic 8)
-  - list_transform_maps
-  - create_transform_map
-  - run_transform
-  - run_import
   # Story Management (compound only; CRUD via table_tools)
   - archive_story
   - move_story_state

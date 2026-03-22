@@ -270,28 +270,14 @@ from servicenow_mcp.tools.table_tools import (
     update_record as update_record_tool,
 )
 from servicenow_mcp.tools.cmdb_tools import (
-    CreateCIParams,
     CreateCIRelationshipParams,
-    DeleteCIRelationshipParams,
     GetCIImpactGraphParams,
-    GetCIParams,
     GetCIRelationshipsParams,
-    ListCIParams,
-    ListCIRelationshipTypesParams,
-    SearchCIParams,
-    UpdateCIParams,
 )
 from servicenow_mcp.tools.cmdb_tools import (
-    create_ci as create_ci_tool,
     create_ci_relationship as create_ci_relationship_tool,
-    delete_ci_relationship as delete_ci_relationship_tool,
-    get_ci as get_ci_tool,
     get_ci_impact_graph as get_ci_impact_graph_tool,
     get_ci_relationships as get_ci_relationships_tool,
-    list_ci as list_ci_tool,
-    list_ci_relationship_types as list_ci_relationship_types_tool,
-    search_ci as search_ci_tool,
-    update_ci as update_ci_tool,
 )
 from servicenow_mcp.tools.system_tools import (
     GetCurrentUserParams,
@@ -312,38 +298,12 @@ from servicenow_mcp.tools.request_tools import (
     get_ritm_variables as get_ritm_variables_tool,
 )
 from servicenow_mcp.tools.integration_tools import (
-    ListRestMessagesParams,
     GetRestMessageParams,
-    CreateRestMessageParams,
-    AddHttpMethodParams,
-    ListScriptedRestApisParams,
     GetScriptedRestApiParams,
-    CreateScriptedRestApiParams,
-    AddRestResourceParams,
-    ListImportSetsParams,
-    ListMidServersParams,
-    GetMidServerStatusParams,
-    ListTransformMapsParams,
-    CreateTransformMapParams,
-    RunTransformParams,
-    RunImportParams,
 )
 from servicenow_mcp.tools.integration_tools import (
-    list_rest_messages as list_rest_messages_tool,
     get_rest_message as get_rest_message_tool,
-    create_rest_message as create_rest_message_tool,
-    add_http_method as add_http_method_tool,
-    list_scripted_rest_apis as list_scripted_rest_apis_tool,
     get_scripted_rest_api as get_scripted_rest_api_tool,
-    create_scripted_rest_api as create_scripted_rest_api_tool,
-    add_rest_resource as add_rest_resource_tool,
-    list_import_sets as list_import_sets_tool,
-    list_mid_servers as list_mid_servers_tool,
-    get_mid_server_status as get_mid_server_status_tool,
-    list_transform_maps as list_transform_maps_tool,
-    create_transform_map as create_transform_map_tool,
-    run_transform as run_transform_tool,
-    run_import as run_import_tool,
 )
 
 # Define a type alias for the Pydantic models or dataclasses used for params
@@ -1007,54 +967,7 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
-        # CMDB Tools
-        "list_ci": (
-            list_ci_tool,
-            ListCIParams,
-            dict,
-            (
-                "List Configuration Items from the ServiceNow CMDB. "
-                "Specify ci_class to target a type (e.g., cmdb_ci_server, cmdb_ci_appl). "
-                "Supports encoded query filtering (e.g., install_status=1), field selection, "
-                "and pagination. Returns count and list of CI records. Read-only."
-            ),
-            "json",
-        ),
-        "get_ci": (
-            get_ci_tool,
-            GetCIParams,
-            dict,
-            (
-                "Retrieve a single CMDB Configuration Item by sys_id. "
-                "Specify the exact ci_class subtype (e.g., cmdb_ci_server) for complete "
-                "class-specific field data. Read-only."
-            ),
-            "json",
-        ),
-        "create_ci": (
-            create_ci_tool,
-            CreateCIParams,
-            dict,
-            (
-                "Create a new Configuration Item in the ServiceNow CMDB. "
-                "Always use the most specific CI subclass (e.g., cmdb_ci_server). "
-                "Returns the sys_id and full record of the created CI. "
-                "Use verify_fields after creation to confirm attribute values."
-            ),
-            "json",
-        ),
-        "update_ci": (
-            update_ci_tool,
-            UpdateCIParams,
-            dict,
-            (
-                "Update an existing CMDB Configuration Item via PATCH. "
-                "Only provided fields are modified. "
-                "Use verify_fields after the update — Discovery and other mechanisms "
-                "may override written values."
-            ),
-            "json",
-        ),
+        # CMDB Tools — compound only; CI CRUD via table_tools + CMDB architecture blueprint
         "get_ci_relationships": (
             get_ci_relationships_tool,
             GetCIRelationshipsParams,
@@ -1068,18 +981,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
-        # CMDB Phase 7 enhancements
-        "search_ci": (
-            search_ci_tool,
-            SearchCIParams,
-            dict,
-            (
-                "Search CMDB Configuration Items with flexible filters. "
-                "Filter by ci_class, name (substring), install_status, and environment. "
-                "Returns matching CIs with display values. Read-only."
-            ),
-            "json",
-        ),
         "create_ci_relationship": (
             create_ci_relationship_tool,
             CreateCIRelationshipParams,
@@ -1088,27 +989,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
                 "Create a relationship between two CIs in cmdb_rel_ci. "
                 "Accepts parent_id, child_id, and type_name (resolved to sys_id via cmdb_rel_type). "
                 "Use list_ci_relationship_types to discover valid type names."
-            ),
-            "json",
-        ),
-        "delete_ci_relationship": (
-            delete_ci_relationship_tool,
-            DeleteCIRelationshipParams,
-            dict,
-            (
-                "Delete a CI relationship record from cmdb_rel_ci by sys_id. "
-                "Use get_ci_relationships to find the relationship sys_id before deleting."
-            ),
-            "json",
-        ),
-        "list_ci_relationship_types": (
-            list_ci_relationship_types_tool,
-            ListCIRelationshipTypesParams,
-            dict,
-            (
-                "List available CI relationship types from cmdb_rel_type. "
-                "Returns sys_id and name (outbound::inbound format) for each type. "
-                "Use to discover valid type_name values for create_ci_relationship. Read-only."
             ),
             "json",
         ),
@@ -1421,15 +1301,7 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
-        # Integration Platform Tools
-        "list_rest_messages": (
-            list_rest_messages_tool,
-            ListRestMessagesParams,
-            dict,
-            "List outbound REST message endpoints configured in ServiceNow (sys_rest_message). "
-            "Filter by name. Returns name, endpoint, and authentication type for each.",
-            "json",
-        ),
+        # Integration Platform Tools — compound only; CRUD via table_tools + integration architecture blueprint
         "get_rest_message": (
             get_rest_message_tool,
             GetRestMessageParams,
@@ -1438,104 +1310,12 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             "Provide message_name or message_sys_id. Returns the message record and its method list.",
             "json",
         ),
-        "create_rest_message": (
-            create_rest_message_tool,
-            CreateRestMessageParams,
-            dict,
-            "Create a new outbound REST message endpoint (sys_rest_message). "
-            "A default GET HTTP method is auto-created by the platform on insert.",
-            "json",
-        ),
-        "add_http_method": (
-            add_http_method_tool,
-            AddHttpMethodParams,
-            dict,
-            "Add an HTTP method to an existing REST message (sys_rest_message_fn). "
-            "http_method must be lowercase (get, post, put, patch, delete).",
-            "json",
-        ),
-        "list_scripted_rest_apis": (
-            list_scripted_rest_apis_tool,
-            ListScriptedRestApisParams,
-            dict,
-            "List Scripted REST API definitions (sys_ws_definition). "
-            "Filter by name or active status.",
-            "json",
-        ),
         "get_scripted_rest_api": (
             get_scripted_rest_api_tool,
             GetScriptedRestApiParams,
             dict,
             "Get a Scripted REST API with all its resources/operations (sys_ws_definition + sys_ws_operation). "
             "Provide api_name or api_sys_id. http_method on operations is UPPERCASE.",
-            "json",
-        ),
-        "create_scripted_rest_api": (
-            create_scripted_rest_api_tool,
-            CreateScriptedRestApiParams,
-            dict,
-            "Create a new Scripted REST API definition (sys_ws_definition). "
-            "Namespace is auto-generated by the platform.",
-            "json",
-        ),
-        "add_rest_resource": (
-            add_rest_resource_tool,
-            AddRestResourceParams,
-            dict,
-            "Add a resource/operation to a Scripted REST API (sys_ws_operation). "
-            "http_method must be UPPERCASE (GET, POST, PUT, PATCH, DELETE).",
-            "json",
-        ),
-        "list_import_sets": (
-            list_import_sets_tool,
-            ListImportSetsParams,
-            dict,
-            "List import set staging containers (sys_import_set). Filter by state.",
-            "json",
-        ),
-        "list_mid_servers": (
-            list_mid_servers_tool,
-            ListMidServersParams,
-            dict,
-            "List MID Servers registered in ServiceNow (ecc_agent). "
-            "Returns name, status, validated, version, host, and IP for each.",
-            "json",
-        ),
-        "get_mid_server_status": (
-            get_mid_server_status_tool,
-            GetMidServerStatusParams,
-            dict,
-            "Get detailed status for a single MID Server (ecc_agent). "
-            "Returns validated, status, version, last_refreshed, and any error messages.",
-            "json",
-        ),
-        "list_transform_maps": (
-            list_transform_maps_tool,
-            ListTransformMapsParams,
-            dict,
-            "List transform maps (sys_transform_map). Filter by source table or active state.",
-            "json",
-        ),
-        "create_transform_map": (
-            create_transform_map_tool,
-            CreateTransformMapParams,
-            dict,
-            "Create a new transform map (sys_transform_map) mapping a staging table to a target table.",
-            "json",
-        ),
-        "run_transform": (
-            run_transform_tool,
-            RunTransformParams,
-            dict,
-            "Trigger transform map processing for an existing import set via sys_import_set_run.",
-            "json",
-        ),
-        "run_import": (
-            run_import_tool,
-            RunImportParams,
-            dict,
-            "Insert a row into a staging table and run all active transform maps. "
-            "staging_table must be alphanumeric + underscore only.",
             "json",
         ),
         # Update Set activation
