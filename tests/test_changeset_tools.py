@@ -73,7 +73,7 @@ class TestChangesetTools(unittest.TestCase):
             "application": "Test App",
             "developer": "test.user",
         }
-        result = list_changesets(self.auth_manager, self.server_config, params)
+        result = list_changesets(self.server_config, self.auth_manager, params)
 
         # Verify the result
         self.assertTrue(result["success"])
@@ -135,7 +135,7 @@ class TestChangesetTools(unittest.TestCase):
 
         # Call the function
         params = {"changeset_id": "123"}
-        result = get_changeset_details(self.auth_manager, self.server_config, params)
+        result = get_changeset_details(self.server_config, self.auth_manager, params)
 
         # Verify the result
         self.assertTrue(result["success"])
@@ -183,7 +183,7 @@ class TestChangesetTools(unittest.TestCase):
             "developer": "test.user",
             "description": "Test description",
         }
-        result = create_changeset(self.auth_manager, self.server_config, params)
+        result = create_changeset(self.server_config, self.auth_manager, params)
 
         # Verify the result
         self.assertTrue(result["success"])
@@ -225,7 +225,7 @@ class TestChangesetTools(unittest.TestCase):
             "name": "Updated Changeset",
             "state": "in_progress",
         }
-        result = update_changeset(self.auth_manager, self.server_config, params)
+        result = update_changeset(self.server_config, self.auth_manager, params)
 
         # Verify the result
         self.assertTrue(result["success"])
@@ -266,7 +266,7 @@ class TestChangesetTools(unittest.TestCase):
             "changeset_id": "123",
             "commit_message": "Commit message",
         }
-        result = commit_changeset(self.auth_manager, self.server_config, params)
+        result = commit_changeset(self.server_config, self.auth_manager, params)
 
         # Verify the result
         self.assertTrue(result["success"])
@@ -307,7 +307,7 @@ class TestChangesetTools(unittest.TestCase):
             "changeset_id": "123",
             "publish_notes": "Publish notes",
         }
-        result = publish_changeset(self.auth_manager, self.server_config, params)
+        result = publish_changeset(self.server_config, self.auth_manager, params)
 
         # Verify the result
         self.assertTrue(result["success"])
@@ -349,7 +349,7 @@ class TestChangesetTools(unittest.TestCase):
             "file_path": "test_file.py",
             "file_content": "print('Hello, world!')",
         }
-        result = add_file_to_changeset(self.auth_manager, self.server_config, params)
+        result = add_file_to_changeset(self.server_config, self.auth_manager, params)
 
         # Verify the result
         self.assertTrue(result["success"])
