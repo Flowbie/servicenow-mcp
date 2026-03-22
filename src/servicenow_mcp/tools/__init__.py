@@ -7,13 +7,7 @@ from servicenow_mcp.tools.catalog_optimization import (
     get_optimization_recommendations,
 )
 from servicenow_mcp.tools.catalog_tools import (
-    create_catalog_category,
-    get_catalog_item,
-    list_catalog_categories,
-    list_catalog_items,
     move_catalog_items,
-    update_catalog_category,
-    update_catalog_item,
 )
 from servicenow_mcp.tools.catalog_variables import (
     create_catalog_item_variable,
@@ -69,17 +63,12 @@ from servicenow_mcp.tools.workflow_tools import (
     update_workflow_activity,
 )
 from servicenow_mcp.tools.story_tools import (
-    create_story,
-    update_story,
-    list_stories,
-    list_story_dependencies,
-    create_story_dependency,
-    delete_story_dependency,
+    archive_story,
+    move_story_state,
+    assign_stories_to_sprint,
 )
 from servicenow_mcp.tools.scrum_task_tools import (
-    create_scrum_task,
-    update_scrum_task,
-    list_scrum_tasks,
+    close_scrum_task,
 )
 from servicenow_mcp.tools.flow_tools import (
     create_flow,
@@ -104,14 +93,8 @@ from servicenow_mcp.tools.flow_tools import (
 
 __all__ = [
     # Catalog tools
-    "list_catalog_items",
-    "get_catalog_item",
-    "list_catalog_categories",
-    "create_catalog_category",
-    "update_catalog_category",
     "move_catalog_items",
     "get_optimization_recommendations",
-    "update_catalog_item",
     "create_catalog_item_variable",
     "list_catalog_item_variables",
     "update_catalog_item_variable",
@@ -164,18 +147,13 @@ __all__ = [
     "list_user_roles",
     "list_group_roles",
 
-    # Story tools
-    "create_story",
-    "update_story",
-    "list_stories",
-    "list_story_dependencies",
-    "create_story_dependency",
-    "delete_story_dependency",
-    
-    # Scrum Task tools
-    "create_scrum_task",
-    "update_scrum_task",
-    "list_scrum_tasks",
+    # Story tools (compound only)
+    "archive_story",
+    "move_story_state",
+    "assign_stories_to_sprint",
+
+    # Scrum Task tools (compound only)
+    "close_scrum_task",
 
     # Project tools
     "create_project",

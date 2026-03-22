@@ -1,8 +1,10 @@
 """
-Tests for the Phase 1 story tools added to story_tools.py.
+Tests for story_tools.py compound functions and internal helpers.
 
-Covers: get_story, archive_story, move_story_state, assign_story,
-        add_story_comment, list_story_blockers.
+Covers: get_story (internal helper), archive_story, move_story_state.
+CRUD wrappers (create_story, update_story, list_stories, list_story_dependencies,
+create_story_dependency, delete_story_dependency, assign_story, add_story_comment,
+list_story_blockers) have been removed from the module.
 """
 
 import unittest
@@ -12,17 +14,11 @@ from pydantic import ValidationError
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.story_tools import (
-    AddStoryCommentParams,
     ArchiveStoryParams,
-    AssignStoryParams,
     GetStoryParams,
-    ListStoryBlockersParams,
     MoveStoryStateParams,
-    add_story_comment,
     archive_story,
-    assign_story,
     get_story,
-    list_story_blockers,
     move_story_state,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
@@ -284,134 +280,6 @@ class TestMoveStoryState(unittest.TestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(result["new_state"], "2")
-
-
-# ---------------------------------------------------------------------------
-# assign_story
-# ---------------------------------------------------------------------------
-
-class TestAssignStory(unittest.TestCase):
-
-    @patch("requests.patch")
-    def test_assign_to_user(self, mock_patch):
-        config = _make_config()
-        auth = _make_auth()
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status = MagicMock()
-        mock_patch.return_value = mock_response
-
-        result = assign_story(config, auth, AssignStoryParams(story_id="s1", assigned_to="user_sys_id"))
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["assigned_to"], "user_sys_id")
-
-    @patch("requests.patch")
-    def test_assign_to_group(self, mock_patch):
-        config = _make_config()
-        auth = _make_auth()
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status = MagicMock()
-        mock_patch.return_value = mock_response
-
-        result = assign_story(config, auth, AssignStoryParams(story_id="s1", assignment_group="group_sys_id"))
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["assignment_group"], "group_sys_id")
-
-    def test_no_assignee_returns_error(self):
-        result = assign_story(_make_config(), _make_auth(), AssignStoryParams(story_id="s1"))
-        self.assertFalse(result["success"])
-        self.assertEqual(result["error_code"], "NO_ASSIGNEE")
-
-    def test_missing_story_id(self):
-        with self.assertRaises(ValidationError):
-            AssignStoryParams()
-
-
-# ---------------------------------------------------------------------------
-# add_story_comment
-# ---------------------------------------------------------------------------
-
-class TestAddStoryComment(unittest.TestCase):
-
-    @patch("requests.patch")
-    def test_success(self, mock_patch):
-        config = _make_config()
-        auth = _make_auth()
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status = MagicMock()
-        mock_patch.return_value = mock_response
-
-        result = add_story_comment(config, auth, AddStoryCommentParams(story_id="s1", comment="Deployed to dev."))
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["story_id"], "s1")
-
-    def test_empty_comment_rejected(self):
-        result = add_story_comment(_make_config(), _make_auth(), AddStoryCommentParams(story_id="s1", comment="   "))
-        self.assertFalse(result["success"])
-        self.assertEqual(result["error_code"], "EMPTY_COMMENT")
-
-    def test_missing_comment_rejected(self):
-        with self.assertRaises(ValidationError):
-            AddStoryCommentParams(story_id="s1")
-
-    def test_missing_story_id(self):
-        with self.assertRaises(ValidationError):
-            AddStoryCommentParams(comment="note")
-
-
-# ---------------------------------------------------------------------------
-# list_story_blockers
-# ---------------------------------------------------------------------------
-
-class TestListStoryBlockers(unittest.TestCase):
-
-    @patch("requests.get")
-    def test_returns_blockers(self, mock_get):
-        config = _make_config()
-        auth = _make_auth()
-
-        blockers = [
-            {"sys_id": "dep_001", "prerequisite_story": {"value": "blocker_story_001", "display_value": "STRY0000001"}},
-        ]
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"result": blockers}
-        mock_get.return_value = mock_response
-
-        result = list_story_blockers(config, auth, ListStoryBlockersParams(story_id="blocked_story_id"))
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["blocker_count"], 1)
-        self.assertEqual(len(result["blockers"]), 1)
-
-    @patch("requests.get")
-    def test_no_blockers(self, mock_get):
-        config = _make_config()
-        auth = _make_auth()
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"result": []}
-        mock_get.return_value = mock_response
-
-        result = list_story_blockers(config, auth, ListStoryBlockersParams(story_id="unblocked_story"))
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["blocker_count"], 0)
-
-    def test_missing_story_id(self):
-        with self.assertRaises(ValidationError):
-            ListStoryBlockersParams()
 
 
 if __name__ == "__main__":

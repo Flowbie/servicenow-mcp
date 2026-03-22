@@ -9,34 +9,10 @@ from servicenow_mcp.tools.catalog_optimization import (
     get_optimization_recommendations as get_optimization_recommendations_tool,
 )
 from servicenow_mcp.tools.catalog_tools import (
-    CreateCatalogCategoryParams,
-    GetCatalogItemParams,
-    ListCatalogCategoriesParams,
-    ListCatalogItemsParams,
     MoveCatalogItemsParams,
-    UpdateCatalogCategoryParams,
-    UpdateCatalogItemParams,
-)
-from servicenow_mcp.tools.catalog_tools import (
-    create_catalog_category as create_catalog_category_tool,
-)
-from servicenow_mcp.tools.catalog_tools import (
-    get_catalog_item as get_catalog_item_tool,
-)
-from servicenow_mcp.tools.catalog_tools import (
-    list_catalog_categories as list_catalog_categories_tool,
-)
-from servicenow_mcp.tools.catalog_tools import (
-    list_catalog_items as list_catalog_items_tool,
 )
 from servicenow_mcp.tools.catalog_tools import (
     move_catalog_items as move_catalog_items_tool,
-)
-from servicenow_mcp.tools.catalog_tools import (
-    update_catalog_category as update_catalog_category_tool,
-)
-from servicenow_mcp.tools.catalog_tools import (
-    update_catalog_item as update_catalog_item_tool,
 )
 from servicenow_mcp.tools.catalog_variables import (
     CreateCatalogItemVariableParams,
@@ -396,49 +372,19 @@ from servicenow_mcp.tools.agile_sprint_planning_tools import (
 )
 from servicenow_mcp.tools.story_tools import (
     AssignStoriesToSprintParams,
-    CreateStoryParams,
-    UpdateStoryParams,
-    ListStoriesParams,
-    ListStoryDependenciesParams,
-    CreateStoryDependencyParams,
-    DeleteStoryDependencyParams,
-    GetStoryParams,
     ArchiveStoryParams,
     MoveStoryStateParams,
-    AssignStoryParams,
-    AddStoryCommentParams,
-    ListStoryBlockersParams,
 )
 from servicenow_mcp.tools.story_tools import (
-    create_story as create_story_tool,
-    update_story as update_story_tool,
-    list_stories as list_stories_tool,
-    list_story_dependencies as list_story_dependencies_tool,
-    create_story_dependency as create_story_dependency_tool,
-    delete_story_dependency as delete_story_dependency_tool,
-    get_story as get_story_tool,
     archive_story as archive_story_tool,
     move_story_state as move_story_state_tool,
-    assign_story as assign_story_tool,
-    add_story_comment as add_story_comment_tool,
-    list_story_blockers as list_story_blockers_tool,
     assign_stories_to_sprint as assign_stories_to_sprint_tool,
 )
 from servicenow_mcp.tools.scrum_task_tools import (
-    CreateScrumTaskParams,
-    UpdateScrumTaskParams,
-    ListScrumTasksParams,
-    GetScrumTaskParams,
     CloseScrumTaskParams,
-    AssignScrumTaskParams,
 )
 from servicenow_mcp.tools.scrum_task_tools import (
-    create_scrum_task as create_scrum_task_tool,
-    update_scrum_task as update_scrum_task_tool,
-    list_scrum_tasks as list_scrum_tasks_tool,
-    get_scrum_task as get_scrum_task_tool,
     close_scrum_task as close_scrum_task_tool,
-    assign_scrum_task as assign_scrum_task_tool,
 )
 from servicenow_mcp.tools.flow_tools import (
     CreateActionParams,
@@ -543,18 +489,6 @@ from servicenow_mcp.tools.system_tools import (
 from servicenow_mcp.tools.changeset_tools import (
     SetCurrentUpdateSetParams,
     set_current_update_set as set_current_update_set_tool,
-)
-from servicenow_mcp.tools.catalog_tools import (
-    CreateCatalogItemParams,
-    DeleteCatalogItemParams,
-    ListCatalogsParams,
-    CreateCatalogParams,
-)
-from servicenow_mcp.tools.catalog_tools import (
-    create_catalog_item as create_catalog_item_tool,
-    delete_catalog_item as delete_catalog_item_tool,
-    list_catalogs as list_catalogs_tool,
-    create_catalog as create_catalog_tool,
 )
 from servicenow_mcp.tools.request_tools import (
     ListRequestsParams,
@@ -989,41 +923,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             "json",
         ),
         # Catalog Tools
-        "list_catalog_items": (
-            list_catalog_items_tool,
-            ListCatalogItemsParams,
-            str,  # Expects JSON string
-            "List service catalog items.",
-            "json",  # Tool returns list/dict
-        ),
-        "get_catalog_item": (
-            get_catalog_item_tool,
-            GetCatalogItemParams,
-            str,  # Expects JSON string
-            "Get a specific service catalog item.",
-            "json_dict",  # Tool returns Pydantic model
-        ),
-        "list_catalog_categories": (
-            list_catalog_categories_tool,
-            ListCatalogCategoriesParams,
-            str,  # Expects JSON string
-            "List service catalog categories.",
-            "json",  # Tool returns list/dict
-        ),
-        "create_catalog_category": (
-            create_catalog_category_tool,
-            CreateCatalogCategoryParams,
-            str,  # Expects JSON string
-            "Create a new service catalog category.",
-            "json_dict",  # Tool returns Pydantic model
-        ),
-        "update_catalog_category": (
-            update_catalog_category_tool,
-            UpdateCatalogCategoryParams,
-            str,  # Expects JSON string
-            "Update an existing service catalog category.",
-            "json_dict",  # Tool returns Pydantic model
-        ),
         "move_catalog_items": (
             move_catalog_items_tool,
             MoveCatalogItemsParams,
@@ -1037,13 +936,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             str,  # Expects JSON string
             "Get optimization recommendations for the service catalog.",
             "json",  # Tool returns list/dict
-        ),
-        "update_catalog_item": (
-            update_catalog_item_tool,
-            UpdateCatalogItemParams,
-            str,  # Expects JSON string
-            "Update a service catalog item.",
-            "json",  # Tool returns Pydantic model
         ),
         # Catalog Variables
         "create_catalog_item_variable": (
@@ -1066,35 +958,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             Dict[str, Any],  # Expects dict
             "Update a catalog item variable",
             "dict",  # Tool returns Pydantic model
-        ),
-        # Catalog — new tools (gap fill)
-        "create_catalog_item": (
-            create_catalog_item_tool,
-            CreateCatalogItemParams,
-            dict,
-            "Create a new service catalog item (sc_cat_item).",
-            "json",
-        ),
-        "delete_catalog_item": (
-            delete_catalog_item_tool,
-            DeleteCatalogItemParams,
-            dict,
-            "Delete a service catalog item by sys_id (sc_cat_item).",
-            "json",
-        ),
-        "list_catalogs": (
-            list_catalogs_tool,
-            ListCatalogsParams,
-            dict,
-            "List service catalogs (sc_catalog). Filter by active status.",
-            "json",
-        ),
-        "create_catalog": (
-            create_catalog_tool,
-            CreateCatalogParams,
-            dict,
-            "Create a new service catalog (sc_catalog).",
-            "json",
         ),
         # Request Fulfillment Tools (sc_request / sc_req_item / sc_task)
         "list_requests": (
@@ -1786,60 +1649,7 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
-        # Story Management Tools
-        "create_story": (
-            create_story_tool,
-            CreateStoryParams,
-            str,
-            "Create a new story in ServiceNow",
-            "str",
-        ),
-        "update_story": (
-            update_story_tool,
-            UpdateStoryParams,
-            str,
-            "Update an existing story in ServiceNow",
-            "str",
-        ),
-        "list_stories": (
-            list_stories_tool,
-            ListStoriesParams,
-            str,  # Expects JSON string
-            "List stories from ServiceNow",
-            "json",  # Tool returns list/dict
-        ),
-        "list_story_dependencies": (
-            list_story_dependencies_tool,
-            ListStoryDependenciesParams,
-            str,  # Expects JSON string
-            "List story dependencies from ServiceNow",
-            "json",  # Tool returns list/dict
-        ),
-        "create_story_dependency": (
-            create_story_dependency_tool,
-            CreateStoryDependencyParams,
-            str,
-            "Create a dependency between two stories in ServiceNow",
-            "str",
-        ),
-        "delete_story_dependency": (
-            delete_story_dependency_tool,
-            DeleteStoryDependencyParams,
-            str,
-            "Delete a story dependency in ServiceNow",
-            "str",
-        ),
-        "get_story": (
-            get_story_tool,
-            GetStoryParams,
-            dict,
-            (
-                "Retrieve a single story by sys_id or story number (e.g. STRY0001234). "
-                "Returns the full story record including state, epic, sprint, assignee, "
-                "acceptance_criteria, and story_points. Read-only."
-            ),
-            "json",
-        ),
+        # Story Management Tools (compound only)
         "archive_story": (
             archive_story_tool,
             ArchiveStoryParams,
@@ -1865,38 +1675,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
-        "assign_story": (
-            assign_story_tool,
-            AssignStoryParams,
-            dict,
-            (
-                "Assign a story to a user and/or group. "
-                "Provide assigned_to (user sys_id), assignment_group (group sys_id), or both. "
-                "At least one must be supplied."
-            ),
-            "json",
-        ),
-        "add_story_comment": (
-            add_story_comment_tool,
-            AddStoryCommentParams,
-            dict,
-            (
-                "Add a work note / comment to a story. "
-                "Appends the comment text to the story's work_notes journal field."
-            ),
-            "json",
-        ),
-        "list_story_blockers": (
-            list_story_blockers_tool,
-            ListStoryBlockersParams,
-            dict,
-            (
-                "List all stories that are blocking the given story. "
-                "Returns dependency records from m2m_story_dependencies where the story "
-                "is the dependent (blocked) side. Read-only."
-            ),
-            "json",
-        ),
         # Phase 10 — Agile Quick Win
         "assign_stories_to_sprint": (
             assign_stories_to_sprint_tool,
@@ -1909,47 +1687,12 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
-        # Scrum Task Management Tools
-        "create_scrum_task": (
-            create_scrum_task_tool,
-            CreateScrumTaskParams,
-            str,
-            "Create a new scrum task in ServiceNow",
-            "str",
-        ),
-        "update_scrum_task": (
-            update_scrum_task_tool,
-            UpdateScrumTaskParams,
-            str,
-            "Update an existing scrum task in ServiceNow",
-            "str",
-        ),
-        "list_scrum_tasks": (
-            list_scrum_tasks_tool,
-            ListScrumTasksParams,
-            str,  # Expects JSON string
-            "List scrum tasks from ServiceNow",
-            "json",  # Tool returns list/dict
-        ),
-        "get_scrum_task": (
-            get_scrum_task_tool,
-            GetScrumTaskParams,
-            dict,
-            "Retrieve a single scrum task by sys_id. Returns the full task record. Read-only.",
-            "json",
-        ),
+        # Scrum Task Management Tools (compound only)
         "close_scrum_task": (
             close_scrum_task_tool,
             CloseScrumTaskParams,
             dict,
             "Close a scrum task by setting its state to Complete (3). Optionally adds closing work notes.",
-            "json",
-        ),
-        "assign_scrum_task": (
-            assign_scrum_task_tool,
-            AssignScrumTaskParams,
-            dict,
-            "Assign a scrum task to a user and/or group. At least one of assigned_to or assignment_group required.",
             "json",
         ),
         # Generic Table API Tools
