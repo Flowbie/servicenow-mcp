@@ -1,8 +1,7 @@
 """
 Agile reporting tools for the ServiceNow MCP server.
 
-Read-focused tools that surface work assignment, blocked stories, and
-release status dashboards for teams and individuals.
+Read-focused tools that surface blocked stories and release status dashboards for teams.
 """
 
 import logging

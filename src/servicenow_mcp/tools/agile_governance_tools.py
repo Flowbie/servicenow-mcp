@@ -2,7 +2,7 @@
 Agile governance tools for the ServiceNow MCP server.
 
 Read-only tools that validate story quality gates before state transitions
-or promotions. All three tools are safe to call without write permissions.
+or promotions. Both tools are safe to call without write permissions.
 """
 
 import logging

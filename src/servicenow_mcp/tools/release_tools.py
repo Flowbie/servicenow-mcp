@@ -1,7 +1,7 @@
 """
 Release management tools for the ServiceNow MCP server.
 
-Provides create, get, readiness validation, and release notes compilation
+Provides get, readiness validation, and release notes compilation
 against the rm_release table, with sprint/story aggregation helpers.
 """
 
