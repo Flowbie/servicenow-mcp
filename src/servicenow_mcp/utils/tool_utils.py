@@ -29,62 +29,18 @@ from servicenow_mcp.tools.catalog_variables import (
     update_catalog_item_variable as update_catalog_item_variable_tool,
 )
 from servicenow_mcp.tools.change_tools import (
-    AddChangeTaskParams,
     ApproveChangeParams,
-    CloseChangeTaskParams,
-    CreateChangeRequestParams,
-    GetCabScheduleParams,
-    GetChangeRequestDetailsParams,
-    GetChangeTaskParams,
-    ListChangeRequestsParams,
-    ListChangeTasksParams,
     RejectChangeParams,
     SubmitChangeForApprovalParams,
-    UpdateCabDetailsParams,
-    UpdateChangeRequestParams,
-    UpdateChangeTaskParams,
-)
-from servicenow_mcp.tools.change_tools import (
-    add_change_task as add_change_task_tool,
 )
 from servicenow_mcp.tools.change_tools import (
     approve_change as approve_change_tool,
-)
-from servicenow_mcp.tools.change_tools import (
-    create_change_request as create_change_request_tool,
-)
-from servicenow_mcp.tools.change_tools import (
-    get_change_request_details as get_change_request_details_tool,
-)
-from servicenow_mcp.tools.change_tools import (
-    list_change_requests as list_change_requests_tool,
 )
 from servicenow_mcp.tools.change_tools import (
     reject_change as reject_change_tool,
 )
 from servicenow_mcp.tools.change_tools import (
     submit_change_for_approval as submit_change_for_approval_tool,
-)
-from servicenow_mcp.tools.change_tools import (
-    update_change_request as update_change_request_tool,
-)
-from servicenow_mcp.tools.change_tools import (
-    list_change_tasks as list_change_tasks_tool,
-)
-from servicenow_mcp.tools.change_tools import (
-    get_change_task as get_change_task_tool,
-)
-from servicenow_mcp.tools.change_tools import (
-    update_change_task as update_change_task_tool,
-)
-from servicenow_mcp.tools.change_tools import (
-    close_change_task as close_change_task_tool,
-)
-from servicenow_mcp.tools.change_tools import (
-    get_cab_schedule as get_cab_schedule_tool,
-)
-from servicenow_mcp.tools.change_tools import (
-    update_cab_details as update_cab_details_tool,
 )
 from servicenow_mcp.tools.changeset_tools import (
     GetChangesetDetailsParams,
@@ -525,42 +481,10 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             "Returns list of {name, label, value} for the RITM's submitted variable values.",
             "json",
         ),
-        # Change Management Tools
-        "create_change_request": (
-            create_change_request_tool,
-            CreateChangeRequestParams,
-            str,
-            "Create a new change request in ServiceNow",
-            "str",
-        ),
-        "update_change_request": (
-            update_change_request_tool,
-            UpdateChangeRequestParams,
-            str,
-            "Update an existing change request in ServiceNow",
-            "str",
-        ),
-        "list_change_requests": (
-            list_change_requests_tool,
-            ListChangeRequestsParams,
-            str,  # Expects JSON string
-            "List change requests from ServiceNow",
-            "json",  # Tool returns list/dict
-        ),
-        "get_change_request_details": (
-            get_change_request_details_tool,
-            GetChangeRequestDetailsParams,
-            str,  # Expects JSON string
-            "Get detailed information about a specific change request",
-            "json",  # Tool returns list/dict
-        ),
-        "add_change_task": (
-            add_change_task_tool,
-            AddChangeTaskParams,
-            str,  # Expects JSON string
-            "Add a task to a change request",
-            "json_dict",  # Tool returns Pydantic model
-        ),
+        # Change Management Tools — compound approval workflow only.
+        # CRUD (create, update, list, get, add_task, list_tasks, get_task, update_task,
+        # close_task, get_cab_schedule, update_cab_details) handled by table_tools +
+        # change_request architecture blueprint.
         "submit_change_for_approval": (
             submit_change_for_approval_tool,
             SubmitChangeForApprovalParams,
@@ -581,48 +505,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             str,
             "Reject a change request",
             "str",  # Tool returns simple message
-        ),
-        "list_change_tasks": (
-            list_change_tasks_tool,
-            ListChangeTasksParams,
-            str,
-            "List tasks for a specific change request",
-            "json",
-        ),
-        "get_change_task": (
-            get_change_task_tool,
-            GetChangeTaskParams,
-            str,
-            "Get details of a single change task by sys_id",
-            "json",
-        ),
-        "update_change_task": (
-            update_change_task_tool,
-            UpdateChangeTaskParams,
-            str,
-            "Update state, assignment, or close_code on a change task",
-            "json",
-        ),
-        "close_change_task": (
-            close_change_task_tool,
-            CloseChangeTaskParams,
-            str,
-            "Close a change task (requires state and close_code)",
-            "json",
-        ),
-        "get_cab_schedule": (
-            get_cab_schedule_tool,
-            GetCabScheduleParams,
-            str,
-            "Read CAB schedule (cab_required, cab_date_time) from a change request",
-            "json",
-        ),
-        "update_cab_details": (
-            update_cab_details_tool,
-            UpdateCabDetailsParams,
-            str,
-            "Update CAB details (cab_required, cab_date_time) on a change request",
-            "json",
         ),
         # Background Script Execution
         "run_background_script": (

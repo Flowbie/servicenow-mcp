@@ -51,24 +51,16 @@ request_fulfillment:
   - delete_record
 
 change_coordinator:
-  # Change Lifecycle
-  - create_change_request
-  - update_change_request
-  - list_change_requests
-  - get_change_request_details
-  # Tasks & Approval
-  - add_change_task
+  # Compound approval workflow — multi-step cross-table operations
   - submit_change_for_approval
   - approve_change
   - reject_change
-  # Change Tasks (Phase 3)
-  - list_change_tasks
-  - get_change_task
-  - update_change_task
-  - close_change_task
-  # CAB Management (Phase 3)
-  - get_cab_schedule
-  - update_cab_details
+  # Generic Table API — agents use this for all change CRUD; architecture doc is the guide
+  - query_records
+  - get_record
+  - create_record
+  - update_record
+  - delete_record
 
 automation_developer:
   # Generic Table API — agents use this for all automation CRUD; architecture doc is the guide
@@ -327,12 +319,9 @@ full:
   - list_catalog_item_variables
   - update_catalog_item_variable
   # planned: Epic 10 — delete_catalog_item_variable, create_catalog_variable_choice
-  # Change Management
-  - create_change_request
-  - update_change_request
-  - list_change_requests
-  - get_change_request_details
-  - add_change_task
+  # Change Management — compound approval workflow only
+  # CRUD (create, update, list, get, add_task, list_tasks, get_task, update_task,
+  # close_task, get_cab_schedule, update_cab_details) via table_tools + architecture blueprint
   - submit_change_for_approval
   - approve_change
   - reject_change

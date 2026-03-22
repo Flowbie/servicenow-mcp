@@ -15,14 +15,9 @@ from servicenow_mcp.tools.catalog_variables import (
     update_catalog_item_variable,
 )
 from servicenow_mcp.tools.change_tools import (
-    add_change_task,
     approve_change,
-    create_change_request,
-    get_change_request_details,
-    list_change_requests,
     reject_change,
     submit_change_for_approval,
-    update_change_request,
 )
 from servicenow_mcp.tools.changeset_tools import (
     get_changeset_details,
@@ -73,12 +68,8 @@ __all__ = [
     "list_catalog_item_variables",
     "update_catalog_item_variable",
     
-    # Change management tools
-    "create_change_request",
-    "update_change_request",
-    "list_change_requests",
-    "get_change_request_details",
-    "add_change_task",
+    # Change management tools — compound approval workflow only
+    # CRUD via table_tools + change_request architecture blueprint
     "submit_change_for_approval",
     "approve_change",
     "reject_change",
