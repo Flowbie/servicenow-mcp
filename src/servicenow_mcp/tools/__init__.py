@@ -9,11 +9,6 @@ from servicenow_mcp.tools.catalog_optimization import (
 from servicenow_mcp.tools.catalog_tools import (
     move_catalog_items,
 )
-from servicenow_mcp.tools.catalog_variables import (
-    create_catalog_item_variable,
-    list_catalog_item_variables,
-    update_catalog_item_variable,
-)
 from servicenow_mcp.tools.change_tools import (
     approve_change,
     reject_change,
@@ -64,10 +59,7 @@ __all__ = [
     # Catalog tools
     "move_catalog_items",
     "get_optimization_recommendations",
-    "create_catalog_item_variable",
-    "list_catalog_item_variables",
-    "update_catalog_item_variable",
-    
+
     # Change management tools — compound approval workflow only
     # CRUD via table_tools + change_request architecture blueprint
     "submit_change_for_approval",

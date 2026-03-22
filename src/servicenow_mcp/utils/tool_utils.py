@@ -14,20 +14,6 @@ from servicenow_mcp.tools.catalog_tools import (
 from servicenow_mcp.tools.catalog_tools import (
     move_catalog_items as move_catalog_items_tool,
 )
-from servicenow_mcp.tools.catalog_variables import (
-    CreateCatalogItemVariableParams,
-    ListCatalogItemVariablesParams,
-    UpdateCatalogItemVariableParams,
-)
-from servicenow_mcp.tools.catalog_variables import (
-    create_catalog_item_variable as create_catalog_item_variable_tool,
-)
-from servicenow_mcp.tools.catalog_variables import (
-    list_catalog_item_variables as list_catalog_item_variables_tool,
-)
-from servicenow_mcp.tools.catalog_variables import (
-    update_catalog_item_variable as update_catalog_item_variable_tool,
-)
 from servicenow_mcp.tools.change_tools import (
     ApproveChangeParams,
     RejectChangeParams,
@@ -447,28 +433,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             str,  # Expects JSON string
             "Get optimization recommendations for the service catalog.",
             "json",  # Tool returns list/dict
-        ),
-        # Catalog Variables
-        "create_catalog_item_variable": (
-            create_catalog_item_variable_tool,
-            CreateCatalogItemVariableParams,
-            Dict[str, Any],  # Expects dict
-            "Create a new catalog item variable",
-            "dict",  # Tool returns Pydantic model
-        ),
-        "list_catalog_item_variables": (
-            list_catalog_item_variables_tool,
-            ListCatalogItemVariablesParams,
-            Dict[str, Any],  # Expects dict
-            "List catalog item variables",
-            "dict",  # Tool returns Pydantic model
-        ),
-        "update_catalog_item_variable": (
-            update_catalog_item_variable_tool,
-            UpdateCatalogItemVariableParams,
-            Dict[str, Any],  # Expects dict
-            "Update a catalog item variable",
-            "dict",  # Tool returns Pydantic model
         ),
         # Request Fulfillment Tools — compound only
         # CRUD (list_requests, get_request, list_request_items, update_request_item,
