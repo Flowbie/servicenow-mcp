@@ -104,7 +104,7 @@ knowledge_author:
 executor:
   # Minimum required tools for the Executor agent pattern.
   # Always contains: pre-flight, write verification, and diagnostic escalation tools.
-  # Add write tools for the specific domain (e.g. script_include_tools, incident_tools)
+  # Add write tools for the specific domain (e.g. script_include_tools, change_tools)
   # to the active package when the Executor is invoked for that domain.
   #
   # Read-only / protocol tools (always required by Executor):
