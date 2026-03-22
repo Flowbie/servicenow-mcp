@@ -35,10 +35,11 @@ request_fulfillment:
   # list_sc_tasks, update_sc_task) via table_tools + architecture blueprint.
   # Compound:
   - get_ritm_variables
-  # Core verification + lookup
+  # Core verification + metadata
+  # Choice field values: use query_records on sys_choice
+  # (filter: name=<table>^element=<field>^inactive=false)
   - verify_fields
   - get_field_metadata
-  - get_field_choices
   # Generic Table API (CRUD for sc_request / sc_req_item / sc_task)
   - query_records
   - get_record
@@ -76,18 +77,20 @@ knowledge_author:
 
 executor:
   # Minimum required tools for the Executor agent pattern.
-  # Always contains: pre-flight, write verification, and diagnostic escalation tools.
+  # Always contains: pre-flight, write verification tools.
   # Add write tools for the specific domain (e.g. script_include_tools, change_tools)
   # to the active package when the Executor is invoked for that domain.
+  #
+  # Diagnostic queries now use query_records directly:
+  # - sys_choice (field choices)
+  # - sys_data_policy2 (data policies)
+  # - dl_definition (data lookup rules)
+  # - sys_script (business rules)
+  # - sys_ui_policy_action (UI policies)
   #
   # Read-only / protocol tools (always required by Executor):
   - verify_fields
   - get_field_metadata
-  - get_field_choices
-  - get_data_lookup_rules
-  - get_business_rules
-  - get_data_policies
-  - get_ui_policies
   # Introspection (pre-flight blueprint check):
   # Table metadata / child tables: use query_records on sys_db_object
   - list_table_fields
@@ -104,14 +107,15 @@ executor:
   - set_current_update_set
 
 platform_developer:
-  # Write Verification, Metadata Discovery, and Diagnostic Escalation
+  # Write Verification and Metadata Discovery
+  # Diagnostic queries now use query_records directly:
+  # - sys_choice (field choices)
+  # - sys_data_policy2 (data policies)
+  # - dl_definition (data lookup rules)
+  # - sys_script (business rules)
+  # - sys_ui_policy_action (UI policies)
   - verify_fields
   - get_field_metadata
-  - get_field_choices
-  - get_data_lookup_rules
-  - get_business_rules
-  - get_data_policies
-  - get_ui_policies
   # Introspection (architecture blueprints)
   # Table metadata / child tables: use query_records on sys_db_object
   - list_table_fields
@@ -153,14 +157,15 @@ platform_developer:
   - set_current_update_set
 
 agile_management:
-  # Write Verification, Metadata Discovery, and Diagnostic Escalation
+  # Write Verification and Metadata Discovery
+  # Diagnostic queries now use query_records directly:
+  # - sys_choice (field choices)
+  # - sys_data_policy2 (data policies)
+  # - dl_definition (data lookup rules)
+  # - sys_script (business rules)
+  # - sys_ui_policy_action (UI policies)
   - verify_fields
   - get_field_metadata
-  - get_field_choices
-  - get_data_lookup_rules
-  - get_business_rules
-  - get_data_policies
-  - get_ui_policies
   # Story Management (compound only; CRUD via table_tools)
   - archive_story
   - move_story_state
@@ -248,14 +253,15 @@ integration_developer:
   - get_field_metadata
 
 system_administrator:
-  # Write Verification, Metadata Discovery, and Diagnostic Escalation
+  # Write Verification and Metadata Discovery
+  # Diagnostic queries now use query_records directly:
+  # - sys_choice (field choices)
+  # - sys_data_policy2 (data policies)
+  # - dl_definition (data lookup rules)
+  # - sys_script (business rules)
+  # - sys_ui_policy_action (UI policies)
   - verify_fields
   - get_field_metadata
-  - get_field_choices
-  - get_data_lookup_rules
-  - get_business_rules
-  - get_data_policies
-  - get_ui_policies
   # Introspection (architecture blueprints)
   # Table metadata / child tables: use query_records on sys_db_object
   - list_table_fields
@@ -277,14 +283,15 @@ system_administrator:
   # removed: list_syslog_entries, get_syslog_entry — no implementation, none planned
 
 full:
-  # Write Verification, Metadata Discovery, and Diagnostic Escalation
+  # Write Verification and Metadata Discovery
+  # Diagnostic queries now use query_records directly:
+  # - sys_choice (field choices)
+  # - sys_data_policy2 (data policies)
+  # - dl_definition (data lookup rules)
+  # - sys_script (business rules)
+  # - sys_ui_policy_action (UI policies)
   - verify_fields
   - get_field_metadata
-  - get_field_choices
-  - get_data_lookup_rules
-  - get_business_rules
-  - get_data_policies
-  - get_ui_policies
   # Introspection (architecture blueprints)
   # Table metadata / child tables: use query_records on sys_db_object
   - list_table_fields

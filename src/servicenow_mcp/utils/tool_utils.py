@@ -35,19 +35,9 @@ from servicenow_mcp.tools.changeset_tools import (
     get_changeset_details as get_changeset_details_tool,
 )
 from servicenow_mcp.tools.write_safety_tools import (
-    BusinessRulesParams,
-    DataLookupRulesParams,
-    DataPoliciesParams,
-    FieldChoicesParams,
     FieldMetadataParams,
-    UIPoliciesParams,
     VerifyFieldsParams,
-    get_business_rules as get_business_rules_tool,
-    get_data_lookup_rules as get_data_lookup_rules_tool,
-    get_data_policies as get_data_policies_tool,
-    get_field_choices as get_field_choices_tool,
     get_field_metadata as get_field_metadata_tool,
-    get_ui_policies as get_ui_policies_tool,
     verify_fields as verify_fields_tool,
 )
 from servicenow_mcp.tools.blueprint_tools import (
@@ -281,83 +271,12 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
-        "get_field_choices": (
-            get_field_choices_tool,
-            FieldChoicesParams,
-            dict,
-            (
-                "Query sys_choice for the valid values of a choice field. Returns a list of "
-                "{value, label, inactive} entries. Use the 'value' (not the label) when "
-                "writing the field. If a user provides a label (e.g., 'High'), find the "
-                "matching 'value' here before calling the write tool. If choices_found=False, "
-                "retry with table='task' — choice entries for task-hierarchy fields are "
-                "stored under the 'task' table in sys_choice."
-            ),
-            "json",
-        ),
-        # Diagnostic escalation tools — called after a verify_fields mismatch
-        # to identify which server-side mechanism overrode the write.
-        # Investigation order: get_data_policies → get_data_lookup_rules →
-        # get_business_rules → get_ui_policies (client-side only, never the cause).
-        "get_data_lookup_rules": (
-            get_data_lookup_rules_tool,
-            DataLookupRulesParams,
-            dict,
-            (
-                "Query dl_definition for active Data Lookup rules that set fields on a table. "
-                "Data Lookup rules execute server-side after every insert or update and "
-                "silently override written values — the primary mechanism behind derived "
-                "fields like incident.priority (driven by impact and urgency). "
-                "Also use this as the instance verification step for FIELD_CONTROL_GRAPH.md "
-                "entries with mechanism='data_lookup'. "
-                "Set output_field to filter to a specific field (e.g., 'priority')."
-            ),
-            "json",
-        ),
-        "get_business_rules": (
-            get_business_rules_tool,
-            BusinessRulesParams,
-            dict,
-            (
-                "Query sys_script for active Business Rules on a table whose script body "
-                "references a field. Business Rules with 'before' or 'after' timing run "
-                "in the same transaction as the API write and can silently override field "
-                "values. Returns rule name, timing, insert/update triggers, condition, and "
-                "a 500-character script preview. Results use substring match — review "
-                "script_preview to confirm whether the rule sets or merely reads the field."
-            ),
-            "json",
-        ),
-        "get_data_policies": (
-            get_data_policies_tool,
-            DataPoliciesParams,
-            dict,
-            (
-                "Query sys_data_policy_rule for active Data Policy constraints on a field. "
-                "Data Policies (sys_data_policy2) are SERVER-SIDE enforced — a read_only=True "
-                "rule discards API writes silently regardless of how the request is made. "
-                "This is distinct from UI Policies, which are client-side only. "
-                "Call this as Step 2 in diagnostic escalation (after get_field_metadata, "
-                "before get_data_lookup_rules). A read_only=True result here is definitive: "
-                "the field cannot be written via the API without modifying the policy."
-            ),
-            "json",
-        ),
-        "get_ui_policies": (
-            get_ui_policies_tool,
-            UIPoliciesParams,
-            dict,
-            (
-                "Query sys_ui_policy_action for active UI Policy constraints on a field. "
-                "IMPORTANT: UI Policies are CLIENT-SIDE ONLY. They enforce field visibility, "
-                "mandatory status, and read-only state in the browser form but have NO effect "
-                "on REST API writes. api_relevant is always False in the result. "
-                "Call this as the final diagnostic step to provide supplemental context "
-                "about form behaviour. Never cite a UI Policy as the cause of an API write "
-                "mismatch — if only a UI policy is found, continue searching for the real cause."
-            ),
-            "json",
-        ),
+        # Diagnostic escalation — use query_records directly:
+        # - sys_choice (field choices): filter name=<table>^element=<field>^inactive=false
+        # - sys_data_policy2 (data policies): filter applies_to=<table>
+        # - dl_definition (data lookup rules): filter active=true^table=<table>
+        # - sys_script (business rules): filter collection=<table>^active=true
+        # - sys_ui_policy_action (UI policies): filter table=<table>^field_name=<field>
         # Introspection tools — sys_dictionary for architecture blueprints
         # Table metadata / child tables: use query_records on sys_db_object
         "list_table_fields": (
