@@ -51,14 +51,10 @@ from servicenow_mcp.tools.write_safety_tools import (
     verify_fields as verify_fields_tool,
 )
 from servicenow_mcp.tools.blueprint_tools import (
-    GetTableMetadataParams,
     ListTableFieldsParams,
     ListTableRelationshipsParams,
-    ListChildTablesParams,
-    get_table_metadata as get_table_metadata_tool,
     list_table_fields as list_table_fields_tool,
     list_table_relationships as list_table_relationships_tool,
-    list_child_tables as list_child_tables_tool,
 )
 from servicenow_mcp.tools.user_tools import (
     GrantRoleToGroupParams,
@@ -362,17 +358,8 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
-        # Introspection tools — sys_db_object / sys_dictionary for architecture blueprints
-        "get_table_metadata": (
-            get_table_metadata_tool,
-            GetTableMetadataParams,
-            dict,
-            (
-                "Query sys_db_object for a table's metadata: label, extends (parent table), scope. "
-                "Use for architecture blueprints and table hierarchy. Read-only."
-            ),
-            "json",
-        ),
+        # Introspection tools — sys_dictionary for architecture blueprints
+        # Table metadata / child tables: use query_records on sys_db_object
         "list_table_fields": (
             list_table_fields_tool,
             ListTableFieldsParams,
@@ -391,16 +378,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             (
                 "Derive outbound reference relationships for a table from sys_dictionary. "
                 "Returns from_field and to_table for each reference. Use for relationship graphs. Read-only."
-            ),
-            "json",
-        ),
-        "list_child_tables": (
-            list_child_tables_tool,
-            ListChildTablesParams,
-            dict,
-            (
-                "Query sys_db_object for tables that extend (super_class) a parent table. "
-                "Returns list of child table names. Use for table hierarchy in blueprints. Read-only."
             ),
             "json",
         ),

@@ -89,10 +89,9 @@ executor:
   - get_data_policies
   - get_ui_policies
   # Introspection (pre-flight blueprint check):
-  - get_table_metadata
+  # Table metadata / child tables: use query_records on sys_db_object
   - list_table_fields
   - list_table_relationships
-  - list_child_tables
   # Generic Table API (CRUD default for modules without domain-specific tools):
   - query_records
   - get_record
@@ -114,10 +113,9 @@ platform_developer:
   - get_data_policies
   - get_ui_policies
   # Introspection (architecture blueprints)
-  - get_table_metadata
+  # Table metadata / child tables: use query_records on sys_db_object
   - list_table_fields
   - list_table_relationships
-  - list_child_tables
   # Generic Table API
   - query_records
   - get_record
@@ -259,10 +257,9 @@ system_administrator:
   - get_data_policies
   - get_ui_policies
   # Introspection (architecture blueprints)
-  - get_table_metadata
+  # Table metadata / child tables: use query_records on sys_db_object
   - list_table_fields
   - list_table_relationships
-  - list_child_tables
   # Generic Table API
   - query_records
   - get_record
@@ -289,10 +286,9 @@ full:
   - get_data_policies
   - get_ui_policies
   # Introspection (architecture blueprints)
-  - get_table_metadata
+  # Table metadata / child tables: use query_records on sys_db_object
   - list_table_fields
   - list_table_relationships
-  - list_child_tables
   # Catalog (CRUD via table_tools + architecture blueprint)
   # Request Fulfillment — compound only (CRUD via table_tools + architecture blueprint)
   - get_ritm_variables

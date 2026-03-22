@@ -1,9 +1,14 @@
 """
 Introspection tools for the ServiceNow MCP server.
 
-Provides table- and module-level discovery from sys_db_object and sys_dictionary
-for architecture blueprint generation. Used by the Investigator Agent to
-reverse-engineer table hierarchy, fields, and relationships.
+Provides field- and relationship-level discovery from sys_dictionary for
+architecture blueprint generation. Used by the Investigator Agent to
+reverse-engineer table fields and outbound reference relationships.
+
+Note: get_table_metadata and list_child_tables have been removed.
+Use query_records on sys_db_object instead:
+- Table metadata: query_records on sys_db_object (filter: name=<table_name>)
+- Child tables: query_records on sys_db_object (filter: super_class.name=<parent_table>)
 
 All tools are read-only and do not modify any records.
 """
@@ -19,128 +24,6 @@ from servicenow_mcp.utils.config import ServerConfig
 from servicenow_mcp.utils.snow_utils import parse_snow_bool
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# get_table_metadata
-# ---------------------------------------------------------------------------
-
-
-class GetTableMetadataParams(BaseModel):
-    """Parameters for querying sys_db_object for a single table's metadata."""
-
-    table: str = Field(
-        ...,
-        description=(
-            "ServiceNow table name (e.g., 'incident', 'change_request', 'task'). "
-            "Returns label, extends (parent table), and scope/application info."
-        ),
-    )
-
-
-class GetTableMetadataResult(BaseModel):
-    """Metadata for a single table from sys_db_object."""
-
-    table: str = Field(..., description="Table name that was queried.")
-    table_found: bool = Field(
-        ...,
-        description="True if sys_db_object returned a record for this table.",
-    )
-    label: str = Field(
-        default="",
-        description="Human-readable table label from sys_db_object.",
-    )
-    extends: str = Field(
-        default="",
-        description=(
-            "Parent table name (super_class). Empty if this table does not extend another. "
-            "Use list_child_tables on the parent to enumerate children."
-        ),
-    )
-    scope: str = Field(
-        default="",
-        description="Application scope or sys_scope label if available.",
-    )
-    fetch_error: Optional[str] = Field(
-        None,
-        description="Set if the sys_db_object query failed.",
-    )
-
-
-def get_table_metadata(
-    config: ServerConfig,
-    auth_manager: AuthManager,
-    params: GetTableMetadataParams,
-) -> GetTableMetadataResult:
-    """
-    Query sys_db_object for a table's metadata: label, extends (parent table), scope.
-
-    Use this to build a table hierarchy and human-readable labels for architecture
-    blueprints. Does not modify any records.
-
-    Args:
-        config: Server configuration.
-        auth_manager: Authentication manager.
-        params: Table name to look up.
-
-    Returns:
-        GetTableMetadataResult with label, extends, and scope when found.
-    """
-    try:
-        response = requests.get(
-            f"{config.api_url}/table/sys_db_object",
-            params={
-                "sysparm_query": f"name={params.table}",
-                "sysparm_fields": "name,label,super_class,sys_scope",
-                "sysparm_limit": 1,
-                "sysparm_display_value": "all",
-            },
-            headers=auth_manager.get_headers(),
-            timeout=config.timeout,
-        )
-        response.raise_for_status()
-        results = response.json().get("result", [])
-        if not results:
-            return GetTableMetadataResult(
-                table=params.table,
-                table_found=False,
-            )
-        rec = results[0]
-        # super_class is a reference; may return {"value": "sys_id", "display_value": "task"}
-        super_class = rec.get("super_class")
-        extends = ""
-        if isinstance(super_class, dict):
-            extends = (super_class.get("display_value") or super_class.get("value") or "").strip()
-        elif isinstance(super_class, str):
-            extends = super_class.strip()
-        sys_scope = rec.get("sys_scope")
-        scope = ""
-        if isinstance(sys_scope, dict):
-            scope = (sys_scope.get("display_value") or sys_scope.get("value") or "").strip()
-        elif isinstance(sys_scope, str):
-            scope = sys_scope.strip()
-        label = _extract_display_or_value(rec.get("label")) or params.table.replace("_", " ").title()
-        return GetTableMetadataResult(
-            table=params.table,
-            table_found=True,
-            label=label,
-            extends=extends,
-            scope=scope,
-        )
-    except requests.RequestException as e:
-        body = getattr(e, "response", None)
-        body_text = (body.text[:2000] if body and hasattr(body, "text") else "") or ""
-        logger.error(
-            "get_table_metadata | failed | table=%s | error=%s%s",
-            params.table,
-            e,
-            f" | body={body_text}" if body_text else "",
-        )
-        return GetTableMetadataResult(
-            table=params.table,
-            table_found=False,
-            fetch_error=str(e) + (f" | response: {body_text}" if body_text else ""),
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -459,87 +342,3 @@ def list_table_relationships(
         relationships=relationships,
     )
 
-
-# ---------------------------------------------------------------------------
-# list_child_tables
-# ---------------------------------------------------------------------------
-
-
-class ListChildTablesParams(BaseModel):
-    """Parameters for listing child tables that extend a parent (sys_db_object.super_class)."""
-
-    parent_table: str = Field(
-        ...,
-        description=(
-            "Parent table name (e.g., 'task', 'cmdb_ci'). "
-            "Returns all tables whose super_class (extends) is this table."
-        ),
-    )
-
-
-class ListChildTablesResult(BaseModel):
-    """Result of listing child tables."""
-
-    parent_table: str = Field(..., description="Parent table that was queried.")
-    child_tables: List[str] = Field(
-        default_factory=list,
-        description="List of table names that extend the parent.",
-    )
-    fetch_error: Optional[str] = Field(
-        None,
-        description="Set if the sys_db_object query failed.",
-    )
-
-
-def list_child_tables(
-    config: ServerConfig,
-    auth_manager: AuthManager,
-    params: ListChildTablesParams,
-) -> ListChildTablesResult:
-    """
-    Query sys_db_object for all tables that extend (super_class) a given parent table.
-
-    Use this to discover table hierarchy for architecture blueprints (e.g. all
-    tables extending task or cmdb_ci). Does not modify any records.
-
-    Args:
-        config: Server configuration.
-        auth_manager: Authentication manager.
-        params: Parent table name.
-
-    Returns:
-        ListChildTablesResult with list of child table names.
-    """
-    try:
-        # super_class is a reference; query by display_value or value
-        response = requests.get(
-            f"{config.api_url}/table/sys_db_object",
-            params={
-                "sysparm_query": f"super_class.name={params.parent_table}",
-                "sysparm_fields": "name",
-                "sysparm_limit": 500,
-                "sysparm_order_by": "name",
-            },
-            headers=auth_manager.get_headers(),
-            timeout=config.timeout,
-        )
-        response.raise_for_status()
-        results = response.json().get("result", [])
-        child_tables = [r.get("name", "").strip() for r in results if r.get("name")]
-        return ListChildTablesResult(
-            parent_table=params.parent_table,
-            child_tables=child_tables,
-        )
-    except requests.RequestException as e:
-        body = getattr(e, "response", None)
-        body_text = (body.text[:2000] if body and hasattr(body, "text") else "") or ""
-        logger.error(
-            "list_child_tables | failed | parent=%s | error=%s%s",
-            params.parent_table,
-            e,
-            f" | body={body_text}" if body_text else "",
-        )
-        return ListChildTablesResult(
-            parent_table=params.parent_table,
-            fetch_error=str(e) + (f" | response: {body_text}" if body_text else ""),
-        )
