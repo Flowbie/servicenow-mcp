@@ -184,10 +184,7 @@ The default `config/tool_packages.yaml` includes the following role-based packag
 4. **create_catalog_category** - Create a new service catalog category in ServiceNow
 5. **update_catalog_category** - Update an existing service catalog category in ServiceNow
 6. **move_catalog_items** - Move catalog items between categories in ServiceNow
-7. **create_catalog_item_variable** - Create a new variable (form field) for a catalog item
-8. **list_catalog_item_variables** - List all variables for a catalog item
-9. **update_catalog_item_variable** - Update an existing variable for a catalog item
-10. **list_catalogs** - List service catalogs from ServiceNow
+7. **list_catalogs** - List service catalogs from ServiceNow
 
 #### Catalog Optimization Tools
 
