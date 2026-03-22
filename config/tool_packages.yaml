@@ -23,12 +23,6 @@ catalog_builder:
   - create_record
   - update_record
   - delete_record
-  # UI Policies (Epic 13)
-  - get_ui_policy
-  - create_ui_policy
-  - update_ui_policy
-  - list_ui_policy_actions
-  - create_ui_policy_action
   # Compound: bulk move items between categories
   - move_catalog_items
   # Variables
@@ -75,18 +69,12 @@ change_coordinator:
   - update_cab_details
 
 automation_developer:
-  # Scheduled Jobs (sys_trigger)
-  - list_scheduled_jobs
-  - get_scheduled_job
-  - enable_scheduled_job
-  - disable_scheduled_job
-  - create_scheduled_script
-  - delete_scheduled_job
-  # Scheduled Integrations
-  - list_scheduled_imports
-  - list_scheduled_exports
-  - update_scheduled_job
-  - run_scheduled_job_now
+  # Generic Table API — agents use this for all automation CRUD; architecture doc is the guide
+  - query_records
+  - get_record
+  - create_record
+  - update_record
+  - delete_record
 
 knowledge_author:
   # Generic Table API — agents use this for all KB CRUD; architecture doc is the guide
@@ -115,13 +103,6 @@ executor:
   - list_table_fields
   - list_table_relationships
   - list_child_tables
-  # Customization discovery (table-centric, for blueprint research):
-  - list_business_rules
-  - list_ui_policies
-  - list_client_scripts
-  - list_notifications
-  - list_ui_actions
-  - list_access_controls
   # Generic Table API (CRUD default for modules without domain-specific tools):
   - query_records
   - get_record
@@ -130,11 +111,6 @@ executor:
   - delete_record
   # System:
   - get_current_user
-  # Script Include writes (Executor default for scripting tasks):
-  - list_script_includes
-  - get_script_include
-  - create_script_include
-  - update_script_include
   # Changeset (update set management):
   - list_changesets
   - create_changeset
@@ -156,32 +132,6 @@ platform_developer:
   - list_table_fields
   - list_table_relationships
   - list_child_tables
-  # Customization discovery (table-centric, for blueprint research)
-  - list_business_rules
-  - list_ui_policies
-  - list_client_scripts
-  - list_notifications
-  - list_ui_actions
-  - list_access_controls
-  # Platform Scripting Writes (Phase 6)
-  - create_business_rule
-  - update_business_rule
-  - delete_business_rule
-  - create_client_script
-  - update_client_script
-  - create_ui_action
-  - update_ui_action
-  - enable_client_script
-  - disable_client_script
-  - delete_client_script
-  - enable_ui_action
-  - disable_ui_action
-  - get_ui_policy
-  - create_ui_policy
-  - update_ui_policy
-  - create_ui_policy_action
-  - list_ui_policy_actions
-  - list_scheduled_scripts
   # Generic Table API
   - query_records
   - get_record
@@ -191,13 +141,6 @@ platform_developer:
   # System
   - get_system_properties
   - get_current_user
-  # Script Includes
-  - list_script_includes
-  - get_script_include
-  - create_script_include
-  - update_script_include
-  - delete_script_include
-  # planned: Epic 13 — execute_script_include
   # Background Script Execution
   - run_background_script
   # Flow Designer
@@ -220,23 +163,6 @@ platform_developer:
   - get_action
   - update_action
   - publish_action
-  # Workflows
-  - list_workflows
-  - get_workflow_details
-  - create_workflow
-  - update_workflow
-  - activate_workflow
-  - deactivate_workflow
-  - list_workflow_versions
-  # Workflow Activities
-  - add_workflow_activity
-  - update_workflow_activity
-  - delete_workflow_activity
-  - reorder_workflow_activities
-  - get_workflow_activities
-  # General UI Policies
-  - create_ui_policy
-  - create_ui_policy_action
   # Changesets
   - list_changesets
   - get_changeset_details
@@ -322,16 +248,13 @@ agile_readonly:
   - get_record
 
 risk_manager:
-  # GRC Risk Management (Phase 9)
-  - list_risks
-  - get_risk
-  - create_risk
-  - update_risk_state
-  - list_risk_criteria
-  - assign_risk_response
-  # Core lookup tools
+  # Generic Table API — agents use this for all risk CRUD; architecture doc is the guide
   - query_records
   - get_record
+  - create_record
+  - update_record
+  - delete_record
+  # Core lookup tools
   - verify_fields
   - get_field_metadata
 
@@ -372,13 +295,6 @@ system_administrator:
   - list_table_fields
   - list_table_relationships
   - list_child_tables
-  # Customization discovery (table-centric, for blueprint research)
-  - list_business_rules
-  - list_ui_policies
-  - list_client_scripts
-  - list_notifications
-  - list_ui_actions
-  - list_access_controls
   # Generic Table API
   - query_records
   - get_record
@@ -412,13 +328,6 @@ full:
   - list_table_fields
   - list_table_relationships
   - list_child_tables
-  # Customization discovery (table-centric, for blueprint research)
-  - list_business_rules
-  - list_ui_policies
-  - list_client_scripts
-  - list_notifications
-  - list_ui_actions
-  - list_access_controls
   # Catalog (CRUD via table_tools + architecture blueprint)
   # Request Fulfillment
   - list_requests
@@ -468,19 +377,6 @@ full:
   - get_action
   - update_action
   - publish_action
-  # Workflow
-  - list_workflows
-  - get_workflow_details
-  - list_workflow_versions
-  - get_workflow_activities
-  - create_workflow
-  - update_workflow
-  - activate_workflow
-  - deactivate_workflow
-  - add_workflow_activity
-  - update_workflow_activity
-  - delete_workflow_activity
-  - reorder_workflow_activities
   # Changeset
   - list_changesets
   - get_changeset_details
@@ -489,13 +385,6 @@ full:
   - commit_changeset
   - publish_changeset
   - add_file_to_changeset
-  # Script Include
-  - list_script_includes
-  - get_script_include
-  - create_script_include
-  - update_script_include
-  - delete_script_include
-  # planned: Epic 13 — execute_script_include
   # User/Group Role Management (Phase 8)
   - grant_role_to_user
   - revoke_role_from_user
@@ -523,13 +412,6 @@ full:
   - delete_ci_relationship
   - list_ci_relationship_types
   - get_ci_impact_graph
-  # GRC Risk (Phase 9)
-  - list_risks
-  - get_risk
-  - create_risk
-  - update_risk_state
-  - list_risk_criteria
-  - assign_risk_response
   # System
   - get_system_properties
   - get_current_user
@@ -552,20 +434,6 @@ full:
   - create_transform_map
   - run_transform
   - run_import
-  # Automation — Scheduled Jobs (Epic 12)
-  - update_scheduled_job
-  - run_scheduled_job_now
-  # Customization — Client Scripts / UI Actions / UI Policies (Epic 13)
-  - enable_client_script
-  - disable_client_script
-  - delete_client_script
-  - enable_ui_action
-  - disable_ui_action
-  - get_ui_policy
-  - create_ui_policy
-  - update_ui_policy
-  - create_ui_policy_action
-  - list_ui_policy_actions
   # Story Management (compound only; CRUD via table_tools)
   - archive_story
   - move_story_state

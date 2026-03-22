@@ -33,13 +33,6 @@ from servicenow_mcp.tools.changeset_tools import (
     publish_changeset,
     update_changeset,
 )
-from servicenow_mcp.tools.script_include_tools import (
-    create_script_include,
-    delete_script_include,
-    get_script_include,
-    list_script_includes,
-    update_script_include,
-)
 from servicenow_mcp.tools.user_tools import (
     grant_role_to_user,
     revoke_role_from_user,
@@ -47,20 +40,6 @@ from servicenow_mcp.tools.user_tools import (
     revoke_role_from_group,
     list_user_roles,
     list_group_roles,
-)
-from servicenow_mcp.tools.workflow_tools import (
-    activate_workflow,
-    add_workflow_activity,
-    create_workflow,
-    deactivate_workflow,
-    delete_workflow_activity,
-    get_workflow_activities,
-    get_workflow_details,
-    list_workflow_versions,
-    list_workflows,
-    reorder_workflow_activities,
-    update_workflow,
-    update_workflow_activity,
 )
 from servicenow_mcp.tools.story_tools import (
     archive_story,
@@ -109,20 +88,6 @@ __all__ = [
     "approve_change",
     "reject_change",
     
-    # Workflow management tools
-    "list_workflows",
-    "get_workflow_details",
-    "list_workflow_versions",
-    "get_workflow_activities",
-    "create_workflow",
-    "update_workflow",
-    "activate_workflow",
-    "deactivate_workflow",
-    "add_workflow_activity",
-    "update_workflow_activity",
-    "delete_workflow_activity",
-    "reorder_workflow_activities",
-    
     # Changeset tools
     "list_changesets",
     "get_changeset_details",
@@ -131,13 +96,6 @@ __all__ = [
     "commit_changeset",
     "publish_changeset",
     "add_file_to_changeset",
-    
-    # Script Include tools
-    "list_script_includes",
-    "get_script_include",
-    "create_script_include",
-    "update_script_include",
-    "delete_script_include",
     
     # User role management tools
     "grant_role_to_user",
