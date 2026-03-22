@@ -35,18 +35,20 @@ catalog_builder:
 
 request_fulfillment:
   # Service Request lifecycle — sc_request / sc_req_item (RITM) / sc_task
-  - list_requests
-  - get_request
-  - list_request_items
-  - update_request_item
-  - list_sc_tasks
-  - update_sc_task
+  # CRUD (list_requests, get_request, list_request_items, update_request_item,
+  # list_sc_tasks, update_sc_task) via table_tools + architecture blueprint.
+  # Compound:
   - get_ritm_variables
   # Core verification + lookup
   - verify_fields
   - get_field_metadata
   - get_field_choices
+  # Generic Table API (CRUD for sc_request / sc_req_item / sc_task)
   - query_records
+  - get_record
+  - create_record
+  - update_record
+  - delete_record
 
 change_coordinator:
   # Change Lifecycle
@@ -111,11 +113,7 @@ executor:
   - delete_record
   # System:
   - get_current_user
-  # Changeset (update set management):
-  - list_changesets
-  - create_changeset
-  - update_changeset
-  - commit_changeset
+  # Changeset (update set management — CRUD via table_tools + sys_update_set blueprint):
   - set_current_update_set
 
 platform_developer:
@@ -163,14 +161,10 @@ platform_developer:
   - get_action
   - update_action
   - publish_action
-  # Changesets
-  - list_changesets
+  # Request Fulfillment (compound only; CRUD via table_tools + architecture blueprint)
+  - get_ritm_variables
+  # Changesets (CRUD via table_tools + sys_update_set blueprint)
   - get_changeset_details
-  - create_changeset
-  - update_changeset
-  - commit_changeset
-  - publish_changeset
-  - add_file_to_changeset
   - set_current_update_set
 
 agile_management:
@@ -329,13 +323,7 @@ full:
   - list_table_relationships
   - list_child_tables
   # Catalog (CRUD via table_tools + architecture blueprint)
-  # Request Fulfillment
-  - list_requests
-  - get_request
-  - list_request_items
-  - update_request_item
-  - list_sc_tasks
-  - update_sc_task
+  # Request Fulfillment — compound only (CRUD via table_tools + architecture blueprint)
   - get_ritm_variables
   # Catalog (compound)
   - move_catalog_items
@@ -377,14 +365,8 @@ full:
   - get_action
   - update_action
   - publish_action
-  # Changeset
-  - list_changesets
+  # Changeset (CRUD via table_tools + sys_update_set blueprint)
   - get_changeset_details
-  - create_changeset
-  - update_changeset
-  - commit_changeset
-  - publish_changeset
-  - add_file_to_changeset
   # User/Group Role Management (Phase 8)
   - grant_role_to_user
   - revoke_role_from_user

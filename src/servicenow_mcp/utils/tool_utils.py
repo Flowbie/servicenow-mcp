@@ -87,34 +87,10 @@ from servicenow_mcp.tools.change_tools import (
     update_cab_details as update_cab_details_tool,
 )
 from servicenow_mcp.tools.changeset_tools import (
-    AddFileToChangesetParams,
-    CommitChangesetParams,
-    CreateChangesetParams,
     GetChangesetDetailsParams,
-    ListChangesetsParams,
-    PublishChangesetParams,
-    UpdateChangesetParams,
-)
-from servicenow_mcp.tools.changeset_tools import (
-    add_file_to_changeset as add_file_to_changeset_tool,
-)
-from servicenow_mcp.tools.changeset_tools import (
-    commit_changeset as commit_changeset_tool,
-)
-from servicenow_mcp.tools.changeset_tools import (
-    create_changeset as create_changeset_tool,
 )
 from servicenow_mcp.tools.changeset_tools import (
     get_changeset_details as get_changeset_details_tool,
-)
-from servicenow_mcp.tools.changeset_tools import (
-    list_changesets as list_changesets_tool,
-)
-from servicenow_mcp.tools.changeset_tools import (
-    publish_changeset as publish_changeset_tool,
-)
-from servicenow_mcp.tools.changeset_tools import (
-    update_changeset as update_changeset_tool,
 )
 from servicenow_mcp.tools.write_safety_tools import (
     BusinessRulesParams,
@@ -330,21 +306,9 @@ from servicenow_mcp.tools.changeset_tools import (
     set_current_update_set as set_current_update_set_tool,
 )
 from servicenow_mcp.tools.request_tools import (
-    ListRequestsParams,
-    GetRequestParams,
-    ListRequestItemsParams,
-    UpdateRequestItemParams,
-    ListScTasksParams,
-    UpdateScTaskParams,
     GetRitmVariablesParams,
 )
 from servicenow_mcp.tools.request_tools import (
-    list_requests as list_requests_tool,
-    get_request as get_request_tool,
-    list_request_items as list_request_items_tool,
-    update_request_item as update_request_item_tool,
-    list_sc_tasks as list_sc_tasks_tool,
-    update_sc_task as update_sc_task_tool,
     get_ritm_variables as get_ritm_variables_tool,
 )
 from servicenow_mcp.tools.integration_tools import (
@@ -590,49 +554,9 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             "Update a catalog item variable",
             "dict",  # Tool returns Pydantic model
         ),
-        # Request Fulfillment Tools (sc_request / sc_req_item / sc_task)
-        "list_requests": (
-            list_requests_tool,
-            ListRequestsParams,
-            dict,
-            "List service requests (sc_request). Filter by state or requested_for user.",
-            "json",
-        ),
-        "get_request": (
-            get_request_tool,
-            GetRequestParams,
-            dict,
-            "Get a single service request by number or sys_id (sc_request).",
-            "json",
-        ),
-        "list_request_items": (
-            list_request_items_tool,
-            ListRequestItemsParams,
-            dict,
-            "List requested items (sc_req_item / RITM). Filter by parent request or state.",
-            "json",
-        ),
-        "update_request_item": (
-            update_request_item_tool,
-            UpdateRequestItemParams,
-            dict,
-            "Update a requested item (sc_req_item) — state transitions, assignment, notes.",
-            "json",
-        ),
-        "list_sc_tasks": (
-            list_sc_tasks_tool,
-            ListScTasksParams,
-            dict,
-            "List catalog tasks (sc_task). Filter by parent RITM or state.",
-            "json",
-        ),
-        "update_sc_task": (
-            update_sc_task_tool,
-            UpdateScTaskParams,
-            dict,
-            "Update a catalog task (sc_task) — state transitions, assignment, notes.",
-            "json",
-        ),
+        # Request Fulfillment Tools — compound only
+        # CRUD (list_requests, get_request, list_request_items, update_request_item,
+        # list_sc_tasks, update_sc_task) handled by table_tools + architecture blueprint.
         "get_ritm_variables": (
             get_ritm_variables_tool,
             GetRitmVariablesParams,
@@ -905,54 +829,12 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             "json",
         ),
         # Changeset Management Tools
-        "list_changesets": (
-            list_changesets_tool,
-            ListChangesetsParams,
-            str,  # Expects JSON string
-            "List changesets from ServiceNow",
-            "json",  # Tool returns list/dict
-        ),
         "get_changeset_details": (
             get_changeset_details_tool,
             GetChangesetDetailsParams,
             str,  # Expects JSON string
-            "Get detailed information about a specific changeset",
+            "Get detailed information about a specific changeset, including all associated change records (sys_update_xml).",
             "json",  # Tool returns list/dict
-        ),
-        "create_changeset": (
-            create_changeset_tool,
-            CreateChangesetParams,
-            str,  # Expects JSON string
-            "Create a new changeset in ServiceNow",
-            "json_dict",  # Tool returns Pydantic model
-        ),
-        "update_changeset": (
-            update_changeset_tool,
-            UpdateChangesetParams,
-            str,  # Expects JSON string
-            "Update an existing changeset in ServiceNow",
-            "json_dict",  # Tool returns Pydantic model
-        ),
-        "commit_changeset": (
-            commit_changeset_tool,
-            CommitChangesetParams,
-            str,
-            "Commit a changeset in ServiceNow",
-            "str",  # Tool returns simple message
-        ),
-        "publish_changeset": (
-            publish_changeset_tool,
-            PublishChangesetParams,
-            str,
-            "Publish a changeset in ServiceNow",
-            "str",  # Tool returns simple message
-        ),
-        "add_file_to_changeset": (
-            add_file_to_changeset_tool,
-            AddFileToChangesetParams,
-            str,
-            "Add a file to a changeset in ServiceNow",
-            "str",  # Tool returns simple message
         ),
         # User/Group Role Tools (Phase 8)
         "grant_role_to_user": (
@@ -1666,7 +1548,7 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
                 "Validates the update set is in 'in progress' state, then sets it as current "
                 "so all subsequent platform changes are captured in it. "
                 "Call this before scripting or configuration work to ensure changes land in the "
-                "correct update set. Use list_changesets to find available update set sys_ids."
+                "correct update set. Use query_records on sys_update_set to find available update set sys_ids."
             ),
             "json",
         ),

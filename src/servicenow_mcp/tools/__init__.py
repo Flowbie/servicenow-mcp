@@ -25,13 +25,8 @@ from servicenow_mcp.tools.change_tools import (
     update_change_request,
 )
 from servicenow_mcp.tools.changeset_tools import (
-    add_file_to_changeset,
-    commit_changeset,
-    create_changeset,
     get_changeset_details,
-    list_changesets,
-    publish_changeset,
-    update_changeset,
+    set_current_update_set,
 )
 from servicenow_mcp.tools.user_tools import (
     grant_role_to_user,
@@ -88,14 +83,9 @@ __all__ = [
     "approve_change",
     "reject_change",
     
-    # Changeset tools
-    "list_changesets",
+    # Changeset tools (compound only; CRUD via table_tools + sys_update_set blueprint)
     "get_changeset_details",
-    "create_changeset",
-    "update_changeset",
-    "commit_changeset",
-    "publish_changeset",
-    "add_file_to_changeset",
+    "set_current_update_set",
     
     # User role management tools
     "grant_role_to_user",
