@@ -140,14 +140,6 @@ from servicenow_mcp.tools.changeset_tools import (
 from servicenow_mcp.tools.changeset_tools import (
     update_changeset as update_changeset_tool,
 )
-from servicenow_mcp.tools.incident_tools import (
-    AddCommentParams,
-    CreateIncidentParams,
-    ListIncidentsParams,
-    ResolveIncidentParams,
-    UpdateIncidentParams,
-    GetIncidentByNumberParams,
-)
 from servicenow_mcp.tools.write_safety_tools import (
     BusinessRulesParams,
     DataLookupRulesParams,
@@ -246,24 +238,6 @@ from servicenow_mcp.tools.customization_tools import (
     create_ui_policy_action as create_ui_policy_action_tool,
     list_ui_policy_actions as list_ui_policy_actions_tool,
 )
-from servicenow_mcp.tools.incident_tools import (
-    add_comment as add_comment_tool,
-)
-from servicenow_mcp.tools.incident_tools import (
-    create_incident as create_incident_tool,
-)
-from servicenow_mcp.tools.incident_tools import (
-    list_incidents as list_incidents_tool,
-)
-from servicenow_mcp.tools.incident_tools import (
-    resolve_incident as resolve_incident_tool,
-)
-from servicenow_mcp.tools.incident_tools import (
-    update_incident as update_incident_tool,
-)
-from servicenow_mcp.tools.incident_tools import (
-    get_incident_by_number as get_incident_by_number_tool,
-)
 from servicenow_mcp.tools.script_include_tools import (
     CreateScriptIncludeParams,
     DeleteScriptIncludeParams,
@@ -288,50 +262,12 @@ from servicenow_mcp.tools.script_include_tools import (
     update_script_include as update_script_include_tool,
 )
 from servicenow_mcp.tools.user_tools import (
-    AddGroupMembersParams,
-    CreateGroupParams,
-    CreateUserParams,
-    GetUserParams,
     GrantRoleToGroupParams,
     GrantRoleToUserParams,
     ListGroupRolesParams,
-    ListGroupsParams,
     ListUserRolesParams,
-    ListUsersParams,
-    RemoveGroupMembersParams,
     RevokeRoleFromGroupParams,
     RevokeRoleFromUserParams,
-    UpdateGroupParams,
-    UpdateUserParams,
-)
-from servicenow_mcp.tools.user_tools import (
-    add_group_members as add_group_members_tool,
-)
-from servicenow_mcp.tools.user_tools import (
-    create_group as create_group_tool,
-)
-from servicenow_mcp.tools.user_tools import (
-    create_user as create_user_tool,
-)
-from servicenow_mcp.tools.user_tools import (
-    get_user as get_user_tool,
-)
-from servicenow_mcp.tools.user_tools import (
-    list_groups as list_groups_tool,
-)
-from servicenow_mcp.tools.user_tools import (
-    list_users as list_users_tool,
-)
-from servicenow_mcp.tools.user_tools import (
-    remove_group_members as remove_group_members_tool,
-)
-from servicenow_mcp.tools.user_tools import (
-    update_group as update_group_tool,
-)
-from servicenow_mcp.tools.user_tools import (
-    update_user as update_user_tool,
-)
-from servicenow_mcp.tools.user_tools import (
     grant_role_to_group as grant_role_to_group_tool,
     grant_role_to_user as grant_role_to_user_tool,
     list_group_roles as list_group_roles_tool,
@@ -696,49 +632,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
         Dict[str, ToolDefinition]: A dictionary mapping tool names to their definitions.
     """
     tool_definitions: Dict[str, ToolDefinition] = {
-        # Incident Tools
-        "create_incident": (
-            create_incident_tool,
-            CreateIncidentParams,
-            str,
-            "Create a new incident in ServiceNow",
-            "str",
-        ),
-        "update_incident": (
-            update_incident_tool,
-            UpdateIncidentParams,
-            str,
-            "Update an existing incident in ServiceNow",
-            "str",
-        ),
-        "add_comment": (
-            add_comment_tool,
-            AddCommentParams,
-            str,
-            "Add a comment to an incident in ServiceNow",
-            "str",
-        ),
-        "resolve_incident": (
-            resolve_incident_tool,
-            ResolveIncidentParams,
-            str,
-            "Resolve an incident in ServiceNow",
-            "str",
-        ),
-        "list_incidents": (
-            list_incidents_tool,
-            ListIncidentsParams,
-            str,  # Expects JSON string
-            "List incidents from ServiceNow",
-            "json",  # Tool returns list/dict, needs JSON dump
-        ),
-        "get_incident_by_number": (
-            get_incident_by_number_tool,
-            GetIncidentByNumberParams,
-            str,
-            "Incident details from ServiceNow",
-            "json_dict",
-        ),
         "verify_fields": (
             verify_fields_tool,
             VerifyFieldsParams,
@@ -1759,70 +1652,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             str,  # Expects JSON string
             "Delete a script include in ServiceNow",
             "json_dict",  # Tool returns Pydantic model
-        ),
-        # User Management Tools
-        "create_user": (
-            create_user_tool,
-            CreateUserParams,
-            Dict[str, Any],  # Expects dict
-            "Create a new user in ServiceNow",
-            "raw_dict",  # Tool returns raw dict
-        ),
-        "update_user": (
-            update_user_tool,
-            UpdateUserParams,
-            Dict[str, Any],  # Expects dict
-            "Update an existing user in ServiceNow",
-            "raw_dict",
-        ),
-        "get_user": (
-            get_user_tool,
-            GetUserParams,
-            Dict[str, Any],  # Expects dict
-            "Get a specific user in ServiceNow",
-            "raw_dict",
-        ),
-        "list_users": (
-            list_users_tool,
-            ListUsersParams,
-            Dict[str, Any],  # Expects dict
-            "List users in ServiceNow",
-            "raw_dict",
-        ),
-        "create_group": (
-            create_group_tool,
-            CreateGroupParams,
-            Dict[str, Any],  # Expects dict
-            "Create a new group in ServiceNow",
-            "raw_dict",
-        ),
-        "update_group": (
-            update_group_tool,
-            UpdateGroupParams,
-            Dict[str, Any],  # Expects dict
-            "Update an existing group in ServiceNow",
-            "raw_dict",
-        ),
-        "add_group_members": (
-            add_group_members_tool,
-            AddGroupMembersParams,
-            Dict[str, Any],  # Expects dict
-            "Add members to an existing group in ServiceNow",
-            "raw_dict",
-        ),
-        "remove_group_members": (
-            remove_group_members_tool,
-            RemoveGroupMembersParams,
-            Dict[str, Any],  # Expects dict
-            "Remove members from an existing group in ServiceNow",
-            "raw_dict",
-        ),
-        "list_groups": (
-            list_groups_tool,
-            ListGroupsParams,
-            Dict[str, Any],  # Expects dict
-            "List groups from ServiceNow with optional filtering",
-            "raw_dict",
         ),
         # User/Group Role Tools (Phase 8)
         "grant_role_to_user": (

@@ -9,19 +9,12 @@
 none: []
 
 service_desk:
-  # Incident Management
-  - create_incident
-  - update_incident
-  - add_comment
-  - resolve_incident
-  - list_incidents
-  - get_incident_by_number
-  # User Lookup
-  - get_user
-  - list_users
   # Generic Table API — agents use this for all CRUD; domain-specific wrappers removed
   - query_records
   - get_record
+  - create_record
+  - update_record
+  - delete_record
 
 catalog_builder:
   # Core Catalog
@@ -420,17 +413,6 @@ system_administrator:
   # System
   - get_system_properties
   - get_current_user
-  # User Management
-  - create_user
-  - update_user
-  - get_user
-  - list_users
-  # Group Management
-  - create_group
-  - update_group
-  - list_groups
-  - add_group_members
-  - remove_group_members
   # User/Group Role Management (Phase 8)
   - grant_role_to_user
   - revoke_role_from_user
@@ -438,6 +420,7 @@ system_administrator:
   - revoke_role_from_group
   - list_user_roles
   - list_group_roles
+  # User/group CRUD — use table_tools (query_records / create_record / etc.) with architecture blueprint
   # removed: list_syslog_entries, get_syslog_entry — no implementation, none planned
 
 full:
@@ -461,13 +444,6 @@ full:
   - list_notifications
   - list_ui_actions
   - list_access_controls
-  # Incident Management
-  - create_incident
-  - update_incident
-  - add_comment
-  - resolve_incident
-  - list_incidents
-  - get_incident_by_number
   # Catalog (Core)
   - list_catalog_items
   - get_catalog_item
@@ -556,16 +532,6 @@ full:
   - update_script_include
   - delete_script_include
   # planned: Epic 13 — execute_script_include
-  # User Management
-  - create_user
-  - update_user
-  - get_user
-  - list_users
-  - create_group
-  - update_group
-  - add_group_members
-  - remove_group_members
-  - list_groups
   # User/Group Role Management (Phase 8)
   - grant_role_to_user
   - revoke_role_from_user
@@ -573,6 +539,7 @@ full:
   - revoke_role_from_group
   - list_user_roles
   - list_group_roles
+  # User/group CRUD — use table_tools (query_records / create_record / etc.) with architecture blueprint
   # removed: list_syslog_entries, get_syslog_entry — no implementation, none planned
   # Generic Table API
   - query_records

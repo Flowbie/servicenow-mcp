@@ -39,14 +39,6 @@ from servicenow_mcp.tools.changeset_tools import (
     publish_changeset,
     update_changeset,
 )
-from servicenow_mcp.tools.incident_tools import (
-    add_comment,
-    create_incident,
-    list_incidents,
-    resolve_incident,
-    update_incident,
-    get_incident_by_number,
-)
 from servicenow_mcp.tools.script_include_tools import (
     create_script_include,
     delete_script_include,
@@ -55,15 +47,12 @@ from servicenow_mcp.tools.script_include_tools import (
     update_script_include,
 )
 from servicenow_mcp.tools.user_tools import (
-    create_user,
-    update_user,
-    get_user,
-    list_users,
-    create_group,
-    update_group,
-    add_group_members,
-    remove_group_members,
-    list_groups,
+    grant_role_to_user,
+    revoke_role_from_user,
+    grant_role_to_group,
+    revoke_role_from_group,
+    list_user_roles,
+    list_group_roles,
 )
 from servicenow_mcp.tools.workflow_tools import (
     activate_workflow,
@@ -114,14 +103,6 @@ from servicenow_mcp.tools.flow_tools import (
 # from servicenow_mcp.tools.request_tools import create_request, update_request
 
 __all__ = [
-    # Incident tools
-    "create_incident",
-    "update_incident",
-    "add_comment",
-    "resolve_incident",
-    "list_incidents",
-    "get_incident_by_number",
-    
     # Catalog tools
     "list_catalog_items",
     "get_catalog_item",
@@ -175,16 +156,13 @@ __all__ = [
     "update_script_include",
     "delete_script_include",
     
-    # User management tools
-    "create_user",
-    "update_user",
-    "get_user",
-    "list_users",
-    "create_group",
-    "update_group",
-    "add_group_members",
-    "remove_group_members",
-    "list_groups",
+    # User role management tools
+    "grant_role_to_user",
+    "revoke_role_from_user",
+    "grant_role_to_group",
+    "revoke_role_from_group",
+    "list_user_roles",
+    "list_group_roles",
 
     # Story tools
     "create_story",

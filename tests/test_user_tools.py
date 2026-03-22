@@ -1,5 +1,9 @@
 """
-Tests for user management tools.
+Tests for user role management tools.
+
+CRUD operations for sys_user and sys_user_group are covered by table_tools
+(test_table_tools.py). This file covers the role management functions that
+require multi-step platform logic beyond simple CRUD.
 """
 
 import unittest
@@ -7,34 +11,28 @@ from unittest.mock import MagicMock, patch
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.user_tools import (
-    AddGroupMembersParams,
-    CreateGroupParams,
-    CreateUserParams,
-    GetUserParams,
-    ListUsersParams,
-    ListGroupsParams,
-    RemoveGroupMembersParams,
-    UpdateGroupParams,
-    UpdateUserParams,
-    add_group_members,
-    create_group,
-    create_user,
-    get_user,
-    list_users,
-    list_groups,
-    remove_group_members,
-    update_group,
-    update_user,
+    GrantRoleToGroupParams,
+    GrantRoleToUserParams,
+    ListGroupRolesParams,
+    ListUserRolesParams,
+    RevokeRoleFromGroupParams,
+    RevokeRoleFromUserParams,
+    get_role_id,
+    grant_role_to_group,
+    grant_role_to_user,
+    list_group_roles,
+    list_user_roles,
+    revoke_role_from_group,
+    revoke_role_from_user,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
 
 
-class TestUserTools(unittest.TestCase):
-    """Tests for user management tools."""
+class TestUserRoleTools(unittest.TestCase):
+    """Tests for user and group role management tools."""
 
     def setUp(self):
         """Set up test environment."""
-        # Create config and auth manager
         self.config = ServerConfig(
             instance_url="https://example.service-now.com",
             auth=AuthConfig(
@@ -43,397 +41,328 @@ class TestUserTools(unittest.TestCase):
             ),
         )
         self.auth_manager = AuthManager(self.config.auth)
-        
-        # Mock auth_manager.get_headers() method
-        self.auth_manager.get_headers = MagicMock(return_value={"Authorization": "Basic YWRtaW46cGFzc3dvcmQ="})
+        self.auth_manager.get_headers = MagicMock(
+            return_value={"Authorization": "Basic YWRtaW46cGFzc3dvcmQ="}
+        )
+        self.role_sys_id = "role_abc123"
+        self.user_sys_id = "user_xyz789"
+        self.group_sys_id = "group_def456"
 
-    @patch("requests.post")
-    def test_create_user(self, mock_post):
-        """Test create_user function."""
-        # Configure mock
+    def _mock_role_lookup(self, mock_get, role_sys_id: str):
+        """Configure the first get call to return a role lookup result."""
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
         mock_response.json.return_value = {
-            "result": {
-                "sys_id": "user123",
-                "user_name": "alice.radiology",
-            }
+            "result": [{"sys_id": role_sys_id}]
         }
-        mock_post.return_value = mock_response
-        
-        # Create test params
-        params = CreateUserParams(
-            user_name="alice.radiology",
-            first_name="Alice",
-            last_name="Radiology",
-            email="alice@example.com",
-            department="Radiology",
-            title="Doctor",
-        )
-        
-        # Call function
-        result = create_user(self.config, self.auth_manager, params)
-        
-        # Verify result
-        self.assertTrue(result.success)
-        self.assertEqual(result.user_id, "user123")
-        self.assertEqual(result.user_name, "alice.radiology")
-        
-        # Verify mock was called correctly
+        mock_get.return_value = mock_response
+        return mock_response
+
+    # ------------------------------------------------------------------
+    # get_role_id
+    # ------------------------------------------------------------------
+
+    @patch("requests.get")
+    def test_get_role_id_found(self, mock_get):
+        """get_role_id returns sys_id when role exists."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"result": [{"sys_id": self.role_sys_id}]}
+        mock_get.return_value = mock_response
+
+        result = get_role_id(self.config, self.auth_manager, "itil")
+
+        self.assertEqual(result, self.role_sys_id)
+        mock_get.assert_called_once()
+
+    @patch("requests.get")
+    def test_get_role_id_not_found(self, mock_get):
+        """get_role_id returns None when role does not exist."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"result": []}
+        mock_get.return_value = mock_response
+
+        result = get_role_id(self.config, self.auth_manager, "nonexistent_role")
+
+        self.assertIsNone(result)
+
+    # ------------------------------------------------------------------
+    # grant_role_to_user
+    # ------------------------------------------------------------------
+
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_grant_role_to_user_success(self, mock_get, mock_post):
+        """grant_role_to_user creates a sys_user_has_role record."""
+        # First call: role lookup; second call: direct-grant check
+        role_resp = MagicMock()
+        role_resp.raise_for_status = MagicMock()
+        role_resp.json.return_value = {"result": [{"sys_id": self.role_sys_id}]}
+
+        check_resp = MagicMock()
+        check_resp.raise_for_status = MagicMock()
+        check_resp.json.return_value = {"result": []}  # no existing direct grant
+
+        mock_get.side_effect = [role_resp, check_resp]
+
+        post_resp = MagicMock()
+        post_resp.raise_for_status = MagicMock()
+        post_resp.json.return_value = {"result": {"sys_id": "grant_001"}}
+        mock_post.return_value = post_resp
+
+        params = GrantRoleToUserParams(user_sys_id=self.user_sys_id, role_name="itil")
+        result = grant_role_to_user(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["sys_id"], "grant_001")
         mock_post.assert_called_once()
-        call_args = mock_post.call_args
-        self.assertEqual(call_args[0][0], f"{self.config.api_url}/table/sys_user")
-        self.assertEqual(call_args[1]["json"]["user_name"], "alice.radiology")
-        self.assertEqual(call_args[1]["json"]["first_name"], "Alice")
-        self.assertEqual(call_args[1]["json"]["last_name"], "Radiology")
-        self.assertEqual(call_args[1]["json"]["email"], "alice@example.com")
-        self.assertEqual(call_args[1]["json"]["department"], "Radiology")
-        self.assertEqual(call_args[1]["json"]["title"], "Doctor")
-
-    @patch("requests.patch")
-    def test_update_user(self, mock_patch):
-        """Test update_user function."""
-        # Configure mock
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {
-            "result": {
-                "sys_id": "user123",
-                "user_name": "alice.radiology",
-            }
-        }
-        mock_patch.return_value = mock_response
-        
-        # Create test params
-        params = UpdateUserParams(
-            user_id="user123",
-            manager="user456",
-            title="Senior Doctor",
-        )
-        
-        # Call function
-        result = update_user(self.config, self.auth_manager, params)
-        
-        # Verify result
-        self.assertTrue(result.success)
-        self.assertEqual(result.user_id, "user123")
-        self.assertEqual(result.user_name, "alice.radiology")
-        
-        # Verify mock was called correctly
-        mock_patch.assert_called_once()
-        call_args = mock_patch.call_args
-        self.assertEqual(call_args[0][0], f"{self.config.api_url}/table/sys_user/user123")
-        self.assertEqual(call_args[1]["json"]["manager"], "user456")
-        self.assertEqual(call_args[1]["json"]["title"], "Senior Doctor")
 
     @patch("requests.get")
-    def test_get_user(self, mock_get):
-        """Test get_user function."""
-        # Configure mock
+    def test_grant_role_to_user_role_not_found(self, mock_get):
+        """grant_role_to_user returns failure when role does not exist."""
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {
-            "result": [
-                {
-                    "sys_id": "user123",
-                    "user_name": "alice.radiology",
-                    "first_name": "Alice",
-                    "last_name": "Radiology",
-                    "email": "alice@example.com",
-                }
-            ]
-        }
+        mock_response.json.return_value = {"result": []}
         mock_get.return_value = mock_response
-        
-        # Create test params
-        params = GetUserParams(
-            user_name="alice.radiology",
-        )
-        
-        # Call function
-        result = get_user(self.config, self.auth_manager, params)
-        
-        # Verify result
-        self.assertTrue(result["success"])
-        self.assertEqual(result["user"]["sys_id"], "user123")
-        self.assertEqual(result["user"]["user_name"], "alice.radiology")
-        
-        # Verify mock was called correctly
-        mock_get.assert_called_once()
-        call_args = mock_get.call_args
-        self.assertEqual(call_args[0][0], f"{self.config.api_url}/table/sys_user")
-        self.assertEqual(call_args[1]["params"]["sysparm_query"], "user_name=alice.radiology")
+
+        params = GrantRoleToUserParams(user_sys_id=self.user_sys_id, role_name="no_such_role")
+        result = grant_role_to_user(self.config, self.auth_manager, params)
+
+        self.assertFalse(result["success"])
+        self.assertIn("not found", result["message"])
 
     @patch("requests.get")
-    def test_list_users(self, mock_get):
-        """Test list_users function."""
-        # Configure mock
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {
-            "result": [
-                {
-                    "sys_id": "user123",
-                    "user_name": "alice.radiology",
-                },
-                {
-                    "sys_id": "user456",
-                    "user_name": "bob.chiefradiology",
-                }
-            ]
-        }
-        mock_get.return_value = mock_response
-        
-        # Create test params
-        params = ListUsersParams(
-            department="Radiology",
-            limit=10,
-        )
-        
-        # Call function
-        result = list_users(self.config, self.auth_manager, params)
-        
-        # Verify result
+    def test_grant_role_to_user_already_exists(self, mock_get):
+        """grant_role_to_user returns already_exists=True when direct grant exists."""
+        role_resp = MagicMock()
+        role_resp.raise_for_status = MagicMock()
+        role_resp.json.return_value = {"result": [{"sys_id": self.role_sys_id}]}
+
+        existing_grant_resp = MagicMock()
+        existing_grant_resp.raise_for_status = MagicMock()
+        existing_grant_resp.json.return_value = {"result": [{"sys_id": "existing_grant"}]}
+
+        mock_get.side_effect = [role_resp, existing_grant_resp]
+
+        params = GrantRoleToUserParams(user_sys_id=self.user_sys_id, role_name="itil")
+        result = grant_role_to_user(self.config, self.auth_manager, params)
+
         self.assertTrue(result["success"])
-        self.assertEqual(len(result["users"]), 2)
-        self.assertEqual(result["users"][0]["sys_id"], "user123")
-        self.assertEqual(result["users"][1]["sys_id"], "user456")
-        
-        # Verify mock was called correctly
-        mock_get.assert_called_once()
-        call_args = mock_get.call_args
-        self.assertEqual(call_args[0][0], f"{self.config.api_url}/table/sys_user")
-        self.assertEqual(call_args[1]["params"]["sysparm_limit"], "10")
-        self.assertIn("department=Radiology", call_args[1]["params"]["sysparm_query"])
+        self.assertTrue(result.get("already_exists"))
 
-    @patch("requests.get")
-    def test_list_groups(self, mock_get):
-        """Test list_groups function."""
-        # Configure mock
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {
-            "result": [
-                {
-                    "sys_id": "group123",
-                    "name": "IT Support",
-                    "description": "IT support team",
-                    "active": "true",
-                    "type": "it"
-                },
-                {
-                    "sys_id": "group456",
-                    "name": "HR Team",
-                    "description": "Human Resources team",
-                    "active": "true",
-                    "type": "administrative"
-                }
-            ]
-        }
-        mock_get.return_value = mock_response
-        
-        # Create test params
-        params = ListGroupsParams(
-            active=True,
-            type="it",
-            query="support",
-            limit=10,
-        )
-        
-        # Call function
-        result = list_groups(self.config, self.auth_manager, params)
-        
-        # Verify result
-        self.assertTrue(result["success"])
-        self.assertEqual(len(result["groups"]), 2)
-        self.assertEqual(result["groups"][0]["sys_id"], "group123")
-        self.assertEqual(result["groups"][1]["sys_id"], "group456")
-        self.assertEqual(result["count"], 2)
-        
-        # Verify mock was called correctly
-        mock_get.assert_called_once()
-        call_args = mock_get.call_args
-        self.assertEqual(call_args[0][0], f"{self.config.api_url}/table/sys_user_group")
-        self.assertEqual(call_args[1]["params"]["sysparm_limit"], "10")
-        self.assertEqual(call_args[1]["params"]["sysparm_offset"], "0")
-        self.assertEqual(call_args[1]["params"]["sysparm_display_value"], "true")
-        self.assertIn("active=true", call_args[1]["params"]["sysparm_query"])
-        self.assertIn("type=it", call_args[1]["params"]["sysparm_query"])
-        self.assertIn("nameLIKE", call_args[1]["params"]["sysparm_query"])
-        self.assertIn("descriptionLIKE", call_args[1]["params"]["sysparm_query"])
+    # ------------------------------------------------------------------
+    # revoke_role_from_user
+    # ------------------------------------------------------------------
 
-    @patch("requests.post")
-    def test_create_group(self, mock_post):
-        """Test create_group function."""
-        # Configure mock
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {
-            "result": {
-                "sys_id": "group123",
-                "name": "Biomedical Engineering",
-            }
-        }
-        mock_post.return_value = mock_response
-        
-        # Create test params
-        params = CreateGroupParams(
-            name="Biomedical Engineering",
-            description="Group for biomedical engineering staff",
-            manager="user456",
-        )
-        
-        # Call function
-        result = create_group(self.config, self.auth_manager, params)
-        
-        # Verify result
-        self.assertTrue(result.success)
-        self.assertEqual(result.group_id, "group123")
-        self.assertEqual(result.group_name, "Biomedical Engineering")
-        
-        # Verify mock was called correctly
-        mock_post.assert_called_once()
-        call_args = mock_post.call_args
-        self.assertEqual(call_args[0][0], f"{self.config.api_url}/table/sys_user_group")
-        self.assertEqual(call_args[1]["json"]["name"], "Biomedical Engineering")
-        self.assertEqual(call_args[1]["json"]["description"], "Group for biomedical engineering staff")
-        self.assertEqual(call_args[1]["json"]["manager"], "user456")
-
-    @patch("requests.patch")
-    def test_update_group(self, mock_patch):
-        """Test update_group function."""
-        # Configure mock
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {
-            "result": {
-                "sys_id": "group123",
-                "name": "Biomedical Engineering",
-            }
-        }
-        mock_patch.return_value = mock_response
-        
-        # Create test params
-        params = UpdateGroupParams(
-            group_id="group123",
-            description="Updated description for biomedical engineering group",
-            manager="user789",
-        )
-        
-        # Call function
-        result = update_group(self.config, self.auth_manager, params)
-        
-        # Verify result
-        self.assertTrue(result.success)
-        self.assertEqual(result.group_id, "group123")
-        self.assertEqual(result.group_name, "Biomedical Engineering")
-        
-        # Verify mock was called correctly
-        mock_patch.assert_called_once()
-        call_args = mock_patch.call_args
-        self.assertEqual(call_args[0][0], f"{self.config.api_url}/table/sys_user_group/group123")
-        self.assertEqual(call_args[1]["json"]["description"], "Updated description for biomedical engineering group")
-        self.assertEqual(call_args[1]["json"]["manager"], "user789")
-
-    @patch("servicenow_mcp.tools.user_tools.get_user")
-    @patch("requests.post")
-    def test_add_group_members(self, mock_post, mock_get_user):
-        """Test add_group_members function."""
-        # Configure mocks
-        mock_post_response = MagicMock()
-        mock_post_response.raise_for_status = MagicMock()
-        mock_post.return_value = mock_post_response
-        
-        mock_get_user.return_value = {
-            "success": True,
-            "message": "User found",
-            "user": {
-                "sys_id": "user123",
-                "user_name": "alice.radiology",
-            }
-        }
-        
-        # Create test params
-        params = AddGroupMembersParams(
-            group_id="group123",
-            members=["alice.radiology", "admin"],
-        )
-        
-        # Call function
-        result = add_group_members(self.config, self.auth_manager, params)
-        
-        # Verify result
-        self.assertTrue(result.success)
-        self.assertEqual(result.group_id, "group123")
-        
-        # Verify mock was called correctly
-        self.assertEqual(mock_post.call_count, 2)  # Once for each member
-        call_args = mock_post.call_args_list[0]
-        self.assertEqual(call_args[0][0], f"{self.config.api_url}/table/sys_user_grmember")
-        self.assertEqual(call_args[1]["json"]["group"], "group123")
-        self.assertEqual(call_args[1]["json"]["user"], "user123")
-
-    @patch("servicenow_mcp.tools.user_tools.get_user")
-    @patch("requests.get")
     @patch("requests.delete")
-    def test_remove_group_members(self, mock_delete, mock_get, mock_get_user):
-        """Test remove_group_members function."""
-        # Configure mocks
-        mock_delete_response = MagicMock()
-        mock_delete_response.raise_for_status = MagicMock()
-        mock_delete.return_value = mock_delete_response
-        
-        mock_get_response = MagicMock()
-        mock_get_response.raise_for_status = MagicMock()
-        mock_get_response.json.return_value = {
+    @patch("requests.get")
+    def test_revoke_role_from_user_success(self, mock_get, mock_delete):
+        """revoke_role_from_user deletes the direct grant record."""
+        role_resp = MagicMock()
+        role_resp.raise_for_status = MagicMock()
+        role_resp.json.return_value = {"result": [{"sys_id": self.role_sys_id}]}
+
+        grant_resp = MagicMock()
+        grant_resp.raise_for_status = MagicMock()
+        grant_resp.json.return_value = {"result": [{"sys_id": "grant_001"}]}
+
+        mock_get.side_effect = [role_resp, grant_resp]
+
+        del_resp = MagicMock()
+        del_resp.raise_for_status = MagicMock()
+        mock_delete.return_value = del_resp
+
+        params = RevokeRoleFromUserParams(user_sys_id=self.user_sys_id, role_name="itil")
+        result = revoke_role_from_user(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["sys_id"], "grant_001")
+        mock_delete.assert_called_once()
+
+    @patch("requests.get")
+    def test_revoke_role_from_user_no_direct_grant(self, mock_get):
+        """revoke_role_from_user returns failure when no direct grant exists."""
+        role_resp = MagicMock()
+        role_resp.raise_for_status = MagicMock()
+        role_resp.json.return_value = {"result": [{"sys_id": self.role_sys_id}]}
+
+        no_grant_resp = MagicMock()
+        no_grant_resp.raise_for_status = MagicMock()
+        no_grant_resp.json.return_value = {"result": []}
+
+        mock_get.side_effect = [role_resp, no_grant_resp]
+
+        params = RevokeRoleFromUserParams(user_sys_id=self.user_sys_id, role_name="itil")
+        result = revoke_role_from_user(self.config, self.auth_manager, params)
+
+        self.assertFalse(result["success"])
+        self.assertIn("No direct grant", result["message"])
+
+    # ------------------------------------------------------------------
+    # grant_role_to_group
+    # ------------------------------------------------------------------
+
+    @patch("requests.post")
+    @patch("requests.get")
+    def test_grant_role_to_group_success(self, mock_get, mock_post):
+        """grant_role_to_group creates a sys_group_has_role record."""
+        role_resp = MagicMock()
+        role_resp.raise_for_status = MagicMock()
+        role_resp.json.return_value = {"result": [{"sys_id": self.role_sys_id}]}
+        mock_get.return_value = role_resp
+
+        post_resp = MagicMock()
+        post_resp.raise_for_status = MagicMock()
+        post_resp.json.return_value = {"result": {"sys_id": "group_grant_001"}}
+        mock_post.return_value = post_resp
+
+        params = GrantRoleToGroupParams(group_sys_id=self.group_sys_id, role_name="itil")
+        result = grant_role_to_group(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["sys_id"], "group_grant_001")
+        mock_post.assert_called_once()
+
+    @patch("requests.get")
+    def test_grant_role_to_group_role_not_found(self, mock_get):
+        """grant_role_to_group returns failure when role does not exist."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"result": []}
+        mock_get.return_value = mock_response
+
+        params = GrantRoleToGroupParams(group_sys_id=self.group_sys_id, role_name="no_such_role")
+        result = grant_role_to_group(self.config, self.auth_manager, params)
+
+        self.assertFalse(result["success"])
+        self.assertIn("not found", result["message"])
+
+    # ------------------------------------------------------------------
+    # revoke_role_from_group
+    # ------------------------------------------------------------------
+
+    @patch("requests.delete")
+    @patch("requests.get")
+    def test_revoke_role_from_group_success(self, mock_get, mock_delete):
+        """revoke_role_from_group deletes the direct grant record."""
+        role_resp = MagicMock()
+        role_resp.raise_for_status = MagicMock()
+        role_resp.json.return_value = {"result": [{"sys_id": self.role_sys_id}]}
+
+        grant_resp = MagicMock()
+        grant_resp.raise_for_status = MagicMock()
+        grant_resp.json.return_value = {"result": [{"sys_id": "group_grant_001"}]}
+
+        mock_get.side_effect = [role_resp, grant_resp]
+
+        del_resp = MagicMock()
+        del_resp.raise_for_status = MagicMock()
+        mock_delete.return_value = del_resp
+
+        params = RevokeRoleFromGroupParams(group_sys_id=self.group_sys_id, role_name="itil")
+        result = revoke_role_from_group(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["sys_id"], "group_grant_001")
+        mock_delete.assert_called_once()
+
+    @patch("requests.get")
+    def test_revoke_role_from_group_no_direct_grant(self, mock_get):
+        """revoke_role_from_group returns failure when no direct grant exists."""
+        role_resp = MagicMock()
+        role_resp.raise_for_status = MagicMock()
+        role_resp.json.return_value = {"result": [{"sys_id": self.role_sys_id}]}
+
+        no_grant_resp = MagicMock()
+        no_grant_resp.raise_for_status = MagicMock()
+        no_grant_resp.json.return_value = {"result": []}
+
+        mock_get.side_effect = [role_resp, no_grant_resp]
+
+        params = RevokeRoleFromGroupParams(group_sys_id=self.group_sys_id, role_name="itil")
+        result = revoke_role_from_group(self.config, self.auth_manager, params)
+
+        self.assertFalse(result["success"])
+        self.assertIn("No direct grant", result["message"])
+
+    # ------------------------------------------------------------------
+    # list_user_roles
+    # ------------------------------------------------------------------
+
+    @patch("requests.get")
+    def test_list_user_roles_success(self, mock_get):
+        """list_user_roles returns all roles for a user."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
             "result": [
-                {
-                    "sys_id": "member123",
-                    "user": {
-                        "value": "user123",
-                        "display_value": "Alice Radiology",
-                    },
-                    "group": {
-                        "value": "group123",
-                        "display_value": "Biomedical Engineering",
-                    },
-                }
+                {"sys_id": "r1", "role": {"display_value": "itil"}, "inherited": "false"},
+                {"sys_id": "r2", "role": {"display_value": "catalog_admin"}, "inherited": "true"},
             ]
         }
-        mock_get.return_value = mock_get_response
-        
-        mock_get_user.return_value = {
-            "success": True,
-            "message": "User found",
-            "user": {
-                "sys_id": "user123",
-                "user_name": "alice.radiology",
-            }
+        mock_get.return_value = mock_response
+
+        params = ListUserRolesParams(user_sys_id=self.user_sys_id)
+        result = list_user_roles(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(len(result["roles"]), 2)
+
+    @patch("requests.get")
+    def test_list_user_roles_direct_only(self, mock_get):
+        """list_user_roles with include_inherited=False adds the inherited filter."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"result": []}
+        mock_get.return_value = mock_response
+
+        params = ListUserRolesParams(user_sys_id=self.user_sys_id, include_inherited=False)
+        result = list_user_roles(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        call_params = mock_get.call_args[1]["params"]
+        self.assertIn("inherited=false", call_params["sysparm_query"])
+
+    # ------------------------------------------------------------------
+    # list_group_roles
+    # ------------------------------------------------------------------
+
+    @patch("requests.get")
+    def test_list_group_roles_success(self, mock_get):
+        """list_group_roles returns all roles for a group."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "result": [
+                {"sys_id": "gr1", "role": {"display_value": "itil"}, "inherited": "false"},
+            ]
         }
-        
-        # Create test params
-        params = RemoveGroupMembersParams(
-            group_id="group123",
-            members=["alice.radiology"],
-        )
-        
-        # Call function
-        result = remove_group_members(self.config, self.auth_manager, params)
-        
-        # Verify result
-        self.assertTrue(result.success)
-        self.assertEqual(result.group_id, "group123")
-        
-        # Verify mock was called correctly
-        mock_get.assert_called_once()
-        get_call_args = mock_get.call_args
-        self.assertEqual(get_call_args[0][0], f"{self.config.api_url}/table/sys_user_grmember")
-        self.assertEqual(get_call_args[1]["params"]["sysparm_query"], "group=group123^user=user123")
-        
-        mock_delete.assert_called_once()
-        delete_call_args = mock_delete.call_args
-        self.assertEqual(delete_call_args[0][0], f"{self.config.api_url}/table/sys_user_grmember/member123")
+        mock_get.return_value = mock_response
+
+        params = ListGroupRolesParams(group_sys_id=self.group_sys_id)
+        result = list_group_roles(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["group_sys_id"], self.group_sys_id)
+
+    @patch("requests.get")
+    def test_list_group_roles_direct_only(self, mock_get):
+        """list_group_roles with include_inherited=False adds the inherited filter."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {"result": []}
+        mock_get.return_value = mock_response
+
+        params = ListGroupRolesParams(group_sys_id=self.group_sys_id, include_inherited=False)
+        result = list_group_roles(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        call_params = mock_get.call_args[1]["params"]
+        self.assertIn("inherited=false", call_params["sysparm_query"])
 
 
 if __name__ == "__main__":
-    unittest.main() 
+    unittest.main()
