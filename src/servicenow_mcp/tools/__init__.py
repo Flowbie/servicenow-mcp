@@ -108,11 +108,6 @@ from servicenow_mcp.tools.scrum_task_tools import (
     update_scrum_task,
     list_scrum_tasks,
 )
-from servicenow_mcp.tools.project_tools import (
-    create_project,
-    update_project,
-    list_projects,
-)
 from servicenow_mcp.tools.flow_tools import (
     create_flow,
     list_trigger_types,

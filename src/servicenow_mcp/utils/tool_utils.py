@@ -552,16 +552,6 @@ from servicenow_mcp.tools.scrum_task_tools import (
     close_scrum_task as close_scrum_task_tool,
     assign_scrum_task as assign_scrum_task_tool,
 )
-from servicenow_mcp.tools.project_tools import (
-    CreateProjectParams,
-    UpdateProjectParams,
-    ListProjectsParams,
-    GetProjectParams,
-    create_project as create_project_tool,
-    update_project as update_project_tool,
-    list_projects as list_projects_tool,
-    get_project as get_project_tool,
-)
 from servicenow_mcp.tools.flow_tools import (
     CreateActionParams,
     CreateFlowParams,
@@ -2270,38 +2260,6 @@ def get_tool_definitions(
             AssignScrumTaskParams,
             dict,
             "Assign a scrum task to a user and/or group. At least one of assigned_to or assignment_group required.",
-            "json",
-        ),
-        # Project Management Tools
-        "create_project": (
-            create_project_tool,
-            CreateProjectParams,
-            str,
-            "Create a new project in ServiceNow",
-            "str",
-        ),
-        "update_project": (
-            update_project_tool,
-            UpdateProjectParams,
-            str,
-            "Update an existing project in ServiceNow",
-            "str",
-        ),
-        "list_projects": (
-            list_projects_tool,
-            ListProjectsParams,
-            str,  # Expects JSON string
-            "List projects from ServiceNow",
-            "json",  # Tool returns list/dict
-        ),
-        "get_project": (
-            get_project_tool,
-            GetProjectParams,
-            dict,
-            (
-                "Retrieve a single project from ServiceNow by sys_id or number. "
-                "Tries sys_id lookup first, falls back to number query."
-            ),
             "json",
         ),
         # Generic Table API Tools

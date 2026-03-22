@@ -140,11 +140,12 @@ executor:
   - list_notifications
   - list_ui_actions
   - list_access_controls
-  # Generic Table API (escape hatch for any table without a domain-specific tool):
+  # Generic Table API (CRUD default for modules without domain-specific tools):
   - query_records
   - get_record
   - create_record
   - update_record
+  - delete_record
   # System:
   - get_current_user
   # Script Include writes (Executor default for scripting tasks):
@@ -327,11 +328,12 @@ agile_management:
   - get_scrum_task
   - close_scrum_task
   - assign_scrum_task
-  # Project Management
-  - create_project
-  - update_project
-  - list_projects
-  - get_project
+  # Generic Table API (SPM and other CRUD-backed modules use table_tools)
+  - query_records
+  - get_record
+  - create_record
+  - update_record
+  - delete_record
 
 agile_readonly:
   # Read-only subset — safe for reporting agents and dashboards
@@ -359,8 +361,8 @@ agile_readonly:
   - list_epics
   - list_scrum_tasks
   - get_scrum_task
-  - list_projects
-  - get_project
+  - query_records
+  - get_record
 
 risk_manager:
   # GRC Risk Management (Phase 9)
@@ -708,8 +710,3 @@ full:
   - get_scrum_task
   - close_scrum_task
   - assign_scrum_task
-  # Project Management
-  - create_project
-  - update_project
-  - list_projects
-  - get_project
