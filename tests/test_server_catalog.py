@@ -21,10 +21,6 @@ from servicenow_mcp.tools.catalog_tools import (
     list_catalog_items as list_catalog_items_tool,
 )
 from servicenow_mcp.utils.tool_utils import get_tool_definitions
-from servicenow_mcp.tools.knowledge_base import (
-    create_category as create_kb_category,
-    list_categories as list_kb_categories,
-)
 
 
 class TestServerCatalog(unittest.TestCase):
@@ -43,7 +39,7 @@ class TestServerCatalog(unittest.TestCase):
             },
         }
         self.server = ServiceNowMCP(self.config)
-        self.tool_definitions = get_tool_definitions(create_kb_category, list_kb_categories)
+        self.tool_definitions = get_tool_definitions()
 
     @unittest.skip("requires resources module — see story 7.2")
     def test_register_catalog_resources(self):

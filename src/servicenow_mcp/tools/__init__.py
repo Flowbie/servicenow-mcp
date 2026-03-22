@@ -47,17 +47,6 @@ from servicenow_mcp.tools.incident_tools import (
     update_incident,
     get_incident_by_number,
 )
-from servicenow_mcp.tools.knowledge_base import (
-    create_article,
-    create_category,
-    create_knowledge_base,
-    get_article,
-    list_articles,
-    list_knowledge_bases,
-    publish_article,
-    update_article,
-    list_categories,
-)
 from servicenow_mcp.tools.script_include_tools import (
     create_script_include,
     delete_script_include,
@@ -97,11 +86,6 @@ from servicenow_mcp.tools.story_tools import (
     list_story_dependencies,
     create_story_dependency,
     delete_story_dependency,
-)
-from servicenow_mcp.tools.epic_tools import (
-    create_epic,
-    update_epic,
-    list_epics,
 )
 from servicenow_mcp.tools.scrum_task_tools import (
     create_scrum_task,
@@ -191,17 +175,6 @@ __all__ = [
     "update_script_include",
     "delete_script_include",
     
-    # Knowledge Base tools
-    "create_knowledge_base",
-    "list_knowledge_bases",
-    "create_category",
-    "list_categories",
-    "create_article",
-    "update_article",
-    "publish_article",
-    "list_articles",
-    "get_article",
-    
     # User management tools
     "create_user",
     "update_user",
@@ -221,11 +194,6 @@ __all__ = [
     "create_story_dependency",
     "delete_story_dependency",
     
-    # Epic tools
-    "create_epic",
-    "update_epic",
-    "list_epics",
-
     # Scrum Task tools
     "create_scrum_task",
     "update_scrum_task",

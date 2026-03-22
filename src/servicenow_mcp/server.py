@@ -15,12 +15,6 @@ from mcp.server.lowlevel import Server
 from pydantic import ValidationError
 
 from servicenow_mcp.auth.auth_manager import AuthManager
-from servicenow_mcp.tools.knowledge_base import (
-    create_category as create_kb_category_tool,
-)
-from servicenow_mcp.tools.knowledge_base import (
-    list_categories as list_kb_categories_tool,
-)
 from servicenow_mcp.utils.config import ServerConfig
 from servicenow_mcp.utils.tool_utils import get_tool_definitions
 
@@ -106,9 +100,7 @@ class ServiceNowMCP:
         self._determine_enabled_tools()
 
         # Get tool definitions, passing the aliased KB tool functions if needed
-        self.tool_definitions = get_tool_definitions(
-            create_kb_category_tool, list_kb_categories_tool
-        )
+        self.tool_definitions = get_tool_definitions()
 
         self._register_handlers()
 

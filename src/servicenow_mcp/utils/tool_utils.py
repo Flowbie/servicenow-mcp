@@ -264,44 +264,6 @@ from servicenow_mcp.tools.incident_tools import (
 from servicenow_mcp.tools.incident_tools import (
     get_incident_by_number as get_incident_by_number_tool,
 )
-from servicenow_mcp.tools.knowledge_base import (
-    CreateArticleParams,
-    CreateKnowledgeBaseParams,
-    GetArticleParams,
-    ListArticlesParams,
-    ListKnowledgeBasesParams,
-    PublishArticleParams,
-    UpdateArticleParams,
-)
-from servicenow_mcp.tools.knowledge_base import (
-    CreateCategoryParams as CreateKBCategoryParams,  # Aliased
-)
-from servicenow_mcp.tools.knowledge_base import (
-    ListCategoriesParams as ListKBCategoriesParams,  # Aliased
-)
-from servicenow_mcp.tools.knowledge_base import (
-    create_article as create_article_tool,
-)
-from servicenow_mcp.tools.knowledge_base import (
-    # create_category aliased in function call
-    create_knowledge_base as create_knowledge_base_tool,
-)
-from servicenow_mcp.tools.knowledge_base import (
-    get_article as get_article_tool,
-)
-from servicenow_mcp.tools.knowledge_base import (
-    list_articles as list_articles_tool,
-)
-from servicenow_mcp.tools.knowledge_base import (
-    # list_categories aliased in function call
-    list_knowledge_bases as list_knowledge_bases_tool,
-)
-from servicenow_mcp.tools.knowledge_base import (
-    publish_article as publish_article_tool,
-)
-from servicenow_mcp.tools.knowledge_base import (
-    update_article as update_article_tool,
-)
 from servicenow_mcp.tools.script_include_tools import (
     CreateScriptIncludeParams,
     DeleteScriptIncludeParams,
@@ -526,16 +488,6 @@ from servicenow_mcp.tools.story_tools import (
     list_story_blockers as list_story_blockers_tool,
     assign_stories_to_sprint as assign_stories_to_sprint_tool,
 )
-from servicenow_mcp.tools.epic_tools import (
-    CreateEpicParams,
-    UpdateEpicParams,
-    ListEpicsParams,
-)
-from servicenow_mcp.tools.epic_tools import (
-    create_epic as create_epic_tool,
-    update_epic as update_epic_tool,
-    list_epics as list_epics_tool,
-)
 from servicenow_mcp.tools.scrum_task_tools import (
     CreateScrumTaskParams,
     UpdateScrumTaskParams,
@@ -734,14 +686,11 @@ ToolDefinition = Tuple[
 ]
 
 
-def get_tool_definitions(
-    create_kb_category_tool_impl: Callable, list_kb_categories_tool_impl: Callable
-) -> Dict[str, ToolDefinition]:
+def get_tool_definitions() -> Dict[str, ToolDefinition]:
     """
     Returns a dictionary containing definitions for all available ServiceNow tools.
 
     This centralizes the tool definitions for use in the server implementation.
-    Pass aliased functions for KB categories directly.
 
     Returns:
         Dict[str, ToolDefinition]: A dictionary mapping tool names to their definitions.
@@ -1811,72 +1760,6 @@ def get_tool_definitions(
             "Delete a script include in ServiceNow",
             "json_dict",  # Tool returns Pydantic model
         ),
-        # Knowledge Base Tools
-        "create_knowledge_base": (
-            create_knowledge_base_tool,
-            CreateKnowledgeBaseParams,
-            str,  # Expects JSON string
-            "Create a new knowledge base in ServiceNow",
-            "json_dict",  # Tool returns Pydantic model
-        ),
-        "list_knowledge_bases": (
-            list_knowledge_bases_tool,
-            ListKnowledgeBasesParams,
-            Dict[str, Any],  # Expects dict
-            "List knowledge bases from ServiceNow",
-            "raw_dict",  # Tool returns raw dict
-        ),
-        # Use the passed-in implementations for aliased KB category tools
-        "create_category": (
-            create_kb_category_tool_impl,  # Use passed function
-            CreateKBCategoryParams,
-            str,  # Expects JSON string
-            "Create a new category in a knowledge base",
-            "json_dict",  # Tool returns Pydantic model
-        ),
-        "create_article": (
-            create_article_tool,
-            CreateArticleParams,
-            str,  # Expects JSON string
-            "Create a new knowledge article",
-            "json_dict",  # Tool returns Pydantic model
-        ),
-        "update_article": (
-            update_article_tool,
-            UpdateArticleParams,
-            str,  # Expects JSON string
-            "Update an existing knowledge article",
-            "json_dict",  # Tool returns Pydantic model
-        ),
-        "publish_article": (
-            publish_article_tool,
-            PublishArticleParams,
-            str,  # Expects JSON string
-            "Publish a knowledge article",
-            "json_dict",  # Tool returns Pydantic model
-        ),
-        "list_articles": (
-            list_articles_tool,
-            ListArticlesParams,
-            Dict[str, Any],  # Expects dict
-            "List knowledge articles",
-            "raw_dict",  # Tool returns raw dict
-        ),
-        "get_article": (
-            get_article_tool,
-            GetArticleParams,
-            Dict[str, Any],  # Expects dict
-            "Get a specific knowledge article by ID",
-            "raw_dict",  # Tool returns raw dict
-        ),
-        # Use the passed-in implementations for aliased KB category tools
-        "list_categories": (
-            list_kb_categories_tool_impl,  # Use passed function
-            ListKBCategoriesParams,
-            Dict[str, Any],  # Expects dict
-            "List categories in a knowledge base",
-            "raw_dict",  # Tool returns raw dict
-        ),
         # User Management Tools
         "create_user": (
             create_user_tool,
@@ -2196,28 +2079,6 @@ def get_tool_definitions(
                 "Returns {assigned, failed, errors} summary."
             ),
             "json",
-        ),
-        # Epic Management Tools
-        "create_epic": (
-            create_epic_tool,
-            CreateEpicParams,
-            str,
-            "Create a new epic in ServiceNow",
-            "str",
-        ),
-        "update_epic": (
-            update_epic_tool,
-            UpdateEpicParams,
-            str,
-            "Update an existing epic in ServiceNow",
-            "str",
-        ),
-        "list_epics": (
-            list_epics_tool,
-            ListEpicsParams,
-            str,  # Expects JSON string
-            "List epics from ServiceNow",
-            "json",  # Tool returns list/dict
         ),
         # Scrum Task Management Tools
         "create_scrum_task": (

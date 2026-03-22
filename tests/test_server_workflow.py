@@ -5,10 +5,6 @@ Tests for the ServiceNow MCP server workflow management integration.
 import unittest
 
 from servicenow_mcp.utils.tool_utils import get_tool_definitions
-from servicenow_mcp.tools.knowledge_base import (
-    create_category as create_kb_category,
-    list_categories as list_kb_categories,
-)
 
 WORKFLOW_TOOLS = [
     "list_workflows",
@@ -30,7 +26,7 @@ class TestServerWorkflow(unittest.TestCase):
     """Tests that workflow tools are registered in get_tool_definitions."""
 
     def setUp(self):
-        self.tool_definitions = get_tool_definitions(create_kb_category, list_kb_categories)
+        self.tool_definitions = get_tool_definitions()
 
     def test_register_workflow_tools(self):
         """All expected workflow tools must be present in tool_definitions."""

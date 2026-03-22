@@ -19,9 +19,9 @@ service_desk:
   # User Lookup
   - get_user
   - list_users
-  # Knowledge Lookup
-  - get_article
-  - list_articles
+  # Generic Table API — agents use this for all CRUD; domain-specific wrappers removed
+  - query_records
+  - get_record
 
 catalog_builder:
   # Core Catalog
@@ -101,18 +101,12 @@ automation_developer:
   - run_scheduled_job_now
 
 knowledge_author:
-  # KB Management
-  - create_knowledge_base
-  - list_knowledge_bases
-  # KB Categories
-  - create_category  # KB specific category tool
-  - list_categories  # KB specific category tool
-  # Article Lifecycle
-  - create_article
-  - update_article
-  - publish_article
-  - list_articles
-  - get_article
+  # Generic Table API — agents use this for all KB CRUD; architecture doc is the guide
+  - query_records
+  - get_record
+  - create_record
+  - update_record
+  - delete_record
 
 executor:
   # Minimum required tools for the Executor agent pattern.
@@ -317,10 +311,6 @@ agile_management:
   - validate_story_dependencies
   - validate_story_testing
   - validate_story_promotion_instructions
-  # Epic Management
-  - create_epic
-  - update_epic
-  - list_epics
   # Scrum Task Management
   - create_scrum_task
   - update_scrum_task
@@ -358,7 +348,6 @@ agile_readonly:
   - validate_story_dependencies
   - validate_story_testing
   - validate_story_promotion_instructions
-  - list_epics
   - list_scrum_tasks
   - get_scrum_task
   - query_records
@@ -567,16 +556,6 @@ full:
   - update_script_include
   - delete_script_include
   # planned: Epic 13 — execute_script_include
-  # Knowledge Base
-  - create_knowledge_base
-  - list_knowledge_bases
-  - create_category # KB specific
-  - list_categories # KB specific
-  - create_article
-  - update_article
-  - publish_article
-  - list_articles
-  - get_article
   # User Management
   - create_user
   - update_user
@@ -699,10 +678,6 @@ full:
   - validate_story_dependencies
   - validate_story_testing
   - validate_story_promotion_instructions
-  # Epic Management
-  - create_epic
-  - update_epic
-  - list_epics
   # Scrum Task Management
   - create_scrum_task
   - update_scrum_task
