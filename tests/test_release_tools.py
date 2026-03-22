@@ -1,6 +1,5 @@
 """
-Tests for release tools: create_release, get_release, validate_release_readiness,
-compile_release_notes.
+Tests for release tools: get_release, validate_release_readiness, compile_release_notes.
 """
 
 import unittest
@@ -10,16 +9,12 @@ import requests
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.release_tools import (
-    CreateReleaseParams,
     GetReleaseParams,
     ValidateReleaseReadinessParams,
     CompileReleaseNotesParams,
-    ListReleasesParams,
-    create_release,
     get_release,
     validate_release_readiness,
     compile_release_notes,
-    list_releases,
     _fetch_release_stories,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
@@ -80,60 +75,6 @@ def _not_found_response():
     resp.json.return_value = {}
     return resp
 
-
-# ---------------------------------------------------------------------------
-# create_release
-# ---------------------------------------------------------------------------
-
-
-class TestCreateRelease(unittest.TestCase):
-
-    @patch("requests.post")
-    def test_success_minimal(self, mock_post):
-        mock_post.return_value = _ok_response(_release_fixture())
-
-        result = create_release(
-            _make_config(), _make_auth(), CreateReleaseParams(name="v2.4.0")
-        )
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["release_id"], "rel_001")
-        self.assertEqual(result["name"], "v2.4.0")
-
-    @patch("requests.post")
-    def test_success_with_optional_fields(self, mock_post):
-        mock_post.return_value = _ok_response(_release_fixture())
-
-        result = create_release(
-            _make_config(),
-            _make_auth(),
-            CreateReleaseParams(name="v2.4.0", planned_date="2026-04-01", description="Q2"),
-        )
-
-        self.assertTrue(result["success"])
-        posted = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json", {})
-        self.assertEqual(posted["planned_date"], "2026-04-01")
-        self.assertEqual(posted["description"], "Q2")
-
-    @patch("requests.post")
-    def test_optional_fields_omitted_when_none(self, mock_post):
-        mock_post.return_value = _ok_response(_release_fixture())
-
-        create_release(_make_config(), _make_auth(), CreateReleaseParams(name="v1.0"))
-
-        posted = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json", {})
-        self.assertNotIn("planned_date", posted)
-        self.assertNotIn("description", posted)
-
-    @patch("requests.post")
-    def test_http_error_returns_failure(self, mock_post):
-        mock_post.side_effect = requests.exceptions.RequestException("500 Server Error")
-
-        result = create_release(
-            _make_config(), _make_auth(), CreateReleaseParams(name="Bad Release")
-        )
-
-        self.assertFalse(result["success"])
 
 
 # ---------------------------------------------------------------------------
@@ -381,96 +322,6 @@ class TestCompileReleaseNotes(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertEqual(result["release"]["name"], "v2.4.0")
         self.assertIn("planned_date", result["release"])
-
-
-# ---------------------------------------------------------------------------
-# list_releases
-# ---------------------------------------------------------------------------
-
-
-class TestListReleases(unittest.TestCase):
-
-    @patch("requests.get")
-    def test_returns_list(self, mock_get):
-        """Returns success with a list of releases."""
-        releases = [_release_fixture("r1"), _release_fixture("r2"), _release_fixture("r3")]
-        mock_get.return_value = _ok_response(releases)
-
-        result = list_releases(_make_config(), _make_auth(), ListReleasesParams())
-
-        self.assertTrue(result["success"])
-        self.assertEqual(len(result["releases"]), 3)
-        self.assertEqual(result["count"], 3)
-
-    @patch("requests.get")
-    def test_empty_list(self, mock_get):
-        """Returns success with empty list when no releases exist."""
-        mock_get.return_value = _ok_response([])
-
-        result = list_releases(_make_config(), _make_auth(), ListReleasesParams())
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["releases"], [])
-        self.assertEqual(result["count"], 0)
-
-    @patch("requests.get")
-    def test_state_filter_sent_in_query(self, mock_get):
-        """State filter is sent as sysparm_query=state=2."""
-        mock_get.return_value = _ok_response([])
-
-        list_releases(_make_config(), _make_auth(), ListReleasesParams(state="2"))
-
-        call_params = mock_get.call_args.kwargs.get("params") or mock_get.call_args[1].get("params", {})
-        self.assertIn("state=2", call_params["sysparm_query"])
-
-    @patch("requests.get")
-    def test_extra_query_filter_sent(self, mock_get):
-        """Extra query string is appended to sysparm_query."""
-        mock_get.return_value = _ok_response([])
-
-        list_releases(
-            _make_config(), _make_auth(), ListReleasesParams(query="planned_date>2026-01-01")
-        )
-
-        call_params = mock_get.call_args.kwargs.get("params") or mock_get.call_args[1].get("params", {})
-        self.assertIn("planned_date>2026-01-01", call_params["sysparm_query"])
-
-    @patch("requests.get")
-    def test_combined_filters_joined_with_caret(self, mock_get):
-        """State and query are joined with ^ in sysparm_query."""
-        mock_get.return_value = _ok_response([])
-
-        list_releases(
-            _make_config(),
-            _make_auth(),
-            ListReleasesParams(state="1", query="planned_date>2026-01-01"),
-        )
-
-        call_params = mock_get.call_args.kwargs.get("params") or mock_get.call_args[1].get("params", {})
-        query = call_params["sysparm_query"]
-        self.assertIn("state=1", query)
-        self.assertIn("planned_date>2026-01-01", query)
-        self.assertIn("^", query)
-
-    @patch("requests.get")
-    def test_http_error_returns_failure(self, mock_get):
-        """Network error results in success=False."""
-        mock_get.side_effect = requests.exceptions.RequestException("timeout")
-
-        result = list_releases(_make_config(), _make_auth(), ListReleasesParams())
-
-        self.assertFalse(result["success"])
-        self.assertIn("message", result)
-
-    @patch("requests.get")
-    def test_default_limit_is_ten(self, mock_get):
-        """Default limit of 10 is sent when no params specified."""
-        mock_get.return_value = _ok_response([])
-
-        list_releases(_make_config(), _make_auth(), ListReleasesParams())
-
-        call_params = mock_get.call_args.kwargs.get("params") or mock_get.call_args[1].get("params", {})
-        self.assertEqual(call_params["sysparm_limit"], 10)
 
 
 if __name__ == "__main__":

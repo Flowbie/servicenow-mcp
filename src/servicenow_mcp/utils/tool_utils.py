@@ -63,14 +63,10 @@ from servicenow_mcp.tools.blueprint_tools import (
 from servicenow_mcp.tools.user_tools import (
     GrantRoleToGroupParams,
     GrantRoleToUserParams,
-    ListGroupRolesParams,
-    ListUserRolesParams,
     RevokeRoleFromGroupParams,
     RevokeRoleFromUserParams,
     grant_role_to_group as grant_role_to_group_tool,
     grant_role_to_user as grant_role_to_user_tool,
-    list_group_roles as list_group_roles_tool,
-    list_user_roles as list_user_roles_tool,
     revoke_role_from_group as revoke_role_from_group_tool,
     revoke_role_from_user as revoke_role_from_user_tool,
 )
@@ -78,7 +74,6 @@ from servicenow_mcp.tools.sprint_tools import (
     CreateSprintParams,
     GetSprintParams,
     GetSprintSummaryParams,
-    ListSprintsParams,
     StartSprintParams,
     CloseSprintParams,
 )
@@ -86,7 +81,6 @@ from servicenow_mcp.tools.sprint_tools import (
     create_sprint as create_sprint_tool,
     get_sprint as get_sprint_tool,
     get_sprint_summary as get_sprint_summary_tool,
-    list_sprints as list_sprints_tool,
     start_sprint as start_sprint_tool,
     close_sprint as close_sprint_tool,
 )
@@ -99,29 +93,22 @@ from servicenow_mcp.tools.agile_planning_tools import (
     generate_test_scenarios as generate_test_scenarios_tool,
 )
 from servicenow_mcp.tools.release_tools import (
-    CreateReleaseParams,
     GetReleaseParams,
-    ListReleasesParams,
     ValidateReleaseReadinessParams,
     CompileReleaseNotesParams,
-    create_release as create_release_tool,
     get_release as get_release_tool,
-    list_releases as list_releases_tool,
     validate_release_readiness as validate_release_readiness_tool,
     compile_release_notes as compile_release_notes_tool,
 )
 from servicenow_mcp.tools.agile_reporting_tools import (
-    GetMyWorkParams,
     GetBlockedWorkParams,
     GetReleaseStatusParams,
-    get_my_work as get_my_work_tool,
     get_blocked_work as get_blocked_work_tool,
     get_release_status as get_release_status_tool,
 )
 from servicenow_mcp.tools.agile_governance_tools import (
     validate_story_dependencies as validate_story_dependencies_tool,
     validate_story_testing as validate_story_testing_tool,
-    validate_story_promotion_instructions as validate_story_promotion_instructions_tool,
 )
 from servicenow_mcp.tools.agile_sprint_planning_tools import (
     RecommendSprintStoriesParams,
@@ -223,11 +210,9 @@ from servicenow_mcp.tools.cmdb_tools import (
 )
 from servicenow_mcp.tools.system_tools import (
     GetCurrentUserParams,
-    GetSystemPropertiesParams,
 )
 from servicenow_mcp.tools.system_tools import (
     get_current_user as get_current_user_tool,
-    get_system_properties as get_system_properties_tool,
 )
 from servicenow_mcp.tools.changeset_tools import (
     SetCurrentUpdateSetParams,
@@ -686,28 +671,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
-        "list_user_roles": (
-            list_user_roles_tool,
-            ListUserRolesParams,
-            dict,
-            (
-                "List roles granted to a user from sys_user_has_role. "
-                "Optionally filter to direct grants only (include_inherited=false). "
-                "Read-only."
-            ),
-            "json",
-        ),
-        "list_group_roles": (
-            list_group_roles_tool,
-            ListGroupRolesParams,
-            dict,
-            (
-                "List roles granted to a group from sys_group_has_role. "
-                "Optionally filter to direct grants only (include_inherited=false). "
-                "Read-only."
-            ),
-            "json",
-        ),
         # Story Management Tools (compound only)
         "archive_story": (
             archive_story_tool,
@@ -852,18 +815,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             "json",
         ),
         # System Tools
-        "get_system_properties": (
-            get_system_properties_tool,
-            GetSystemPropertiesParams,
-            dict,
-            (
-                "Query sys_properties for ServiceNow instance configuration values. "
-                "Use to inspect instance settings, confirm feature flags, or look up "
-                "configuration values before making environment-dependent decisions. "
-                "Supports encoded query filtering (e.g., nameLIKEglide.email). Read-only."
-            ),
-            "json",
-        ),
         "get_current_user": (
             get_current_user_tool,
             GetCurrentUserParams,
@@ -888,17 +839,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
                 "Optionally attach to a release via release_id and set a sprint goal. "
                 "Sprint is created in Planning state. "
                 "To add stories to the sprint use update_story with the sprint field."
-            ),
-            "json",
-        ),
-        "list_sprints": (
-            list_sprints_tool,
-            ListSprintsParams,
-            dict,
-            (
-                "List sprints from ServiceNow (rm_sprint_2), ordered by start_date descending. "
-                "Filter by state (1=Planning, 2=Active, 3=Completed, 4=Cancelled) or release_id. "
-                "Returns sprints array with count. Read-only."
             ),
             "json",
         ),
@@ -1007,17 +947,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             "json",
         ),
         # Release Management Tools
-        "create_release": (
-            create_release_tool,
-            CreateReleaseParams,
-            dict,
-            (
-                "Create a new release in ServiceNow (rm_release). "
-                "Requires a name; optionally provide a planned_date (YYYY-MM-DD) and description. "
-                "Returns the new release sys_id, number, and name."
-            ),
-            "json",
-        ),
         "get_release": (
             get_release_tool,
             GetReleaseParams,
@@ -1025,16 +954,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             (
                 "Retrieve a single release by sys_id, release number (e.g. REL0001234), or name. "
                 "Attempts a direct sys_id lookup first; falls back to number/name query. Read-only."
-            ),
-            "json",
-        ),
-        "list_releases": (
-            list_releases_tool,
-            ListReleasesParams,
-            dict,
-            (
-                "List releases from ServiceNow (rm_release) with optional state/query filters. "
-                "Returns releases list with count."
             ),
             "json",
         ),
@@ -1061,17 +980,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             "json",
         ),
         # Agile Reporting Tools
-        "get_my_work": (
-            get_my_work_tool,
-            GetMyWorkParams,
-            dict,
-            (
-                "Return open stories assigned to a specific user. "
-                "Call get_current_user first to obtain the user sys_id. "
-                "Excludes Complete and Cancelled stories. Read-only."
-            ),
-            "json",
-        ),
         "get_blocked_work": (
             get_blocked_work_tool,
             GetBlockedWorkParams,
@@ -1131,18 +1039,6 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
                 "Check that at least one testing task (rm_scrum_task type=4) exists for the story "
                 "and all testing tasks are in a done state (Complete or Cancelled). "
                 "Returns testing_complete: bool, total_testing_tasks: int, and incomplete_tasks list. "
-                "Read-only."
-            ),
-            "json",
-        ),
-        "validate_story_promotion_instructions": (
-            validate_story_promotion_instructions_tool,
-            StoryIdParams,
-            dict,
-            (
-                "Check that the story has non-empty promotion instructions. "
-                "Returns has_promotion_instructions: bool and the field_value. "
-                "Use before promoting a story to confirm deployment instructions are documented. "
                 "Read-only."
             ),
             "json",

@@ -124,8 +124,7 @@ platform_developer:
   - create_record
   - update_record
   - delete_record
-  # System
-  - get_system_properties
+  # System (sys_properties CRUD → query_records on sys_properties)
   - get_current_user
   # Background Script Execution
   - run_background_script
@@ -168,8 +167,7 @@ agile_management:
   - archive_story
   - move_story_state
   - assign_stories_to_sprint
-  # Sprint Management
-  - list_sprints
+  # Sprint Management (compound only; list via table_tools on rm_sprint_2)
   - create_sprint
   - get_sprint
   - get_sprint_summary
@@ -181,14 +179,11 @@ agile_management:
   - estimate_story_points
   - identify_story_risks
   - generate_test_scenarios
-  # Release Management
-  - create_release
+  # Release Management (compound only; create/list via table_tools on rm_release)
   - get_release
-  - list_releases
   - validate_release_readiness
   - compile_release_notes
-  # Agile Reporting
-  - get_my_work
+  # Agile Reporting (get_my_work replaced by query_records on rm_story)
   - get_blocked_work
   - get_release_status
   # Agile Sprint Planning
@@ -196,7 +191,6 @@ agile_management:
   # Agile Governance
   - validate_story_dependencies
   - validate_story_testing
-  - validate_story_promotion_instructions
   # Scrum Task Management (compound only; CRUD via table_tools)
   - close_scrum_task
   # Generic Table API (all story/scrum task CRUD via table_tools with architecture blueprint)
@@ -209,7 +203,9 @@ agile_management:
 agile_readonly:
   # Read-only subset — safe for reporting agents and dashboards
   # Story/scrum task reads use table_tools (query_records/get_record) with architecture blueprint
-  - list_sprints
+  # list_sprints → query_records on rm_sprint_2
+  # list_releases → query_records on rm_release
+  # get_my_work → query_records on rm_story with assigned_to filter
   - get_sprint
   - get_sprint_summary
   - story_breakdown
@@ -218,14 +214,11 @@ agile_readonly:
   - identify_story_risks
   - generate_test_scenarios
   - get_release
-  - list_releases
   - get_release_status
   - get_blocked_work
-  - get_my_work
   - recommend_sprint_stories
   - validate_story_dependencies
   - validate_story_testing
-  - validate_story_promotion_instructions
   - query_records
   - get_record
 
@@ -276,16 +269,13 @@ system_administrator:
   - create_record
   - update_record
   - delete_record
-  # System
-  - get_system_properties
+  # System (sys_properties CRUD → query_records on sys_properties)
   - get_current_user
-  # User/Group Role Management (Phase 8)
+  # User/Group Role Management (compound grant/revoke only; list → query_records on sys_user_has_role / sys_group_has_role)
   - grant_role_to_user
   - revoke_role_from_user
   - grant_role_to_group
   - revoke_role_from_group
-  - list_user_roles
-  - list_group_roles
   # User/group CRUD — use table_tools (query_records / create_record / etc.) with architecture blueprint
   # removed: list_syslog_entries, get_syslog_entry — no implementation, none planned
 
@@ -341,13 +331,11 @@ full:
   - publish_action
   # Changeset (CRUD via table_tools + sys_update_set blueprint)
   - get_changeset_details
-  # User/Group Role Management (Phase 8)
+  # User/Group Role Management (compound grant/revoke only; list → query_records on sys_user_has_role / sys_group_has_role)
   - grant_role_to_user
   - revoke_role_from_user
   - grant_role_to_group
   - revoke_role_from_group
-  - list_user_roles
-  - list_group_roles
   # User/group CRUD — use table_tools (query_records / create_record / etc.) with architecture blueprint
   # removed: list_syslog_entries, get_syslog_entry — no implementation, none planned
   # Generic Table API
@@ -360,8 +348,7 @@ full:
   - get_ci_relationships
   - create_ci_relationship
   - get_ci_impact_graph
-  # System
-  - get_system_properties
+  # System (sys_properties CRUD → query_records on sys_properties)
   - get_current_user
   # Update Set Activation
   - set_current_update_set
@@ -371,8 +358,7 @@ full:
   # Story Management (compound only; CRUD via table_tools)
   - archive_story
   - move_story_state
-  # Sprint Management
-  - list_sprints
+  # Sprint Management (compound only; list → query_records on rm_sprint_2)
   - create_sprint
   - get_sprint
   - get_sprint_summary
@@ -384,14 +370,11 @@ full:
   - estimate_story_points
   - identify_story_risks
   - generate_test_scenarios
-  # Release Management
-  - create_release
+  # Release Management (compound only; create/list → table_tools on rm_release)
   - get_release
-  - list_releases
   - validate_release_readiness
   - compile_release_notes
-  # Agile Reporting
-  - get_my_work
+  # Agile Reporting (get_my_work → query_records on rm_story with assigned_to filter)
   - get_blocked_work
   - get_release_status
   # Agile Sprint Planning
@@ -400,6 +383,5 @@ full:
   # Agile Governance (in full package)
   - validate_story_dependencies
   - validate_story_testing
-  - validate_story_promotion_instructions
   # Scrum Task Management (compound only; CRUD via table_tools)
   - close_scrum_task

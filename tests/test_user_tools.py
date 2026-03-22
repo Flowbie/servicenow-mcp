@@ -13,15 +13,11 @@ from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.user_tools import (
     GrantRoleToGroupParams,
     GrantRoleToUserParams,
-    ListGroupRolesParams,
-    ListUserRolesParams,
     RevokeRoleFromGroupParams,
     RevokeRoleFromUserParams,
     get_role_id,
     grant_role_to_group,
     grant_role_to_user,
-    list_group_roles,
-    list_user_roles,
     revoke_role_from_group,
     revoke_role_from_user,
 )
@@ -285,83 +281,6 @@ class TestUserRoleTools(unittest.TestCase):
 
         self.assertFalse(result["success"])
         self.assertIn("No direct grant", result["message"])
-
-    # ------------------------------------------------------------------
-    # list_user_roles
-    # ------------------------------------------------------------------
-
-    @patch("requests.get")
-    def test_list_user_roles_success(self, mock_get):
-        """list_user_roles returns all roles for a user."""
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {
-            "result": [
-                {"sys_id": "r1", "role": {"display_value": "itil"}, "inherited": "false"},
-                {"sys_id": "r2", "role": {"display_value": "catalog_admin"}, "inherited": "true"},
-            ]
-        }
-        mock_get.return_value = mock_response
-
-        params = ListUserRolesParams(user_sys_id=self.user_sys_id)
-        result = list_user_roles(self.config, self.auth_manager, params)
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["count"], 2)
-        self.assertEqual(len(result["roles"]), 2)
-
-    @patch("requests.get")
-    def test_list_user_roles_direct_only(self, mock_get):
-        """list_user_roles with include_inherited=False adds the inherited filter."""
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"result": []}
-        mock_get.return_value = mock_response
-
-        params = ListUserRolesParams(user_sys_id=self.user_sys_id, include_inherited=False)
-        result = list_user_roles(self.config, self.auth_manager, params)
-
-        self.assertTrue(result["success"])
-        call_params = mock_get.call_args[1]["params"]
-        self.assertIn("inherited=false", call_params["sysparm_query"])
-
-    # ------------------------------------------------------------------
-    # list_group_roles
-    # ------------------------------------------------------------------
-
-    @patch("requests.get")
-    def test_list_group_roles_success(self, mock_get):
-        """list_group_roles returns all roles for a group."""
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {
-            "result": [
-                {"sys_id": "gr1", "role": {"display_value": "itil"}, "inherited": "false"},
-            ]
-        }
-        mock_get.return_value = mock_response
-
-        params = ListGroupRolesParams(group_sys_id=self.group_sys_id)
-        result = list_group_roles(self.config, self.auth_manager, params)
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["count"], 1)
-        self.assertEqual(result["group_sys_id"], self.group_sys_id)
-
-    @patch("requests.get")
-    def test_list_group_roles_direct_only(self, mock_get):
-        """list_group_roles with include_inherited=False adds the inherited filter."""
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {"result": []}
-        mock_get.return_value = mock_response
-
-        params = ListGroupRolesParams(group_sys_id=self.group_sys_id, include_inherited=False)
-        result = list_group_roles(self.config, self.auth_manager, params)
-
-        self.assertTrue(result["success"])
-        call_params = mock_get.call_args[1]["params"]
-        self.assertIn("inherited=false", call_params["sysparm_query"])
 
 
 if __name__ == "__main__":

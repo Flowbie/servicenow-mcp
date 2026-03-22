@@ -2,12 +2,14 @@
 System tools for the ServiceNow MCP server.
 
 Provides tools for querying instance-level system information:
-- get_system_properties: Read sys_properties configuration values
 - get_current_user: Identify the authenticated API user
+
+sys_properties CRUD is handled by table_tools (query_records / get_record /
+create_record / update_record / delete_record) using the sys_properties table.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import requests
 from pydantic import BaseModel, Field
@@ -16,74 +18,6 @@ from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.config import ServerConfig
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# get_system_properties
-# ---------------------------------------------------------------------------
-
-
-class GetSystemPropertiesParams(BaseModel):
-    """Parameters for querying sys_properties."""
-
-    query: Optional[str] = Field(
-        None,
-        description=(
-            "Filter properties by encoded query (e.g., 'nameLIKEglide.email' to find "
-            "email-related properties, 'name=glide.ui.date_format' for a specific property). "
-            "Leave empty to return the first <limit> properties."
-        ),
-    )
-    limit: int = Field(
-        default=20,
-        ge=1,
-        le=100,
-        description="Maximum number of properties to return (1–100). Default 20.",
-    )
-
-
-def get_system_properties(
-    config: ServerConfig,
-    auth_manager: AuthManager,
-    params: GetSystemPropertiesParams,
-) -> Dict[str, Any]:
-    """
-    Query sys_properties for ServiceNow instance configuration values.
-
-    Use this to inspect instance settings, confirm feature flags, or look up
-    configuration values before making environment-dependent decisions.
-    Returns name, value, description, and type for each property.
-    """
-    url = f"{config.api_url}/table/sys_properties"
-    query_params: Dict[str, Any] = {
-        "sysparm_fields": "name,value,description,type,sys_id",
-        "sysparm_limit": params.limit,
-    }
-    if params.query:
-        query_params["sysparm_query"] = params.query
-
-    try:
-        response = requests.get(
-            url,
-            params=query_params,
-            headers=auth_manager.get_headers(),
-            timeout=config.timeout,
-        )
-        response.raise_for_status()
-        properties: List[Dict] = response.json().get("result", [])
-        return {
-            "success": True,
-            "count": len(properties),
-            "properties": properties,
-        }
-    except requests.RequestException as e:
-        body = getattr(e, "response", None)
-        body_text = (body.text[:2000] if body and hasattr(body, "text") else "") or ""
-        logger.error("get_system_properties | error=%s", e)
-        return {
-            "success": False,
-            "error": str(e) + (f" | response: {body_text}" if body_text else ""),
-        }
 
 
 # ---------------------------------------------------------------------------

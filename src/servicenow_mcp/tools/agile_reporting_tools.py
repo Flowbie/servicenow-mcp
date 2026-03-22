@@ -34,23 +34,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-class GetMyWorkParams(BaseModel):
-    """Parameters for retrieving open stories assigned to a user."""
-
-    user_id: str = Field(
-        ...,
-        description=(
-            "sys_id of the ServiceNow user. "
-            "Call get_current_user first to obtain this value for the authenticated user."
-        ),
-    )
-    limit: int = Field(
-        default=25,
-        ge=1,
-        le=200,
-        description="Maximum number of stories to return. Defaults to 25.",
-    )
-
 
 class GetBlockedWorkParams(BaseModel):
     """Parameters for retrieving stories that are blocked by unfinished prerequisites."""
@@ -78,60 +61,6 @@ class GetReleaseStatusParams(BaseModel):
         description="Release sys_id, number, or name.",
     )
 
-
-# ---------------------------------------------------------------------------
-# get_my_work
-# ---------------------------------------------------------------------------
-
-
-def get_my_work(
-    config: ServerConfig,
-    auth_manager: AuthManager,
-    params: GetMyWorkParams,
-) -> Dict[str, Any]:
-    """
-    Return open stories assigned to a specific user.
-
-    Queries rm_story where assigned_to=<user_id> and state is not Complete
-    or Cancelled.
-    """
-    url = f"{config.instance_url}/api/now/table/rm_story"
-    # Exclude done (3) and cancelled (4)
-    query = f"assigned_to={params.user_id}^state!=3^state!=4"
-
-    try:
-        response = requests.get(
-            url,
-            headers=auth_manager.get_headers(),
-            params={
-                "sysparm_query": query,
-                "sysparm_fields": (
-                    "sys_id,number,short_description,state,story_points,"
-                    "sprint,epic,assigned_to"
-                ),
-                "sysparm_display_value": "true",
-                "sysparm_limit": params.limit,
-                "sysparm_orderby": "state",
-            },
-            timeout=config.timeout,
-        )
-        response.raise_for_status()
-        stories: List[Dict] = response.json().get("result", [])
-    except requests.RequestException as e:
-        body = getattr(e, "response", None)
-        body_text = (body.text[:2000] if body and hasattr(body, "text") else "") or ""
-        logger.error("get_my_work | user_id=%s | error=%s", params.user_id, e)
-        return {
-            "success": False,
-            "message": f"Failed to fetch work items: {e}" + (f" | {body_text}" if body_text else ""),
-        }
-
-    return {
-        "success": True,
-        "user_id": params.user_id,
-        "count": len(stories),
-        "stories": stories,
-    }
 
 
 # ---------------------------------------------------------------------------

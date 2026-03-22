@@ -1,7 +1,6 @@
 """
 Tests for agile governance tools:
-  validate_story_dependencies, validate_story_testing,
-  validate_story_promotion_instructions.
+  validate_story_dependencies, validate_story_testing.
 """
 
 import unittest
@@ -12,7 +11,6 @@ from servicenow_mcp.tools.agile_governance_tools import (
     StoryIdParams,
     validate_story_dependencies,
     validate_story_testing,
-    validate_story_promotion_instructions,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
 
@@ -37,15 +35,6 @@ def _make_auth() -> MagicMock:
 
 
 def _ok(result):
-    resp = MagicMock()
-    resp.status_code = 200
-    resp.raise_for_status = MagicMock()
-    resp.json.return_value = {"result": result}
-    return resp
-
-
-def _ok_single(result):
-    """For endpoints that return a single object (not a list)."""
     resp = MagicMock()
     resp.status_code = 200
     resp.raise_for_status = MagicMock()
@@ -79,13 +68,6 @@ def _task(number="TASK0001", state="1", title="Test the feature"):
         "assigned_to": "user_001",
     }
 
-
-def _story(promotion_instructions="Deploy via update set XYZ"):
-    return {
-        "sys_id": "story_001",
-        "number": "STRY0001234",
-        "promotion_instructions": promotion_instructions,
-    }
 
 
 STORY_ID = "story_abc123"
@@ -225,83 +207,6 @@ class TestValidateStoryTesting(unittest.TestCase):
         """story_id is always present in response."""
         mock_get.return_value = _ok([])
         result = validate_story_testing(_make_config(), _make_auth(), PARAMS)
-        self.assertEqual(result["story_id"], STORY_ID)
-
-
-# ---------------------------------------------------------------------------
-# validate_story_promotion_instructions
-# ---------------------------------------------------------------------------
-
-
-class TestValidateStoryPromotionInstructions(unittest.TestCase):
-
-    @patch("servicenow_mcp.tools.agile_governance_tools.requests.get")
-    def test_instructions_present(self, mock_get):
-        """Story has promotion instructions: has_promotion_instructions=True."""
-        mock_get.return_value = _ok_single(_story("Deploy via update set ABC"))
-        result = validate_story_promotion_instructions(_make_config(), _make_auth(), PARAMS)
-        self.assertTrue(result["success"])
-        self.assertTrue(result["has_promotion_instructions"])
-        self.assertEqual(result["field_value"], "Deploy via update set ABC")
-
-    @patch("servicenow_mcp.tools.agile_governance_tools.requests.get")
-    def test_instructions_empty_string(self, mock_get):
-        """Empty string: has_promotion_instructions=False."""
-        mock_get.return_value = _ok_single(_story(""))
-        result = validate_story_promotion_instructions(_make_config(), _make_auth(), PARAMS)
-        self.assertTrue(result["success"])
-        self.assertFalse(result["has_promotion_instructions"])
-        self.assertEqual(result["field_value"], "")
-
-    @patch("servicenow_mcp.tools.agile_governance_tools.requests.get")
-    def test_instructions_whitespace_only(self, mock_get):
-        """Whitespace-only string: has_promotion_instructions=False."""
-        mock_get.return_value = _ok_single(_story("   \n  "))
-        result = validate_story_promotion_instructions(_make_config(), _make_auth(), PARAMS)
-        self.assertFalse(result["has_promotion_instructions"])
-        self.assertEqual(result["field_value"], "")
-
-    @patch("servicenow_mcp.tools.agile_governance_tools.requests.get")
-    def test_instructions_none(self, mock_get):
-        """None field: has_promotion_instructions=False."""
-        mock_get.return_value = _ok_single(_story(None))
-        result = validate_story_promotion_instructions(_make_config(), _make_auth(), PARAMS)
-        self.assertFalse(result["has_promotion_instructions"])
-
-    @patch("servicenow_mcp.tools.agile_governance_tools.requests.get")
-    def test_story_not_found(self, mock_get):
-        """result=None: success=False, STORY_NOT_FOUND error code."""
-        mock_get.return_value = _ok_single(None)
-        result = validate_story_promotion_instructions(_make_config(), _make_auth(), PARAMS)
-        self.assertFalse(result["success"])
-        self.assertEqual(result["error_code"], "STORY_NOT_FOUND")
-
-    @patch("servicenow_mcp.tools.agile_governance_tools.requests.get")
-    def test_instructions_as_dict_value(self, mock_get):
-        """ServiceNow display_value dict format is handled correctly."""
-        story = {
-            "sys_id": "story_001",
-            "number": "STRY0001234",
-            "promotion_instructions": {"value": "Run update set XYZ", "display_value": "Run update set XYZ"},
-        }
-        mock_get.return_value = _ok_single(story)
-        result = validate_story_promotion_instructions(_make_config(), _make_auth(), PARAMS)
-        self.assertTrue(result["has_promotion_instructions"])
-        self.assertEqual(result["field_value"], "Run update set XYZ")
-
-    @patch("servicenow_mcp.tools.agile_governance_tools.requests.get")
-    def test_request_error_returns_failure(self, mock_get):
-        """Network error: success=False."""
-        mock_get.side_effect = _request_error()
-        result = validate_story_promotion_instructions(_make_config(), _make_auth(), PARAMS)
-        self.assertFalse(result["success"])
-        self.assertIn("Failed to fetch", result["message"])
-
-    @patch("servicenow_mcp.tools.agile_governance_tools.requests.get")
-    def test_story_id_echoed(self, mock_get):
-        """story_id is always echoed in success response."""
-        mock_get.return_value = _ok_single(_story("Deploy"))
-        result = validate_story_promotion_instructions(_make_config(), _make_auth(), PARAMS)
         self.assertEqual(result["story_id"], STORY_ID)
 
 

@@ -1,5 +1,5 @@
 """
-Tests for agile reporting tools: get_my_work, get_blocked_work, get_release_status.
+Tests for agile reporting tools: get_blocked_work, get_release_status.
 """
 
 import unittest
@@ -7,10 +7,8 @@ from unittest.mock import MagicMock, patch
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.agile_reporting_tools import (
-    GetMyWorkParams,
     GetBlockedWorkParams,
     GetReleaseStatusParams,
-    get_my_work,
     get_blocked_work,
     get_release_status,
 )
@@ -70,68 +68,6 @@ def _release_fixture(sys_id="rel_001"):
 def _sprint_fixture(sys_id="sprint_001", state="2"):
     return {"sys_id": sys_id, "state": state, "name": "Sprint 14"}
 
-
-# ---------------------------------------------------------------------------
-# get_my_work
-# ---------------------------------------------------------------------------
-
-
-class TestGetMyWork(unittest.TestCase):
-
-    @patch("requests.get")
-    def test_success_returns_stories(self, mock_get):
-        stories = [_story_fixture(state="1"), _story_fixture(sys_id="s2", state="2")]
-        mock_get.return_value = _ok_response(stories)
-
-        result = get_my_work(
-            _make_config(), _make_auth(), GetMyWorkParams(user_id="user_001")
-        )
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["count"], 2)
-        self.assertEqual(len(result["stories"]), 2)
-        self.assertEqual(result["user_id"], "user_001")
-
-    @patch("requests.get")
-    def test_empty_result(self, mock_get):
-        mock_get.return_value = _ok_response([])
-
-        result = get_my_work(
-            _make_config(), _make_auth(), GetMyWorkParams(user_id="user_001")
-        )
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["count"], 0)
-
-    @patch("requests.get")
-    def test_query_excludes_done_and_cancelled(self, mock_get):
-        """Verify the query string contains state!=3 and state!=4."""
-        mock_get.return_value = _ok_response([])
-
-        get_my_work(_make_config(), _make_auth(), GetMyWorkParams(user_id="user_001"))
-
-        call_params = mock_get.call_args.kwargs.get("params") or mock_get.call_args[1].get("params", {})
-        query = call_params.get("sysparm_query", "")
-        self.assertIn("state!=3", query)
-        self.assertIn("state!=4", query)
-
-    @patch("requests.get")
-    def test_default_limit_applied(self, mock_get):
-        mock_get.return_value = _ok_response([])
-
-        get_my_work(_make_config(), _make_auth(), GetMyWorkParams(user_id="user_001"))
-
-        call_params = mock_get.call_args.kwargs.get("params") or mock_get.call_args[1].get("params", {})
-        self.assertEqual(call_params.get("sysparm_limit"), 25)
-
-    @patch("requests.get")
-    def test_custom_limit(self, mock_get):
-        mock_get.return_value = _ok_response([])
-
-        get_my_work(_make_config(), _make_auth(), GetMyWorkParams(user_id="user_001", limit=10))
-
-        call_params = mock_get.call_args.kwargs.get("params") or mock_get.call_args[1].get("params", {})
-        self.assertEqual(call_params.get("sysparm_limit"), 10)
 
 
 # ---------------------------------------------------------------------------

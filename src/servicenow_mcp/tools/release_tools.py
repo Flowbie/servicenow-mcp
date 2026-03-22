@@ -28,17 +28,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-class CreateReleaseParams(BaseModel):
-    """Parameters for creating a new release."""
-
-    name: str = Field(..., description="Human-readable release name (e.g. 'v2.4.0')")
-    planned_date: Optional[str] = Field(
-        None, description="Planned release date in YYYY-MM-DD format."
-    )
-    description: Optional[str] = Field(
-        None, description="Optional description or goal for the release."
-    )
-
 
 class GetReleaseParams(BaseModel):
     """Parameters for retrieving a single release."""
@@ -69,18 +58,6 @@ class CompileReleaseNotesParams(BaseModel):
         description="Release sys_id, number, or name.",
     )
 
-
-class ListReleasesParams(BaseModel):
-    """Parameters for listing releases."""
-
-    limit: Optional[int] = Field(10, description="Maximum number of records to return.")
-    offset: Optional[int] = Field(0, description="Offset for pagination.")
-    state: Optional[str] = Field(
-        None, description="Filter by state value (e.g. '1' for Draft, '2' for Active)."
-    )
-    query: Optional[str] = Field(
-        None, description="Additional sysparm_query filter string appended with '^'."
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -228,50 +205,6 @@ def _extract_sys_id(record: Dict[str, Any]) -> str:
     return raw.get("value", raw) if isinstance(raw, dict) else str(raw)
 
 
-# ---------------------------------------------------------------------------
-# create_release
-# ---------------------------------------------------------------------------
-
-
-def create_release(
-    config: ServerConfig,
-    auth_manager: AuthManager,
-    params: CreateReleaseParams,
-) -> Dict[str, Any]:
-    """
-    Create a new release in ServiceNow (rm_release).
-
-    Returns the new release's sys_id, number, and name.
-    """
-    data: Dict[str, Any] = {"name": params.name}
-    if params.planned_date:
-        data["planned_date"] = params.planned_date
-    if params.description:
-        data["description"] = params.description
-
-    url = f"{config.instance_url}/api/now/table/rm_release"
-    headers = {**auth_manager.get_headers(), "Content-Type": "application/json"}
-
-    try:
-        response = requests.post(url, json=data, headers=headers, timeout=config.timeout)
-        response.raise_for_status()
-        result = response.json().get("result", {})
-        return {
-            "success": True,
-            "message": f"Release '{params.name}' created successfully.",
-            "release_id": result.get("sys_id"),
-            "release_number": result.get("number"),
-            "name": result.get("name"),
-        }
-    except requests.RequestException as e:
-        body = getattr(e, "response", None)
-        body_text = (body.text[:2000] if body and hasattr(body, "text") else "") or ""
-        logger.error("create_release | name=%s | error=%s", params.name, e)
-        return {
-            "success": False,
-            "message": f"Failed to create release: {e}" + (f" | {body_text}" if body_text else ""),
-        }
-
 
 # ---------------------------------------------------------------------------
 # get_release
@@ -298,52 +231,6 @@ def get_release(
         "release_id": params.release_id,
     }
 
-
-# ---------------------------------------------------------------------------
-# list_releases
-# ---------------------------------------------------------------------------
-
-
-def list_releases(
-    config: ServerConfig,
-    auth_manager: AuthManager,
-    params: ListReleasesParams,
-) -> Dict[str, Any]:
-    """
-    List releases from ServiceNow (rm_release).
-
-    Supports optional filtering by state and/or a raw sysparm_query string.
-    Returns a list of release records with display values.
-    """
-    headers = auth_manager.get_headers()
-    url = f"{config.instance_url}/api/now/table/rm_release"
-
-    query_parts = []
-    if params.state:
-        query_parts.append(f"state={params.state}")
-    if params.query:
-        query_parts.append(params.query)
-
-    request_params: Dict[str, Any] = {
-        "sysparm_limit": params.limit,
-        "sysparm_offset": params.offset,
-        "sysparm_query": "^".join(query_parts),
-        "sysparm_display_value": "true",
-    }
-
-    try:
-        response = requests.get(
-            url,
-            headers=headers,
-            params=request_params,
-            timeout=config.timeout,
-        )
-        response.raise_for_status()
-        releases = response.json().get("result", [])
-        return {"success": True, "releases": releases, "count": len(releases)}
-    except requests.RequestException as e:
-        logger.error("list_releases | error=%s", e)
-        return {"success": False, "message": f"Failed to list releases: {e}"}
 
 
 # ---------------------------------------------------------------------------

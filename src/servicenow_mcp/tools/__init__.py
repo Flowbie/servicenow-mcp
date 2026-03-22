@@ -23,8 +23,6 @@ from servicenow_mcp.tools.user_tools import (
     revoke_role_from_user,
     grant_role_to_group,
     revoke_role_from_group,
-    list_user_roles,
-    list_group_roles,
 )
 from servicenow_mcp.tools.story_tools import (
     archive_story,
@@ -70,13 +68,11 @@ __all__ = [
     "get_changeset_details",
     "set_current_update_set",
     
-    # User role management tools
+    # User role management tools (compound grant/revoke only; list via table_tools)
     "grant_role_to_user",
     "revoke_role_from_user",
     "grant_role_to_group",
     "revoke_role_from_group",
-    "list_user_roles",
-    "list_group_roles",
 
     # Story tools (compound only)
     "archive_story",

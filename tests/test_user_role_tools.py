@@ -2,7 +2,7 @@
 Tests for Phase 8 user/role membership tools.
 
 Covers: grant_role_to_user, revoke_role_from_user, grant_role_to_group,
-revoke_role_from_group, list_user_roles, list_group_roles.
+revoke_role_from_group.
 """
 
 import unittest
@@ -14,14 +14,10 @@ from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.user_tools import (
     GrantRoleToGroupParams,
     GrantRoleToUserParams,
-    ListGroupRolesParams,
-    ListUserRolesParams,
     RevokeRoleFromGroupParams,
     RevokeRoleFromUserParams,
     grant_role_to_group,
     grant_role_to_user,
-    list_group_roles,
-    list_user_roles,
     revoke_role_from_group,
     revoke_role_from_user,
 )
@@ -312,117 +308,6 @@ class TestUserRoleTools(unittest.TestCase):
         )
         self.assertFalse(result["success"])
         self.assertIn("Inherited grants cannot be removed", result["message"])
-
-    # -----------------------------------------------------------------------
-    # list_user_roles
-    # -----------------------------------------------------------------------
-
-    @patch("servicenow_mcp.tools.user_tools.requests.get")
-    def test_list_user_roles_success(self, mock_get):
-        """list_user_roles queries sys_user_has_role filtered by user sys_id."""
-        mock_get.return_value = MagicMock(**{
-            "json.return_value": {
-                "result": [
-                    {"sys_id": "g1", "role": {"display_value": "itil"}, "inherited": "false"},
-                    {"sys_id": "g2", "role": {"display_value": "admin"}, "inherited": "true"},
-                ]
-            },
-            "raise_for_status": MagicMock(),
-        })
-
-        result = list_user_roles(
-            self.config, self.auth_manager,
-            ListUserRolesParams(user_sys_id="user1")
-        )
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["count"], 2)
-        self.assertEqual(result["user_sys_id"], "user1")
-        called_url = mock_get.call_args[0][0]
-        self.assertIn("sys_user_has_role", called_url)
-        query = mock_get.call_args[1]["params"]["sysparm_query"]
-        self.assertIn("user=user1", query)
-
-    @patch("servicenow_mcp.tools.user_tools.requests.get")
-    def test_list_user_roles_exclude_inherited(self, mock_get):
-        """list_user_roles with include_inherited=False adds inherited=false to query."""
-        mock_get.return_value = MagicMock(**{
-            "json.return_value": {"result": [{"sys_id": "g1"}]},
-            "raise_for_status": MagicMock(),
-        })
-
-        list_user_roles(
-            self.config, self.auth_manager,
-            ListUserRolesParams(user_sys_id="user1", include_inherited=False)
-        )
-
-        query = mock_get.call_args[1]["params"]["sysparm_query"]
-        self.assertIn("inherited=false", query)
-
-    @patch("servicenow_mcp.tools.user_tools.requests.get")
-    def test_list_user_roles_http_error(self, mock_get):
-        """list_user_roles handles HTTP errors."""
-        mock_get.side_effect = requests.RequestException("500 error")
-        result = list_user_roles(
-            self.config, self.auth_manager,
-            ListUserRolesParams(user_sys_id="user1")
-        )
-        self.assertFalse(result["success"])
-
-    # -----------------------------------------------------------------------
-    # list_group_roles
-    # -----------------------------------------------------------------------
-
-    @patch("servicenow_mcp.tools.user_tools.requests.get")
-    def test_list_group_roles_success(self, mock_get):
-        """list_group_roles queries sys_group_has_role filtered by group sys_id."""
-        mock_get.return_value = MagicMock(**{
-            "json.return_value": {
-                "result": [
-                    {"sys_id": "g1", "role": {"display_value": "itil"}, "inherited": "false"},
-                ]
-            },
-            "raise_for_status": MagicMock(),
-        })
-
-        result = list_group_roles(
-            self.config, self.auth_manager,
-            ListGroupRolesParams(group_sys_id="grp1")
-        )
-
-        self.assertTrue(result["success"])
-        self.assertEqual(result["count"], 1)
-        self.assertEqual(result["group_sys_id"], "grp1")
-        called_url = mock_get.call_args[0][0]
-        self.assertIn("sys_group_has_role", called_url)
-        query = mock_get.call_args[1]["params"]["sysparm_query"]
-        self.assertIn("group=grp1", query)
-
-    @patch("servicenow_mcp.tools.user_tools.requests.get")
-    def test_list_group_roles_exclude_inherited(self, mock_get):
-        """list_group_roles with include_inherited=False adds inherited=false to query."""
-        mock_get.return_value = MagicMock(**{
-            "json.return_value": {"result": []},
-            "raise_for_status": MagicMock(),
-        })
-
-        list_group_roles(
-            self.config, self.auth_manager,
-            ListGroupRolesParams(group_sys_id="grp1", include_inherited=False)
-        )
-
-        query = mock_get.call_args[1]["params"]["sysparm_query"]
-        self.assertIn("inherited=false", query)
-
-    @patch("servicenow_mcp.tools.user_tools.requests.get")
-    def test_list_group_roles_http_error(self, mock_get):
-        """list_group_roles handles HTTP errors."""
-        mock_get.side_effect = requests.RequestException("500 error")
-        result = list_group_roles(
-            self.config, self.auth_manager,
-            ListGroupRolesParams(group_sys_id="grp1")
-        )
-        self.assertFalse(result["success"])
 
 
     @patch("servicenow_mcp.tools.user_tools.requests.get")
