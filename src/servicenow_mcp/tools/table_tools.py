@@ -208,6 +208,43 @@ def create_record(
     Returns the sys_id and full record of the created row. Use verify_fields
     after creation to confirm field values persisted as intended.
     """
+    import asyncio
+    import os
+    import threading
+
+    if os.environ.get("WORKBENCH_URL"):
+        from servicenow_mcp.utils.approval_client import request_approval, ApprovalDecision
+
+        params_dict = params.model_dump() if hasattr(params, "model_dump") else vars(params)
+
+        # Run the async approval coroutine in a dedicated thread so it gets its
+        # own event loop. This is necessary because create_record is called
+        # synchronously from server.py, which may already be running inside an
+        # asyncio event loop — asyncio.run() would raise RuntimeError if called
+        # on the same thread as a running loop.
+        _decision_holder: list = []
+        _exc_holder: list = []
+
+        def _run():
+            try:
+                decision = asyncio.run(
+                    request_approval("create_record", params_dict, "")
+                )
+                _decision_holder.append(decision)
+            except Exception as exc:
+                _exc_holder.append(exc)
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        t.join()
+
+        if _exc_holder:
+            raise _exc_holder[0]
+
+        _decision = _decision_holder[0] if _decision_holder else None
+        if _decision == ApprovalDecision.REJECTED:
+            return {"error": "Operation rejected by user", "approved": False}
+
     url = f"{config.api_url}/table/{params.table}"
     try:
         response = requests.post(
