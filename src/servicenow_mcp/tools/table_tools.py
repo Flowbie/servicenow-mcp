@@ -6,7 +6,10 @@ Provides CRUD operations against any ServiceNow table via the Table REST API
 for the target table.
 """
 
+import asyncio
 import logging
+import os
+import threading
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -208,41 +211,31 @@ def create_record(
     Returns the sys_id and full record of the created row. Use verify_fields
     after creation to confirm field values persisted as intended.
     """
-    import asyncio
-    import os
-    import threading
-
     if os.environ.get("WORKBENCH_URL"):
-        from servicenow_mcp.utils.approval_client import request_approval, ApprovalDecision
-
-        params_dict = params.model_dump() if hasattr(params, "model_dump") else vars(params)
-
-        # Run the async approval coroutine in a dedicated thread so it gets its
-        # own event loop. This is necessary because create_record is called
-        # synchronously from server.py, which may already be running inside an
-        # asyncio event loop — asyncio.run() would raise RuntimeError if called
-        # on the same thread as a running loop.
         _decision_holder: list = []
         _exc_holder: list = []
 
         def _run():
             try:
-                decision = asyncio.run(
-                    request_approval("create_record", params_dict, "")
-                )
-                _decision_holder.append(decision)
-            except Exception as exc:
-                _exc_holder.append(exc)
+                from servicenow_mcp.utils.approval_client import request_approval, ApprovalDecision
+                _decision_holder.append(asyncio.run(request_approval(
+                    "create_record",
+                    params.model_dump(),
+                    os.environ.get("WORKBENCH_PROJECT_ID", ""),
+                )))
+            except Exception as e:
+                _exc_holder.append(e)
 
         t = threading.Thread(target=_run, daemon=True)
         t.start()
-        t.join()
-
+        t.join(timeout=330)
+        if t.is_alive():
+            return {"error": "Approval timed out", "approved": False}
         if _exc_holder:
             raise _exc_holder[0]
-
         _decision = _decision_holder[0] if _decision_holder else None
-        if _decision == ApprovalDecision.REJECTED:
+        from servicenow_mcp.utils.approval_client import ApprovalDecision
+        if _decision is None or _decision != ApprovalDecision.APPROVED:
             return {"error": "Operation rejected by user", "approved": False}
 
     url = f"{config.api_url}/table/{params.table}"
@@ -302,6 +295,33 @@ def update_record(
     Only provided fields are modified. Use verify_fields after the update to
     confirm values persisted — server-side rules may override written values.
     """
+    if os.environ.get("WORKBENCH_URL"):
+        _decision_holder: list = []
+        _exc_holder: list = []
+
+        def _run():
+            try:
+                from servicenow_mcp.utils.approval_client import request_approval, ApprovalDecision
+                _decision_holder.append(asyncio.run(request_approval(
+                    "update_record",
+                    params.model_dump(),
+                    os.environ.get("WORKBENCH_PROJECT_ID", ""),
+                )))
+            except Exception as e:
+                _exc_holder.append(e)
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        t.join(timeout=330)
+        if t.is_alive():
+            return {"error": "Approval timed out", "approved": False}
+        if _exc_holder:
+            raise _exc_holder[0]
+        _decision = _decision_holder[0] if _decision_holder else None
+        from servicenow_mcp.utils.approval_client import ApprovalDecision
+        if _decision is None or _decision != ApprovalDecision.APPROVED:
+            return {"error": "Operation rejected by user", "approved": False}
+
     url = f"{config.api_url}/table/{params.table}/{params.sys_id}"
     try:
         response = requests.patch(
@@ -352,6 +372,33 @@ def delete_record(
 
     This is a destructive operation. Confirm the sys_id and table before calling.
     """
+    if os.environ.get("WORKBENCH_URL"):
+        _decision_holder: list = []
+        _exc_holder: list = []
+
+        def _run():
+            try:
+                from servicenow_mcp.utils.approval_client import request_approval, ApprovalDecision
+                _decision_holder.append(asyncio.run(request_approval(
+                    "delete_record",
+                    params.model_dump(),
+                    os.environ.get("WORKBENCH_PROJECT_ID", ""),
+                )))
+            except Exception as e:
+                _exc_holder.append(e)
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        t.join(timeout=330)
+        if t.is_alive():
+            return {"error": "Approval timed out", "approved": False}
+        if _exc_holder:
+            raise _exc_holder[0]
+        _decision = _decision_holder[0] if _decision_holder else None
+        from servicenow_mcp.utils.approval_client import ApprovalDecision
+        if _decision is None or _decision != ApprovalDecision.APPROVED:
+            return {"error": "Operation rejected by user", "approved": False}
+
     url = f"{config.api_url}/table/{params.table}/{params.sys_id}"
     try:
         response = requests.delete(
