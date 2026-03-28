@@ -421,5 +421,87 @@ class TestRunBackgroundScriptDirectOutput(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# SCRP-05 — Missing import regression (os, asyncio, threading)
+# ---------------------------------------------------------------------------
+
+
+class TestRunBackgroundScriptImports(unittest.TestCase):
+    """SCRP-05: run_background_script must not raise NameError for os/asyncio/threading."""
+
+    def test_workbench_env_var_absent_no_name_error(self):
+        """
+        When WORKBENCH_URL is not set, the approval gate is skipped entirely and
+        the function proceeds to the scripted API / UI session path. Previously,
+        the missing `import os` caused NameError before any real work was done.
+        This test confirms no NameError is raised when WORKBENCH_URL is absent.
+        """
+        import os
+        os.environ.pop("WORKBENCH_URL", None)
+
+        config = _make_config()
+        auth = _make_auth_manager()
+        params = RunBackgroundScriptParams(
+            description="regression test — no workbench",
+            script="gs.info('test');",
+        )
+
+        # Patch the HTTP calls so no real network request is made.
+        # We only care that the function starts executing past the os.environ check.
+        with patch("servicenow_mcp.tools.script_tools.requests.post") as mock_post, \
+             patch("servicenow_mcp.tools.script_tools.requests.get") as mock_get:
+
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                text="<html><form><input name='sysparm_ck' value='tok'/></form></html>",
+                url="https://test.service-now.com/sys.scripts.do",
+                headers={},
+            )
+            post_resp = MagicMock()
+            post_resp.status_code = 200
+            post_resp.text = ""
+            post_resp.json.return_value = {}
+            post_resp.headers = {"X-Is-Logged-In": "true"}
+            mock_post.return_value = post_resp
+
+            # Must not raise NameError
+            try:
+                result = run_background_script(config, auth, params)
+            except NameError as e:
+                self.fail(f"NameError raised — missing import: {e}")
+
+    def test_workbench_env_var_present_evaluates_os_environ(self):
+        """
+        When WORKBENCH_URL is set, the approval gate must read it via os.environ.get
+        without raising NameError. The gate returns 'rejected' (no approval server
+        running) which is fine — we only verify the import is present.
+        """
+        import os
+        os.environ["WORKBENCH_URL"] = "http://localhost:9999"
+
+        config = _make_config()
+        auth = _make_auth_manager()
+        params = RunBackgroundScriptParams(
+            description="regression test — workbench present",
+            script="gs.info('test');",
+        )
+
+        try:
+            # approval_client.request_approval will fail (no server), but the
+            # NameError for `os` would fire before that — so reaching any other
+            # exception confirms the import is present.
+            result = run_background_script(config, auth, params)
+            # If we get here, the approval gate returned a result (timed out or rejected)
+            self.assertFalse(result.success)
+        except NameError as e:
+            self.fail(f"NameError raised — missing import: {e}")
+        except Exception:
+            # Any other exception (connection refused, import error for approval_client)
+            # means os was found and we got past the gate. Test passes.
+            pass
+        finally:
+            os.environ.pop("WORKBENCH_URL", None)
+
+
 if __name__ == "__main__":
     unittest.main()
