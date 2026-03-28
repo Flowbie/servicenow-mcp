@@ -16,8 +16,11 @@ The variable __MFCP_RUN_ID is injected at the top of every script and can be
 included in user log calls to tag entries for this specific run.
 """
 
+import asyncio
 import logging
+import os
 import re
+import threading
 import uuid
 from datetime import datetime, timezone
 from html.parser import HTMLParser
