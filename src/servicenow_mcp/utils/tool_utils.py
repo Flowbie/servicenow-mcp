@@ -1,5 +1,7 @@
 from typing import Any, Callable, Dict, Tuple, Type
 
+from servicenow_mcp.utils.approval_client import WRITE_TOOLS, wrap_write_tool
+
 # Import all necessary tool implementation functions and params models
 # (This list needs to be kept complete and up-to-date)
 from servicenow_mcp.tools.catalog_optimization import (
@@ -971,4 +973,12 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             "json",
         ),
     }
+
+    # Apply the workbench approval gate to all write tools.
+    # No-op when WORKBENCH_URL is not set (direct CLI usage).
+    for name in WRITE_TOOLS:
+        if name in tool_definitions:
+            func, params_model, return_type, description, serialization = tool_definitions[name]
+            tool_definitions[name] = (wrap_write_tool(name, func), params_model, return_type, description, serialization)
+
     return tool_definitions

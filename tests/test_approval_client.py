@@ -131,9 +131,15 @@ async def test_existing_tests_patch_sleep():
     pass
 
 
+def _get_wrapped(tool_name: str):
+    """Return the registered (approval-wrapped) function for a tool."""
+    from servicenow_mcp.utils.tool_utils import get_tool_definitions
+    return get_tool_definitions()[tool_name][0]
+
+
 def test_create_record_gate_approved(monkeypatch):
-    """create_record gate calls request_approval and proceeds when approved."""
-    from servicenow_mcp.tools.table_tools import create_record, CreateRecordParams
+    """create_record approval gate passes through to the tool when approved."""
+    from servicenow_mcp.tools.table_tools import CreateRecordParams
     from servicenow_mcp.utils.approval_client import ApprovalDecision
 
     monkeypatch.setenv("WORKBENCH_URL", "http://localhost:8742")
@@ -146,21 +152,22 @@ def test_create_record_gate_approved(monkeypatch):
     mock_auth = MagicMock()
     params = CreateRecordParams(table="incident", fields={"short_description": "test"})
 
+    create_record_wrapped = _get_wrapped("create_record")
     with patch("servicenow_mcp.utils.approval_client.request_approval", side_effect=fake_approval):
         with patch("servicenow_mcp.tools.table_tools.requests") as mock_requests:
             mock_resp = MagicMock()
             mock_resp.json.return_value = {"result": {"sys_id": "abc"}}
             mock_resp.raise_for_status = MagicMock()
             mock_requests.post.return_value = mock_resp
-            result = create_record(mock_config, mock_auth, params)
+            result = create_record_wrapped(mock_config, mock_auth, params)
 
     # Should have gotten past the gate — result should not be the rejection dict
     assert result.get("approved") is not False
 
 
 def test_create_record_gate_rejected(monkeypatch):
-    """create_record gate returns rejection dict when user rejects."""
-    from servicenow_mcp.tools.table_tools import create_record, CreateRecordParams
+    """create_record approval gate returns rejection dict when user rejects."""
+    from servicenow_mcp.tools.table_tools import CreateRecordParams
     from servicenow_mcp.utils.approval_client import ApprovalDecision
 
     monkeypatch.setenv("WORKBENCH_URL", "http://localhost:8742")
@@ -173,7 +180,8 @@ def test_create_record_gate_rejected(monkeypatch):
     mock_auth = MagicMock()
     params = CreateRecordParams(table="incident", fields={"short_description": "test"})
 
+    create_record_wrapped = _get_wrapped("create_record")
     with patch("servicenow_mcp.utils.approval_client.request_approval", side_effect=fake_rejection):
-        result = create_record(mock_config, mock_auth, params)
+        result = create_record_wrapped(mock_config, mock_auth, params)
 
     assert result == {"error": "Operation rejected by user", "approved": False}

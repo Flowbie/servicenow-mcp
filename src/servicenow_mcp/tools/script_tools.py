@@ -16,11 +16,9 @@ The variable __MFCP_RUN_ID is injected at the top of every script and can be
 included in user log calls to tag entries for this specific run.
 """
 
-import asyncio
 import logging
 import os
 import re
-import threading
 import uuid
 from datetime import datetime, timezone
 from html.parser import HTMLParser
@@ -387,48 +385,6 @@ def run_background_script(
     Returns:
         RunBackgroundScriptResult with direct output and syslog entries.
     """
-    # Approval gate — suspend if workbench is active
-    if os.environ.get("WORKBENCH_URL"):
-        _decision_holder: list = []
-        _exc_holder: list = []
-
-        def _run():
-            try:
-                from servicenow_mcp.utils.approval_client import request_approval, ApprovalDecision
-                _decision_holder.append(asyncio.run(request_approval(
-                    "run_background_script",
-                    params.model_dump(),
-                    os.environ.get("WORKBENCH_PROJECT_ID", ""),
-                )))
-            except Exception as e:
-                _exc_holder.append(e)
-
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
-        t.join(timeout=330)
-        if t.is_alive():
-            return RunBackgroundScriptResult(
-                success=False,
-                run_id="",
-                http_status=0,
-                direct_output="",
-                syslog_entries=[],
-                message="Approval timed out",
-            )
-        if _exc_holder:
-            raise _exc_holder[0]
-        _decision = _decision_holder[0] if _decision_holder else None
-        from servicenow_mcp.utils.approval_client import ApprovalDecision
-        if _decision is None or _decision != ApprovalDecision.APPROVED:
-            return RunBackgroundScriptResult(
-                success=False,
-                run_id="",
-                http_status=0,
-                direct_output="",
-                syslog_entries=[],
-                message="Operation rejected by user",
-            )
-
     run_id = uuid.uuid4().hex[:12]
     script_block = _format_script_code_block(params.script)
 
