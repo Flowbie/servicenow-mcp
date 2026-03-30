@@ -27,6 +27,8 @@ async def test_approved_returns_approved():
         result = await request_approval("create_record", {"table": "incident"}, "proj-1")
 
     assert result == ApprovalDecision.APPROVED
+    _, kwargs = mock_client.post.call_args
+    assert kwargs["json"]["payload"] == {}
 
 
 @pytest.mark.asyncio
@@ -145,7 +147,10 @@ def test_create_record_gate_approved(monkeypatch):
     monkeypatch.setenv("WORKBENCH_URL", "http://localhost:8742")
     monkeypatch.setenv("WORKBENCH_PROJECT_ID", "test-proj")
 
+    captured = {}
+
     async def fake_approval(*args, **kwargs):
+        captured["payload"] = kwargs.get("payload")
         return ApprovalDecision.APPROVED
 
     mock_config = MagicMock()
@@ -163,6 +168,10 @@ def test_create_record_gate_approved(monkeypatch):
 
     # Should have gotten past the gate — result should not be the rejection dict
     assert result.get("approved") is not False
+    assert captured["payload"]["tool_name"] == "create_record"
+    assert captured["payload"]["operation"] == "create"
+    assert captured["payload"]["table"] == "incident"
+    assert captured["payload"]["fields"]["short_description"]["after"] == "test"
 
 
 def test_create_record_gate_rejected(monkeypatch):
@@ -185,3 +194,32 @@ def test_create_record_gate_rejected(monkeypatch):
         result = create_record_wrapped(mock_config, mock_auth, params)
 
     assert result == {"error": "Operation rejected by user", "approved": False}
+
+
+def test_build_update_record_payload_fetches_before_values():
+    from servicenow_mcp.utils.approval_client import build_approval_payload
+
+    config = MagicMock()
+    config.api_url = "https://test.service-now.com/api/now"
+    config.timeout = 30
+    auth_manager = MagicMock()
+    auth_manager.get_headers.return_value = {"Authorization": "Bearer test"}
+
+    with patch("servicenow_mcp.utils.approval_client.requests.get") as mock_get:
+        response = MagicMock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "result": {"sys_id": "abc123", "number": "INC0012345", "short_description": "Old"}
+        }
+        mock_get.return_value = response
+
+        payload = build_approval_payload(
+            "update_record",
+            config,
+            auth_manager,
+            {"table": "incident", "sys_id": "abc123", "fields": {"short_description": "New"}},
+        )
+
+    assert payload["record_identifier"] == "INC0012345"
+    assert payload["fields"]["short_description"]["before"] == "Old"
+    assert payload["fields"]["short_description"]["after"] == "New"

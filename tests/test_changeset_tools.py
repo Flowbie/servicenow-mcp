@@ -11,8 +11,10 @@ from unittest.mock import MagicMock, patch
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.changeset_tools import (
+    GetCurrentUpdateSetParams,
     GetChangesetDetailsParams,
     SetCurrentUpdateSetParams,
+    get_current_update_set,
     get_changeset_details,
     set_current_update_set,
 )
@@ -37,6 +39,42 @@ class TestChangesetTools(unittest.TestCase):
         )
         self.auth_manager = MagicMock(spec=AuthManager)
         self.auth_manager.get_headers.return_value = {"Authorization": "Bearer test"}
+
+    @patch("servicenow_mcp.tools.changeset_tools.requests.get")
+    def test_get_current_update_set_success(self, mock_get):
+        """Test get_current_update_set returns normalized active update set details."""
+        pref_resp = MagicMock()
+        pref_resp.raise_for_status.return_value = None
+        pref_resp.json.return_value = {"result": [{"value": "us1"}]}
+
+        update_set_resp = MagicMock()
+        update_set_resp.raise_for_status.return_value = None
+        update_set_resp.json.return_value = {
+            "result": {"sys_id": "us1", "name": "STRY0012345 - Test", "state": "in progress"}
+        }
+
+        mock_get.side_effect = [pref_resp, update_set_resp]
+
+        result = get_current_update_set(self.server_config, self.auth_manager, {})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["name"], "STRY0012345 - Test")
+        self.assertEqual(result["sys_id"], "us1")
+        self.assertEqual(result["state"], "in progress")
+        self.assertFalse(result["is_default"])
+
+    @patch("servicenow_mcp.tools.changeset_tools.requests.get")
+    def test_get_current_update_set_missing_preference(self, mock_get):
+        """Test get_current_update_set fails cleanly when no preference exists."""
+        pref_resp = MagicMock()
+        pref_resp.raise_for_status.return_value = None
+        pref_resp.json.return_value = {"result": []}
+        mock_get.return_value = pref_resp
+
+        result = get_current_update_set(self.server_config, self.auth_manager, {})
+
+        self.assertFalse(result["success"])
+        self.assertIn("No active sys_update_set preference", result["message"])
 
     @patch("servicenow_mcp.tools.changeset_tools.requests.get")
     def test_get_changeset_details(self, mock_get):
@@ -205,3 +243,7 @@ class TestChangesetToolsParams(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+    def test_get_current_update_set_params(self):
+        """Test GetCurrentUpdateSetParams."""
+        params = GetCurrentUpdateSetParams()
+        self.assertIsInstance(params, GetCurrentUpdateSetParams)

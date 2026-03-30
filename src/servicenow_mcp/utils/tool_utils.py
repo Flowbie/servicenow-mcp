@@ -31,9 +31,11 @@ from servicenow_mcp.tools.change_tools import (
     submit_change_for_approval as submit_change_for_approval_tool,
 )
 from servicenow_mcp.tools.changeset_tools import (
+    GetCurrentUpdateSetParams,
     GetChangesetDetailsParams,
 )
 from servicenow_mcp.tools.changeset_tools import (
+    get_current_update_set as get_current_update_set_tool,
     get_changeset_details as get_changeset_details_tool,
 )
 from servicenow_mcp.tools.write_safety_tools import (
@@ -524,6 +526,17 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             str,  # Expects JSON string
             "Get detailed information about a specific changeset, including all associated change records (sys_update_xml).",
             "json",  # Tool returns list/dict
+        ),
+        "get_current_update_set": (
+            get_current_update_set_tool,
+            GetCurrentUpdateSetParams,
+            dict,
+            (
+                "Return the currently active update set for the authenticated user. "
+                "The response is normalized to name, sys_id, state, and is_default "
+                "for downstream governance checks."
+            ),
+            "json",
         ),
         # User/Group Role Tools (Phase 8)
         "grant_role_to_user": (

@@ -12,6 +12,23 @@ A Model Completion Protocol (MCP) server implementation for ServiceNow, allowing
 
 This project implements an MCP server that enables Claude to connect to ServiceNow instances, retrieve data, and perform actions through the ServiceNow API. It serves as a bridge between Claude and ServiceNow, allowing for seamless integration.
 
+## Governance Ownership
+
+This server is the authoritative mutation-governance layer in the ServiceNow agent stack.
+
+- `servicenow-claude-os` owns conversational behavior, workflow phases, and chat discipline
+- `servicenow-mcp` owns authoritative write enforcement and authoritative approval payloads
+- `servicenow-workbench` owns UX, visibility, and user control surfaces
+
+In the current governance model:
+
+- generic CRUD writes on configuration/metadata tables are enforced here against update-set policy
+- unknown tables fail closed until classified
+- exempt tables are allowed without update-set enforcement
+- approval payloads for key write tools are built here and passed through by Workbench
+
+This means Workbench should not be treated as the only place where write safety lives. Even if Workbench is bypassed, MCP policy should still reject non-compliant governed writes.
+
 ## Features
 
 - Connect to ServiceNow instances using various authentication methods (Basic, OAuth, API Key)

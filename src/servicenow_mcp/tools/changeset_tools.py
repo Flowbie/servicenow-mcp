@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.config import ServerConfig
+from servicenow_mcp.utils.update_set_policy import UpdateSetInfo, is_default_update_set
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,10 @@ class SetCurrentUpdateSetParams(BaseModel):
             "The update set must be in 'in progress' state."
         ),
     )
+
+
+class GetCurrentUpdateSetParams(BaseModel):
+    """Parameters for fetching the user's currently active update set."""
 
 
 def _unwrap_and_validate_params(
@@ -166,6 +171,81 @@ def get_changeset_details(
         }
 
 
+def _normalize_update_set(update_set: Dict[str, Any]) -> UpdateSetInfo:
+    name = update_set.get("name")
+    sys_id = update_set.get("sys_id")
+    state = update_set.get("state")
+    return UpdateSetInfo(
+        name=name if isinstance(name, str) else None,
+        sys_id=sys_id if isinstance(sys_id, str) else None,
+        state=state if isinstance(state, str) else None,
+        is_default=is_default_update_set(name if isinstance(name, str) else None),
+    )
+
+
+def get_current_update_set(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: Union[Dict[str, Any], GetCurrentUpdateSetParams, None] = None,
+) -> Dict[str, Any]:
+    """
+    Get the currently active update set for the authenticated user.
+
+    The value is resolved from the user's sys_update_set preference and then
+    normalized into a small stable contract for downstream governance checks.
+    """
+    result = _unwrap_and_validate_params(params or {}, GetCurrentUpdateSetParams)
+    if not result["success"]:
+        return result
+
+    instance_url = config.instance_url
+    headers = auth_manager.get_headers()
+    pref_url = (
+        f"{instance_url}/api/now/table/sys_user_preference"
+        "?sysparm_query=name=sys_update_set^user.user_name=current&sysparm_limit=1"
+    )
+
+    try:
+        pref_resp = requests.get(pref_url, headers=headers)
+        pref_resp.raise_for_status()
+        prefs = pref_resp.json().get("result", [])
+        if not prefs:
+            return {
+                "success": False,
+                "message": "No active sys_update_set preference was found for the current user.",
+            }
+
+        current_update_set_sys_id = prefs[0].get("value")
+        if not isinstance(current_update_set_sys_id, str) or not current_update_set_sys_id:
+            return {
+                "success": False,
+                "message": "The current user's sys_update_set preference does not contain a valid sys_id.",
+            }
+
+        update_set_resp = requests.get(
+            f"{instance_url}/api/now/table/sys_update_set/{current_update_set_sys_id}",
+            headers=headers,
+        )
+        update_set_resp.raise_for_status()
+        normalized = _normalize_update_set(update_set_resp.json().get("result", {}))
+        return {
+            "success": True,
+            "name": normalized.name,
+            "sys_id": normalized.sys_id,
+            "state": normalized.state,
+            "is_default": normalized.is_default,
+            "update_set": {
+                "name": normalized.name,
+                "sys_id": normalized.sys_id,
+                "state": normalized.state,
+                "is_default": normalized.is_default,
+            },
+        }
+    except requests.exceptions.RequestException as e:
+        logger.error("Error getting current update set: %s", e)
+        return {"success": False, "message": f"Failed to fetch current update set: {e}"}
+
+
 def set_current_update_set(
     config: ServerConfig,
     auth_manager: AuthManager,
@@ -243,10 +323,20 @@ def set_current_update_set(
             crt_resp = requests.post(pref_url, json=pref_data, headers=headers)
             crt_resp.raise_for_status()
 
+        normalized = _normalize_update_set(update_set)
         return {
             "success": True,
             "message": f"Update set '{update_set.get('name', validated_params.changeset_id)}' is now active.",
-            "update_set": update_set,
+            "name": normalized.name,
+            "sys_id": normalized.sys_id,
+            "state": normalized.state,
+            "is_default": normalized.is_default,
+            "update_set": {
+                "name": normalized.name,
+                "sys_id": normalized.sys_id,
+                "state": normalized.state,
+                "is_default": normalized.is_default,
+            },
         }
     except requests.exceptions.RequestException as e:
         return {"success": False, "message": f"Failed to set current update set: {e}"}

@@ -15,6 +15,7 @@ from servicenow_mcp.tools.change_tools import (
     submit_change_for_approval,
 )
 from servicenow_mcp.tools.changeset_tools import (
+    get_current_update_set,
     get_changeset_details,
     set_current_update_set,
 )
@@ -65,9 +66,10 @@ __all__ = [
     "reject_change",
 
     # Changeset tools (compound only; CRUD via table_tools + sys_update_set blueprint)
+    "get_current_update_set",
     "get_changeset_details",
     "set_current_update_set",
-    
+
     # User role management tools (compound grant/revoke only; list via table_tools)
     "grant_role_to_user",
     "revoke_role_from_user",
@@ -81,11 +83,6 @@ __all__ = [
 
     # Scrum Task tools (compound only)
     "close_scrum_task",
-
-    # Project tools
-    "create_project",
-    "update_project",
-    "list_projects",
 
     # Flow Designer tools
     "list_trigger_types",

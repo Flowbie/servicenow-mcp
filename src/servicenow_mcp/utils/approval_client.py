@@ -15,6 +15,8 @@ import threading
 from enum import Enum
 from typing import Any, Callable, Optional
 
+import requests
+
 try:
     import httpx
     _HTTPX_AVAILABLE = True
@@ -82,6 +84,7 @@ async def request_approval(
     tool_name: str,
     params: dict,
     project_id: str,
+    payload: Optional[dict] = None,
     workbench_url: Optional[str] = None,
 ) -> ApprovalDecision:
     """
@@ -99,7 +102,12 @@ async def request_approval(
         # Register the pending approval
         resp = await client.post(
             f"{url}/approvals/pending",
-            json={"tool_name": tool_name, "params": params, "project_id": project_id},
+            json={
+                "tool_name": tool_name,
+                "params": params,
+                "project_id": project_id,
+                "payload": payload or {},
+            },
             timeout=10.0,
         )
         resp.raise_for_status()
@@ -141,10 +149,12 @@ def wrap_write_tool(tool_name: str, func: Callable) -> Callable:
             def _run() -> None:
                 try:
                     raw_params = params.model_dump() if hasattr(params, "model_dump") else dict(params)
+                    payload = build_approval_payload(tool_name, config, auth_manager, raw_params)
                     _decision_holder.append(asyncio.run(request_approval(
                         tool_name,
                         raw_params,
                         os.environ.get("WORKBENCH_PROJECT_ID", ""),
+                        payload=payload,
                     )))
                 except Exception as exc:
                     _exc_holder.append(exc)
@@ -165,3 +175,145 @@ def wrap_write_tool(tool_name: str, func: Callable) -> Callable:
     wrapped.__name__ = func.__name__
     wrapped.__doc__ = func.__doc__
     return wrapped
+
+
+def build_approval_payload(
+    tool_name: str,
+    config: Any,
+    auth_manager: Any,
+    raw_params: dict,
+) -> dict:
+    builders = {
+        "create_record": _build_create_record_payload,
+        "update_record": _build_update_record_payload,
+        "delete_record": _build_delete_record_payload,
+        "set_current_update_set": _build_set_current_update_set_payload,
+        "run_background_script": _build_background_script_payload,
+    }
+    builder = builders.get(tool_name)
+    if not builder:
+        return {
+            "tool_name": tool_name,
+            "operation": "write",
+            "raw_params": raw_params,
+            "fields": {},
+        }
+    try:
+        return builder(config, auth_manager, raw_params)
+    except Exception:
+        return {
+            "tool_name": tool_name,
+            "operation": "write",
+            "raw_params": raw_params,
+            "fields": {},
+        }
+
+
+def _guess_record_identifier(record: dict | None, fallback: str | None = None) -> str | None:
+    if isinstance(record, dict):
+        for key in ("number", "name", "short_description", "display_name", "sys_id"):
+            value = record.get(key)
+            if isinstance(value, str) and value:
+                return value
+    return fallback
+
+
+def _fetch_table_record(config: Any, auth_manager: Any, table: str, sys_id: str) -> dict:
+    response = requests.get(
+        f"{config.api_url}/table/{table}/{sys_id}",
+        headers=auth_manager.get_headers(),
+        timeout=getattr(config, "timeout", 30),
+    )
+    response.raise_for_status()
+    result = response.json().get("result", {})
+    return result if isinstance(result, dict) else {}
+
+
+def _build_field_diff(fields: dict, before_record: dict | None = None) -> dict:
+    diffs: dict[str, dict[str, Any]] = {}
+    for field, after_value in (fields or {}).items():
+        before_value = None
+        if isinstance(before_record, dict):
+            before_value = before_record.get(field)
+        diffs[field] = {
+            "before": before_value,
+            "after": after_value,
+        }
+    return diffs
+
+
+def _build_create_record_payload(config: Any, auth_manager: Any, raw_params: dict) -> dict:
+    table = raw_params.get("table", "")
+    fields = raw_params.get("fields", {}) or {}
+    return {
+        "tool_name": "create_record",
+        "operation": "create",
+        "table": table,
+        "record_identifier": _guess_record_identifier(fields),
+        "fields": _build_field_diff(fields),
+        "raw_params": raw_params,
+    }
+
+
+def _build_update_record_payload(config: Any, auth_manager: Any, raw_params: dict) -> dict:
+    table = raw_params.get("table", "")
+    sys_id = raw_params.get("sys_id", "")
+    before_record = _fetch_table_record(config, auth_manager, table, sys_id)
+    fields = raw_params.get("fields", {}) or {}
+    return {
+        "tool_name": "update_record",
+        "operation": "update",
+        "table": table,
+        "record_identifier": _guess_record_identifier(before_record, sys_id),
+        "fields": _build_field_diff(fields, before_record),
+        "raw_params": raw_params,
+    }
+
+
+def _build_delete_record_payload(config: Any, auth_manager: Any, raw_params: dict) -> dict:
+    table = raw_params.get("table", "")
+    sys_id = raw_params.get("sys_id", "")
+    before_record = _fetch_table_record(config, auth_manager, table, sys_id)
+    return {
+        "tool_name": "delete_record",
+        "operation": "delete",
+        "table": table,
+        "record_identifier": _guess_record_identifier(before_record, sys_id),
+        "fields": {},
+        "raw_params": raw_params,
+    }
+
+
+def _build_set_current_update_set_payload(config: Any, auth_manager: Any, raw_params: dict) -> dict:
+    changeset_id = raw_params.get("changeset_id", "")
+    update_set = {}
+    if changeset_id:
+        response = requests.get(
+            f"{config.instance_url}/api/now/table/sys_update_set/{changeset_id}",
+            headers=auth_manager.get_headers(),
+            timeout=getattr(config, "timeout", 30),
+        )
+        response.raise_for_status()
+        result = response.json().get("result", {})
+        update_set = result if isinstance(result, dict) else {}
+    return {
+        "tool_name": "set_current_update_set",
+        "operation": "activate_update_set",
+        "table": "sys_update_set",
+        "record_identifier": _guess_record_identifier(update_set, changeset_id),
+        "fields": {},
+        "raw_params": raw_params,
+    }
+
+
+def _build_background_script_payload(config: Any, auth_manager: Any, raw_params: dict) -> dict:
+    script = raw_params.get("script", "")
+    return {
+        "tool_name": "run_background_script",
+        "operation": "execute_script",
+        "table": "",
+        "record_identifier": None,
+        "fields": {},
+        "raw_params": raw_params,
+        "script_preview": script[:500] if isinstance(script, str) else "",
+    }

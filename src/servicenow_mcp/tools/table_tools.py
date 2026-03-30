@@ -7,16 +7,53 @@ for the target table.
 """
 
 import logging
-import os
 from typing import Any, Dict, List, Optional
 
 import requests
 from pydantic import BaseModel, Field
 
 from servicenow_mcp.auth.auth_manager import AuthManager
+from servicenow_mcp.tools.changeset_tools import get_current_update_set
 from servicenow_mcp.utils.config import ServerConfig
+from servicenow_mcp.utils.update_set_policy import (
+    UpdateSetInfo,
+    assert_update_set_compliance_for_write,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _enforce_update_set_policy(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    table: str,
+) -> Dict[str, Any] | None:
+    current_update_set_result = get_current_update_set(config, auth_manager, {})
+    current_update_set = None
+    if current_update_set_result.get("success"):
+        update_set = current_update_set_result.get("update_set", {})
+        if isinstance(update_set, dict):
+            current_update_set = UpdateSetInfo(
+                name=update_set.get("name"),
+                sys_id=update_set.get("sys_id"),
+                state=update_set.get("state"),
+                is_default=bool(update_set.get("is_default")),
+            )
+    compliance = assert_update_set_compliance_for_write(
+        table=table,
+        current_update_set=current_update_set,
+    )
+    if compliance.allowed:
+        return None
+    return {
+        "success": False,
+        "table": table,
+        "error": compliance.reason,
+        "governance": {
+            "classification": compliance.classification.value,
+            "blocked_by": "update_set_policy",
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +246,9 @@ def create_record(
     Returns the sys_id and full record of the created row. Use verify_fields
     after creation to confirm field values persisted as intended.
     """
+    policy_error = _enforce_update_set_policy(config, auth_manager, params.table)
+    if policy_error:
+        return policy_error
     url = f"{config.api_url}/table/{params.table}"
     try:
         response = requests.post(
@@ -266,6 +306,9 @@ def update_record(
     Only provided fields are modified. Use verify_fields after the update to
     confirm values persisted — server-side rules may override written values.
     """
+    policy_error = _enforce_update_set_policy(config, auth_manager, params.table)
+    if policy_error:
+        return policy_error
     url = f"{config.api_url}/table/{params.table}/{params.sys_id}"
     try:
         response = requests.patch(
@@ -316,6 +359,9 @@ def delete_record(
 
     This is a destructive operation. Confirm the sys_id and table before calling.
     """
+    policy_error = _enforce_update_set_policy(config, auth_manager, params.table)
+    if policy_error:
+        return policy_error
     url = f"{config.api_url}/table/{params.table}/{params.sys_id}"
     try:
         response = requests.delete(
