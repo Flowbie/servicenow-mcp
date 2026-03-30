@@ -7,7 +7,9 @@ by table_tools (query_records / create_record / update_record) using the
 sys_update_set architecture blueprint.
 """
 
+import json
 import logging
+import re
 from typing import Any, Dict, List, Optional, Type, TypeVar, Union
 
 import requests
@@ -183,6 +185,30 @@ def _normalize_update_set(update_set: Dict[str, Any]) -> UpdateSetInfo:
     )
 
 
+def _parse_script_json_result(direct_output: str) -> Optional[Dict[str, Any]]:
+    """
+    Extract a JSON result object from background script direct_output.
+
+    The output format from _extract_syslog_output is:
+        [LEVEL] <user message> | run_id=<run_id>
+
+    We strip the level prefix and the run_id suffix, then attempt JSON.loads
+    on each line that looks like a JSON object containing "success".
+    """
+    level_prefix = re.compile(r"^\[(?:INFO|WARN|ERROR|DEBUG)\]\s*")
+    for line in direct_output.splitlines():
+        stripped = level_prefix.sub("", line).strip()
+        # Strip " | run_id=..." suffix
+        if " | run_id=" in stripped:
+            stripped = stripped[: stripped.rfind(" | run_id=")].strip()
+        if stripped.startswith("{") and '"success"' in stripped:
+            try:
+                return json.loads(stripped)
+            except (json.JSONDecodeError, ValueError):
+                continue
+    return None
+
+
 def get_current_update_set(
     config: ServerConfig,
     auth_manager: AuthManager,
@@ -191,59 +217,78 @@ def get_current_update_set(
     """
     Get the currently active update set for the authenticated user.
 
-    The value is resolved from the user's sys_update_set preference and then
-    normalized into a small stable contract for downstream governance checks.
+    Uses GlideUpdateSet.getOrCreate() — the same read path used by UpdateSetAjax
+    (the UI's authoritative mechanism for update set management).
     """
-    result = _unwrap_and_validate_params(params or {}, GetCurrentUpdateSetParams)
-    if not result["success"]:
-        return result
+    from servicenow_mcp.tools.script_tools import RunBackgroundScriptParams, run_background_script
 
-    instance_url = config.instance_url
-    headers = auth_manager.get_headers()
-    pref_url = (
-        f"{instance_url}/api/now/table/sys_user_preference"
-        "?sysparm_query=name=sys_update_set^user.user_name=current&sysparm_limit=1"
+    script = """\
+// Use GlideUpdateSet.getOrCreate() — same read path as UpdateSetAjax.getUpdateSets()
+var gus = new GlideUpdateSet();
+var currentSysId = gus.getOrCreate();
+
+if (!currentSysId) {
+    gs.info(JSON.stringify({success: false, message: 'No active update set found for current user'}) + ' | run_id=' + __MFCP_RUN_ID);
+} else {
+    var us = new GlideRecord('sys_update_set');
+    if (!us.get(currentSysId)) {
+        gs.info(JSON.stringify({success: false, message: 'Update set record not found: ' + currentSysId}) + ' | run_id=' + __MFCP_RUN_ID);
+    } else {
+        var usName = us.getDisplayValue('name');
+        var nameLower = usName.toLowerCase();
+        var isDefault = (nameLower === 'default' || nameLower === 'default [global]' || nameLower.indexOf('default [') === 0);
+        gs.info(JSON.stringify({
+            success: true,
+            name: usName,
+            sys_id: us.getUniqueValue(),
+            state: us.getValue('state'),
+            is_default: isDefault
+        }) + ' | run_id=' + __MFCP_RUN_ID);
+    }
+}
+"""
+
+    bg = run_background_script(
+        config,
+        auth_manager,
+        RunBackgroundScriptParams(
+            description="Read current update set via GlideUpdateSet.getOrCreate() — no writes.",
+            script=script,
+        ),
     )
 
-    try:
-        pref_resp = requests.get(pref_url, headers=headers)
-        pref_resp.raise_for_status()
-        prefs = pref_resp.json().get("result", [])
-        if not prefs:
-            return {
-                "success": False,
-                "message": "No active sys_update_set preference was found for the current user.",
-            }
+    if not bg.success:
+        return {"success": False, "message": f"Background script failed: {bg.message}"}
 
-        current_update_set_sys_id = prefs[0].get("value")
-        if not isinstance(current_update_set_sys_id, str) or not current_update_set_sys_id:
-            return {
-                "success": False,
-                "message": "The current user's sys_update_set preference does not contain a valid sys_id.",
-            }
-
-        update_set_resp = requests.get(
-            f"{instance_url}/api/now/table/sys_update_set/{current_update_set_sys_id}",
-            headers=headers,
-        )
-        update_set_resp.raise_for_status()
-        normalized = _normalize_update_set(update_set_resp.json().get("result", {}))
+    data = _parse_script_json_result(bg.direct_output)
+    if data is None:
         return {
-            "success": True,
+            "success": False,
+            "message": f"Could not parse update set result from script output: {bg.direct_output[:300]}",
+        }
+
+    if not data.get("success"):
+        return data
+
+    normalized = UpdateSetInfo(
+        name=data.get("name"),
+        sys_id=data.get("sys_id"),
+        state=data.get("state"),
+        is_default=bool(data.get("is_default")),
+    )
+    return {
+        "success": True,
+        "name": normalized.name,
+        "sys_id": normalized.sys_id,
+        "state": normalized.state,
+        "is_default": normalized.is_default,
+        "update_set": {
             "name": normalized.name,
             "sys_id": normalized.sys_id,
             "state": normalized.state,
             "is_default": normalized.is_default,
-            "update_set": {
-                "name": normalized.name,
-                "sys_id": normalized.sys_id,
-                "state": normalized.state,
-                "is_default": normalized.is_default,
-            },
-        }
-    except requests.exceptions.RequestException as e:
-        logger.error("Error getting current update set: %s", e)
-        return {"success": False, "message": f"Failed to fetch current update set: {e}"}
+        },
+    }
 
 
 def set_current_update_set(
@@ -254,9 +299,9 @@ def set_current_update_set(
     """
     Activate an update set as the current working set for the authenticated user.
 
-    Validates the update set is in 'in progress' state, then updates the user's
-    sys_user_preference to make it the active update set. All subsequent platform
-    changes will be captured in this update set.
+    Runs a background script that calls GlideUpdateSet.set(sys_id) — the exact
+    same server-side call made by UpdateSetAjax.changeUpdateSet(), which backs
+    the "Make This My Current Set" UI action.
 
     Args:
         config: The server configuration.
@@ -266,6 +311,8 @@ def set_current_update_set(
     Returns:
         Success status with the activated update set details.
     """
+    from servicenow_mcp.tools.script_tools import RunBackgroundScriptParams, run_background_script
+
     result = _unwrap_and_validate_params(
         params,
         SetCurrentUpdateSetParams,
@@ -274,69 +321,79 @@ def set_current_update_set(
     if not result["success"]:
         return result
 
-    validated_params = result["params"]
-    instance_url = config.instance_url
-    headers = auth_manager.get_headers()
+    changeset_id = result["params"].changeset_id
 
-    # Validate the update set exists and is in progress
-    check_url = f"{instance_url}/api/now/table/sys_update_set/{validated_params.changeset_id}"
-    try:
-        check_resp = requests.get(check_url, headers=headers)
-        check_resp.raise_for_status()
-        update_set = check_resp.json().get("result", {})
-    except requests.exceptions.RequestException as e:
-        return {"success": False, "message": f"Failed to fetch update set: {e}"}
+    # Sanitise — sys_ids are hex + hyphens only; reject anything else before interpolation
+    if not re.fullmatch(r"[0-9a-fA-F\-]{32,}", changeset_id):
+        return {"success": False, "message": f"Invalid changeset_id format: {changeset_id!r}"}
 
-    state = update_set.get("state", "")
-    if state != "in progress":
+    script = f"""\
+var targetSysId = '{changeset_id}';
+var us = new GlideRecord('sys_update_set');
+if (!us.get(targetSysId)) {{
+    gs.info(JSON.stringify({{success: false, message: 'Update set not found: ' + targetSysId}}) + ' | run_id=' + __MFCP_RUN_ID);
+}} else {{
+    var state = us.getValue('state');
+    if (state !== 'in progress') {{
+        gs.info(JSON.stringify({{success: false, message: 'Update set state is "' + state + '", must be "in progress"'}}) + ' | run_id=' + __MFCP_RUN_ID);
+    }} else {{
+        // Use GlideUpdateSet.set() — exact same call as UpdateSetAjax.changeUpdateSet()
+        var gus = new GlideUpdateSet();
+        gus.set(targetSysId);
+
+        var usName = us.getDisplayValue('name');
+        var nameLower = usName.toLowerCase();
+        var isDefault = (nameLower === 'default' || nameLower === 'default [global]' || nameLower.indexOf('default [') === 0);
+        gs.info(JSON.stringify({{
+            success: true,
+            name: usName,
+            sys_id: us.getUniqueValue(),
+            state: state,
+            is_default: isDefault
+        }}) + ' | run_id=' + __MFCP_RUN_ID);
+    }}
+}}
+"""
+
+    bg = run_background_script(
+        config,
+        auth_manager,
+        RunBackgroundScriptParams(
+            description=f"Activate update set {changeset_id} as current via GlideUpdateSet.set() — mirrors UpdateSetAjax.changeUpdateSet().",
+            script=script,
+        ),
+    )
+
+    if not bg.success:
+        return {"success": False, "message": f"Background script failed: {bg.message}"}
+
+    data = _parse_script_json_result(bg.direct_output)
+    if data is None:
         return {
             "success": False,
-            "message": (
-                f"Update set is in state '{state}', not 'in progress'. "
-                "Only 'in progress' update sets can be made current."
-            ),
-            "update_set": update_set,
+            "message": f"Could not parse result from script output: {bg.direct_output[:300]}",
         }
 
-    # Set as current via sys_user_preference
-    pref_url = f"{instance_url}/api/now/table/sys_user_preference"
-    pref_query_url = (
-        f"{pref_url}?sysparm_query=name=sys_update_set^user.user_name=current&sysparm_limit=1"
+    if not data.get("success"):
+        return data
+
+    normalized = UpdateSetInfo(
+        name=data.get("name"),
+        sys_id=data.get("sys_id"),
+        state=data.get("state"),
+        is_default=bool(data.get("is_default")),
     )
-    try:
-        # Check if preference record already exists
-        pref_resp = requests.get(pref_query_url, headers=headers)
-        pref_resp.raise_for_status()
-        prefs = pref_resp.json().get("result", [])
-
-        pref_data = {"value": validated_params.changeset_id}
-        if prefs:
-            pref_sys_id = prefs[0].get("sys_id", "")
-            upd_resp = requests.patch(
-                f"{pref_url}/{pref_sys_id}",
-                json=pref_data,
-                headers=headers,
-            )
-            upd_resp.raise_for_status()
-        else:
-            pref_data["name"] = "sys_update_set"
-            crt_resp = requests.post(pref_url, json=pref_data, headers=headers)
-            crt_resp.raise_for_status()
-
-        normalized = _normalize_update_set(update_set)
-        return {
-            "success": True,
-            "message": f"Update set '{update_set.get('name', validated_params.changeset_id)}' is now active.",
+    return {
+        "success": True,
+        "message": f"Update set '{normalized.name}' is now active.",
+        "name": normalized.name,
+        "sys_id": normalized.sys_id,
+        "state": normalized.state,
+        "is_default": normalized.is_default,
+        "update_set": {
             "name": normalized.name,
             "sys_id": normalized.sys_id,
             "state": normalized.state,
             "is_default": normalized.is_default,
-            "update_set": {
-                "name": normalized.name,
-                "sys_id": normalized.sys_id,
-                "state": normalized.state,
-                "is_default": normalized.is_default,
-            },
-        }
-    except requests.exceptions.RequestException as e:
-        return {"success": False, "message": f"Failed to set current update set: {e}"}
+        },
+    }

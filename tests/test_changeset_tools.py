@@ -21,41 +21,30 @@ from servicenow_mcp.tools.changeset_tools import (
 from servicenow_mcp.utils.config import ServerConfig, AuthConfig, AuthType, BasicAuthConfig
 
 
-class TestChangesetTools(unittest.TestCase):
-    """Tests for the compound changeset tools."""
+def _make_bg_result(direct_output: str, success: bool = True):
+    """Build a minimal RunBackgroundScriptResult-like mock."""
+    result = MagicMock()
+    result.success = success
+    result.direct_output = direct_output
+    result.message = "" if success else "script error"
+    return result
 
+
+class TestGetCurrentUpdateSet(unittest.TestCase):
     def setUp(self):
-        """Set up test fixtures."""
         auth_config = AuthConfig(
             type=AuthType.BASIC,
-            basic=BasicAuthConfig(
-                username="test_user",
-                password="test_password"
-            )
+            basic=BasicAuthConfig(username="svc_account", password="pw"),
         )
-        self.server_config = ServerConfig(
-            instance_url="https://test.service-now.com",
-            auth=auth_config,
-        )
-        self.auth_manager = MagicMock(spec=AuthManager)
-        self.auth_manager.get_headers.return_value = {"Authorization": "Bearer test"}
+        self.config = ServerConfig(instance_url="https://test.service-now.com", auth=auth_config)
+        self.auth = MagicMock(spec=AuthManager)
 
-    @patch("servicenow_mcp.tools.changeset_tools.requests.get")
-    def test_get_current_update_set_success(self, mock_get):
-        """Test get_current_update_set returns normalized active update set details."""
-        pref_resp = MagicMock()
-        pref_resp.raise_for_status.return_value = None
-        pref_resp.json.return_value = {"result": [{"value": "us1"}]}
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_success(self, mock_bg):
+        output = '[INFO] {"success": true, "name": "STRY0012345 - Test", "sys_id": "us1", "state": "in progress", "is_default": false} | run_id=abc123'
+        mock_bg.return_value = _make_bg_result(output)
 
-        update_set_resp = MagicMock()
-        update_set_resp.raise_for_status.return_value = None
-        update_set_resp.json.return_value = {
-            "result": {"sys_id": "us1", "name": "STRY0012345 - Test", "state": "in progress"}
-        }
-
-        mock_get.side_effect = [pref_resp, update_set_resp]
-
-        result = get_current_update_set(self.server_config, self.auth_manager, {})
+        result = get_current_update_set(self.config, self.auth, {})
 
         self.assertTrue(result["success"])
         self.assertEqual(result["name"], "STRY0012345 - Test")
@@ -63,187 +52,180 @@ class TestChangesetTools(unittest.TestCase):
         self.assertEqual(result["state"], "in progress")
         self.assertFalse(result["is_default"])
 
-    @patch("servicenow_mcp.tools.changeset_tools.requests.get")
-    def test_get_current_update_set_missing_preference(self, mock_get):
-        """Test get_current_update_set fails cleanly when no preference exists."""
-        pref_resp = MagicMock()
-        pref_resp.raise_for_status.return_value = None
-        pref_resp.json.return_value = {"result": []}
-        mock_get.return_value = pref_resp
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_no_active_update_set(self, mock_bg):
+        output = '[INFO] {"success": false, "message": "No active update set found for current user (gs.getPreference returned empty)"} | run_id=abc123'
+        mock_bg.return_value = _make_bg_result(output)
 
-        result = get_current_update_set(self.server_config, self.auth_manager, {})
+        result = get_current_update_set(self.config, self.auth, {})
 
         self.assertFalse(result["success"])
-        self.assertIn("No active sys_update_set preference", result["message"])
+        self.assertIn("No active update set", result["message"])
 
-    @patch("servicenow_mcp.tools.changeset_tools.requests.get")
-    def test_get_changeset_details(self, mock_get):
-        """Test getting changeset details."""
-        # Mock responses
-        mock_changeset_response = MagicMock()
-        mock_changeset_response.json.return_value = {
-            "result": {
-                "sys_id": "123",
-                "name": "Test Changeset",
-                "state": "in_progress",
-                "application": "Test App",
-                "developer": "test.user",
-            }
-        }
-        mock_changeset_response.raise_for_status.return_value = None
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_background_script_failure(self, mock_bg):
+        mock_bg.return_value = _make_bg_result("", success=False)
 
-        mock_changes_response = MagicMock()
-        mock_changes_response.json.return_value = {
-            "result": [
-                {
-                    "sys_id": "456",
-                    "name": "test_file.py",
-                    "type": "file",
-                    "update_set": "123",
-                }
-            ]
-        }
-        mock_changes_response.raise_for_status.return_value = None
+        result = get_current_update_set(self.config, self.auth, {})
 
-        # Set up the mock to return different responses for different URLs
-        def side_effect(*args, **kwargs):
-            url = args[0]
-            if "sys_update_set" in url:
-                return mock_changeset_response
-            elif "sys_update_xml" in url:
-                return mock_changes_response
-            return None
-
-        mock_get.side_effect = side_effect
-
-        # Call the function
-        params = {"changeset_id": "123"}
-        result = get_changeset_details(self.server_config, self.auth_manager, params)
-
-        # Verify the result
-        self.assertTrue(result["success"])
-        self.assertEqual(result["changeset"]["sys_id"], "123")
-        self.assertEqual(result["changeset"]["name"], "Test Changeset")
-        self.assertEqual(len(result["changes"]), 1)
-        self.assertEqual(result["changes"][0]["sys_id"], "456")
-        self.assertEqual(result["changes"][0]["name"], "test_file.py")
-
-        # Verify the API calls
-        self.assertEqual(mock_get.call_count, 2)
-        first_call_args, first_call_kwargs = mock_get.call_args_list[0]
-        self.assertEqual(
-            first_call_args[0], "https://test.service-now.com/api/now/table/sys_update_set/123"
-        )
-        self.assertEqual(first_call_kwargs["headers"], {"Authorization": "Bearer test"})
-
-        second_call_args, second_call_kwargs = mock_get.call_args_list[1]
-        self.assertEqual(
-            second_call_args[0], "https://test.service-now.com/api/now/table/sys_update_xml"
-        )
-        self.assertEqual(second_call_kwargs["headers"], {"Authorization": "Bearer test"})
-        self.assertEqual(second_call_kwargs["params"]["sysparm_query"], "update_set=123")
-
-    @patch("servicenow_mcp.tools.changeset_tools.requests.get")
-    def test_get_changeset_details_missing_id(self, mock_get):
-        """Test get_changeset_details returns failure when changeset_id is missing."""
-        params = {}
-        result = get_changeset_details(self.server_config, self.auth_manager, params)
         self.assertFalse(result["success"])
-        mock_get.assert_not_called()
+        self.assertIn("Background script failed", result["message"])
 
-    @patch("servicenow_mcp.tools.changeset_tools.requests.get")
-    def test_set_current_update_set_success(self, mock_get):
-        """Test set_current_update_set activates an in-progress update set."""
-        # First call: validate the update set exists and is in progress
-        check_resp = MagicMock()
-        check_resp.raise_for_status.return_value = None
-        check_resp.json.return_value = {
-            "result": {"sys_id": "us1", "name": "My US", "state": "in progress"}
-        }
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_unparseable_output(self, mock_bg):
+        mock_bg.return_value = _make_bg_result("[INFO] unexpected non-json | run_id=abc123")
 
-        # Second call: query existing sys_user_preference
-        pref_resp = MagicMock()
-        pref_resp.raise_for_status.return_value = None
-        pref_resp.json.return_value = {"result": [{"sys_id": "pref1"}]}
+        result = get_current_update_set(self.config, self.auth, {})
 
-        mock_get.side_effect = [check_resp, pref_resp]
+        self.assertFalse(result["success"])
+        self.assertIn("Could not parse", result["message"])
 
-        with patch("servicenow_mcp.tools.changeset_tools.requests.patch") as mock_patch:
-            patch_resp = MagicMock()
-            patch_resp.raise_for_status.return_value = None
-            mock_patch.return_value = patch_resp
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_default_update_set_flagged(self, mock_bg):
+        output = '[INFO] {"success": true, "name": "Default", "sys_id": "def1", "state": "in progress", "is_default": true} | run_id=abc123'
+        mock_bg.return_value = _make_bg_result(output)
 
-            params = SetCurrentUpdateSetParams(changeset_id="us1")
-            result = set_current_update_set(self.server_config, self.auth_manager, params)
+        result = get_current_update_set(self.config, self.auth, {})
 
         self.assertTrue(result["success"])
-        self.assertIn("My US", result["message"])
+        self.assertTrue(result["is_default"])
 
-    @patch("servicenow_mcp.tools.changeset_tools.requests.get")
-    def test_set_current_update_set_wrong_state(self, mock_get):
-        """Test set_current_update_set rejects update sets not in 'in progress' state."""
-        check_resp = MagicMock()
-        check_resp.raise_for_status.return_value = None
-        check_resp.json.return_value = {
-            "result": {"sys_id": "us2", "name": "Closed US", "state": "complete"}
-        }
-        mock_get.return_value = check_resp
 
-        params = SetCurrentUpdateSetParams(changeset_id="us2")
-        result = set_current_update_set(self.server_config, self.auth_manager, params)
+class TestSetCurrentUpdateSet(unittest.TestCase):
+    def setUp(self):
+        auth_config = AuthConfig(
+            type=AuthType.BASIC,
+            basic=BasicAuthConfig(username="svc_account", password="pw"),
+        )
+        self.config = ServerConfig(instance_url="https://test.service-now.com", auth=auth_config)
+        self.auth = MagicMock(spec=AuthManager)
+
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_success(self, mock_bg):
+        output = '[INFO] {"success": true, "name": "STRY0012345 - My Story", "sys_id": "abc123def456abc123def456abc12345", "state": "in progress", "is_default": false} | run_id=xyz'
+        mock_bg.return_value = _make_bg_result(output)
+
+        result = set_current_update_set(
+            self.config, self.auth,
+            SetCurrentUpdateSetParams(changeset_id="abc123def456abc123def456abc12345"),
+        )
+
+        self.assertTrue(result["success"])
+        self.assertIn("STRY0012345 - My Story", result["message"])
+        self.assertEqual(result["sys_id"], "abc123def456abc123def456abc12345")
+
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_wrong_state(self, mock_bg):
+        output = '[INFO] {"success": false, "message": "Update set state is \\"complete\\", must be \\"in progress\\""} | run_id=xyz'
+        mock_bg.return_value = _make_bg_result(output)
+
+        result = set_current_update_set(
+            self.config, self.auth,
+            SetCurrentUpdateSetParams(changeset_id="abc123def456abc123def456abc12345"),
+        )
 
         self.assertFalse(result["success"])
         self.assertIn("complete", result["message"])
 
-    @patch("servicenow_mcp.tools.changeset_tools.requests.get")
-    def test_set_current_update_set_creates_preference_when_missing(self, mock_get):
-        """Test set_current_update_set creates a new preference when none exists."""
-        check_resp = MagicMock()
-        check_resp.raise_for_status.return_value = None
-        check_resp.json.return_value = {
-            "result": {"sys_id": "us3", "name": "New US", "state": "in progress"}
-        }
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_update_set_not_found(self, mock_bg):
+        output = '[INFO] {"success": false, "message": "Update set not found: abc123def456abc123def456abc12345"} | run_id=xyz'
+        mock_bg.return_value = _make_bg_result(output)
 
-        pref_resp = MagicMock()
-        pref_resp.raise_for_status.return_value = None
-        pref_resp.json.return_value = {"result": []}  # no existing preference
+        result = set_current_update_set(
+            self.config, self.auth,
+            SetCurrentUpdateSetParams(changeset_id="abc123def456abc123def456abc12345"),
+        )
 
-        mock_get.side_effect = [check_resp, pref_resp]
+        self.assertFalse(result["success"])
+        self.assertIn("not found", result["message"])
 
-        with patch("servicenow_mcp.tools.changeset_tools.requests.post") as mock_post:
-            post_resp = MagicMock()
-            post_resp.raise_for_status.return_value = None
-            mock_post.return_value = post_resp
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_background_script_failure(self, mock_bg):
+        mock_bg.return_value = _make_bg_result("", success=False)
 
-            params = SetCurrentUpdateSetParams(changeset_id="us3")
-            result = set_current_update_set(self.server_config, self.auth_manager, params)
+        result = set_current_update_set(
+            self.config, self.auth,
+            SetCurrentUpdateSetParams(changeset_id="abc123def456abc123def456abc12345"),
+        )
 
-        self.assertTrue(result["success"])
-        mock_post.assert_called_once()
+        self.assertFalse(result["success"])
+        self.assertIn("Background script failed", result["message"])
 
+    def test_invalid_changeset_id_rejected(self):
+        """Changeset IDs with invalid chars are rejected before script execution."""
+        result = set_current_update_set(
+            self.config, self.auth,
+            SetCurrentUpdateSetParams(changeset_id="'; DROP TABLE sys_update_set; --"),
+        )
+        self.assertFalse(result["success"])
+        self.assertIn("Invalid changeset_id", result["message"])
 
-class TestChangesetToolsParams(unittest.TestCase):
-    """Tests for the compound changeset param models."""
-
-    def test_get_changeset_details_params(self):
-        """Test GetChangesetDetailsParams."""
-        params = GetChangesetDetailsParams(changeset_id="123")
-        self.assertEqual(params.changeset_id, "123")
-
-    def test_set_current_update_set_params(self):
-        """Test SetCurrentUpdateSetParams."""
-        params = SetCurrentUpdateSetParams(changeset_id="abc")
-        self.assertEqual(params.changeset_id, "abc")
-
-    def test_set_current_update_set_params_requires_id(self):
-        """Test SetCurrentUpdateSetParams raises when changeset_id missing."""
+    def test_missing_changeset_id(self):
         with self.assertRaises(Exception):
             SetCurrentUpdateSetParams()
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestGetChangesetDetails(unittest.TestCase):
+    def setUp(self):
+        auth_config = AuthConfig(
+            type=AuthType.BASIC,
+            basic=BasicAuthConfig(username="svc_account", password="pw"),
+        )
+        self.config = ServerConfig(instance_url="https://test.service-now.com", auth=auth_config)
+        self.auth = MagicMock(spec=AuthManager)
+        self.auth.get_headers.return_value = {"Authorization": "Bearer test"}
+
+    @patch("servicenow_mcp.tools.changeset_tools.requests.get")
+    def test_success(self, mock_get):
+        changeset_resp = MagicMock()
+        changeset_resp.raise_for_status.return_value = None
+        changeset_resp.json.return_value = {
+            "result": {"sys_id": "123", "name": "Test Changeset", "state": "in_progress"}
+        }
+
+        changes_resp = MagicMock()
+        changes_resp.raise_for_status.return_value = None
+        changes_resp.json.return_value = {
+            "result": [{"sys_id": "456", "name": "test_file.py", "update_set": "123"}]
+        }
+
+        def side_effect(*args, **kwargs):
+            url = args[0]
+            return changeset_resp if "sys_update_set" in url else changes_resp
+
+        mock_get.side_effect = side_effect
+
+        result = get_changeset_details(self.config, self.auth, {"changeset_id": "123"})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["changeset"]["sys_id"], "123")
+        self.assertEqual(len(result["changes"]), 1)
+
+    @patch("servicenow_mcp.tools.changeset_tools.requests.get")
+    def test_missing_id(self, mock_get):
+        result = get_changeset_details(self.config, self.auth, {})
+        self.assertFalse(result["success"])
+        mock_get.assert_not_called()
+
+
+class TestChangesetToolsParams(unittest.TestCase):
+    def test_get_changeset_details_params(self):
+        params = GetChangesetDetailsParams(changeset_id="123")
+        self.assertEqual(params.changeset_id, "123")
+
+    def test_set_current_update_set_params(self):
+        params = SetCurrentUpdateSetParams(changeset_id="abc")
+        self.assertEqual(params.changeset_id, "abc")
+
+    def test_set_current_update_set_params_requires_id(self):
+        with self.assertRaises(Exception):
+            SetCurrentUpdateSetParams()
+
     def test_get_current_update_set_params(self):
-        """Test GetCurrentUpdateSetParams."""
         params = GetCurrentUpdateSetParams()
         self.assertIsInstance(params, GetCurrentUpdateSetParams)
+
+
+if __name__ == "__main__":
+    unittest.main()

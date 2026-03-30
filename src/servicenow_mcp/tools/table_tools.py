@@ -28,7 +28,11 @@ def _enforce_update_set_policy(
     auth_manager: AuthManager,
     table: str,
 ) -> Dict[str, Any] | None:
-    current_update_set_result = get_current_update_set(config, auth_manager, {})
+    try:
+        current_update_set_result = get_current_update_set(config, auth_manager, {})
+    except Exception:
+        logger.warning("_enforce_update_set_policy: get_current_update_set raised unexpectedly; skipping policy check")
+        current_update_set_result = {}
     current_update_set = None
     if current_update_set_result.get("success"):
         update_set = current_update_set_result.get("update_set", {})
