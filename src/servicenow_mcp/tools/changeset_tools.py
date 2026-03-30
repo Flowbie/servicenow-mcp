@@ -195,7 +195,7 @@ def _parse_script_json_result(direct_output: str) -> Optional[Dict[str, Any]]:
     We strip the level prefix and the run_id suffix, then attempt JSON.loads
     on each line that looks like a JSON object containing "success".
     """
-    level_prefix = re.compile(r"^\[(?:INFO|WARN|ERROR|DEBUG)\]\s*")
+    level_prefix = re.compile(r"^\[(?:INFO|WARN|ERROR|DEBUG|\d+)\]\s*")
     for line in direct_output.splitlines():
         stripped = level_prefix.sub("", line).strip()
         # Strip " | run_id=..." suffix

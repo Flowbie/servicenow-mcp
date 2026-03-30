@@ -90,6 +90,18 @@ class TestGetCurrentUpdateSet(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertTrue(result["is_default"])
 
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_numeric_level_prefix_parsed(self, mock_bg):
+        """Syslog level field is a numeric string ('0', '1', etc.) on the instance.
+        _extract_syslog_output formats lines as [0], [1], etc. — verify these parse."""
+        output = '[0] {"success": true, "name": "STRY0099 - Feature", "sys_id": "us2", "state": "in progress", "is_default": false} | run_id=abc123'
+        mock_bg.return_value = _make_bg_result(output)
+
+        result = get_current_update_set(self.config, self.auth, {})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["name"], "STRY0099 - Feature")
+
 
 class TestSetCurrentUpdateSet(unittest.TestCase):
     def setUp(self):
@@ -164,6 +176,20 @@ class TestSetCurrentUpdateSet(unittest.TestCase):
     def test_missing_changeset_id(self):
         with self.assertRaises(Exception):
             SetCurrentUpdateSetParams()
+
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_numeric_level_prefix_parsed(self, mock_bg):
+        """Syslog level is numeric on instance — output format is [0] not [INFO]."""
+        output = '[0] {"success": true, "name": "STRY0099 - Feature", "sys_id": "abc123def456abc123def456abc12345", "state": "in progress", "is_default": false} | run_id=xyz'
+        mock_bg.return_value = _make_bg_result(output)
+
+        result = set_current_update_set(
+            self.config, self.auth,
+            SetCurrentUpdateSetParams(changeset_id="abc123def456abc123def456abc12345"),
+        )
+
+        self.assertTrue(result["success"])
+        self.assertIn("STRY0099 - Feature", result["message"])
 
 
 class TestGetChangesetDetails(unittest.TestCase):
