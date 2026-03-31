@@ -15,8 +15,10 @@ from servicenow_mcp.tools.change_tools import (
     submit_change_for_approval,
 )
 from servicenow_mcp.tools.changeset_tools import (
+    get_current_scope,
     get_current_update_set,
     get_changeset_details,
+    set_current_scope,
     set_current_update_set,
 )
 from servicenow_mcp.tools.user_tools import (
@@ -66,8 +68,10 @@ __all__ = [
     "reject_change",
 
     # Changeset tools (compound only; CRUD via table_tools + sys_update_set blueprint)
+    "get_current_scope",
     "get_current_update_set",
     "get_changeset_details",
+    "set_current_scope",
     "set_current_update_set",
 
     # User role management tools (compound grant/revoke only; list via table_tools)

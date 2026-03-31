@@ -47,6 +47,22 @@ class GetCurrentUpdateSetParams(BaseModel):
     """Parameters for fetching the user's currently active update set."""
 
 
+class GetCurrentScopeParams(BaseModel):
+    """Parameters for fetching the currently active application scope."""
+
+
+class SetCurrentScopeParams(BaseModel):
+    """Parameters for setting the currently active application scope."""
+
+    app_id: str = Field(
+        ...,
+        description=(
+            "Application picker app_id for the target scope. This is the same identifier "
+            "used by the Next Experience application picker endpoint."
+        ),
+    )
+
+
 def _unwrap_and_validate_params(
     params: Union[Dict[str, Any], BaseModel],
     model_class: Type[T],
@@ -209,6 +225,107 @@ def _parse_script_json_result(direct_output: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _parse_scope_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    candidates: List[Dict[str, Any]] = [payload]
+    for key in ("result", "data", "application", "picker"):
+        nested = payload.get(key)
+        if isinstance(nested, dict):
+            candidates.append(nested)
+    for candidate in list(candidates):
+        for key in ("current", "selected", "value"):
+            nested = candidate.get(key)
+            if isinstance(nested, dict):
+                candidates.append(nested)
+
+    for candidate in candidates:
+        app_id = candidate.get("app_id") or candidate.get("id") or candidate.get("sys_id") or candidate.get("value")
+        scope_name = (
+            candidate.get("scope")
+            or candidate.get("scopeName")
+            or candidate.get("name")
+            or candidate.get("label")
+            or candidate.get("displayValue")
+            or candidate.get("display_value")
+        )
+        scope_display_name = (
+            candidate.get("scopeDisplayName")
+            or candidate.get("display_name")
+            or candidate.get("displayName")
+            or candidate.get("title")
+            or scope_name
+        )
+        if isinstance(app_id, str) and app_id:
+            return {
+                "success": True,
+                "app_id": app_id,
+                "scope_name": scope_name if isinstance(scope_name, str) and scope_name else None,
+                "scope_display_name": (
+                    scope_display_name
+                    if isinstance(scope_display_name, str) and scope_display_name
+                    else (scope_name if isinstance(scope_name, str) and scope_name else None)
+                ),
+                "raw": payload,
+            }
+
+    return {
+        "success": False,
+        "message": "Could not parse application scope from picker response",
+        "raw": payload,
+    }
+
+
+def _call_application_picker(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    method: str,
+    *,
+    json_body: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    from servicenow_mcp.tools.script_tools import _get_ui_session
+
+    session, csrf_token, failure_reason = _get_ui_session(config, auth_manager)
+    if session is None:
+        return {
+            "success": False,
+            "message": f"Could not establish authenticated UI session: {failure_reason}",
+        }
+
+    url = f"{config.instance_url.rstrip('/')}/api/now/ui/concoursepicker/application"
+    headers = {"Accept": "application/json"}
+    if csrf_token:
+        headers["X-UserToken"] = csrf_token
+
+    try:
+        response = session.request(
+            method.upper(),
+            url,
+            json=json_body,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error calling application picker endpoint: {e}")
+        return {
+            "success": False,
+            "message": f"Error calling application picker endpoint: {str(e)}",
+        }
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return {
+            "success": False,
+            "message": "Application picker returned non-JSON response",
+            "status_code": response.status_code,
+        }
+
+    parsed = _parse_scope_payload(payload)
+    if not parsed.get("success"):
+        parsed["status_code"] = response.status_code
+    return parsed
+
+
 def get_current_update_set(
     config: ServerConfig,
     auth_manager: AuthManager,
@@ -288,6 +405,72 @@ if (!currentSysId) {
             "state": normalized.state,
             "is_default": normalized.is_default,
         },
+    }
+
+
+def get_current_scope(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: Union[Dict[str, Any], GetCurrentScopeParams, None] = None,
+) -> Dict[str, Any]:
+    """
+    Get the currently active Next Experience application scope for the authenticated UI session.
+
+    Uses the same application picker endpoint that the ServiceNow UI and tools like SN Utils use.
+    """
+    result = _call_application_picker(config, auth_manager, "GET")
+    if not result.get("success"):
+        return result
+
+    return {
+        "success": True,
+        "app_id": result.get("app_id"),
+        "scope_name": result.get("scope_name"),
+        "scope_display_name": result.get("scope_display_name"),
+    }
+
+
+def set_current_scope(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: Union[Dict[str, Any], SetCurrentScopeParams],
+) -> Dict[str, Any]:
+    """
+    Set the currently active Next Experience application scope for the authenticated UI session.
+
+    Sends a PUT to /api/now/ui/concoursepicker/application with the selected app_id, mirroring
+    the behavior of the platform application picker.
+    """
+    result = _unwrap_and_validate_params(
+        params,
+        SetCurrentScopeParams,
+        required_fields=["app_id"],
+    )
+    if not result["success"]:
+        return result
+
+    app_id = result["params"].app_id.strip()
+    if not app_id:
+        return {"success": False, "message": "app_id cannot be empty"}
+
+    picker_result = _call_application_picker(
+        config,
+        auth_manager,
+        "PUT",
+        json_body={"app_id": app_id},
+    )
+    if not picker_result.get("success"):
+        return picker_result
+
+    return {
+        "success": True,
+        "message": (
+            f"Application scope set to "
+            f"{picker_result.get('scope_display_name') or picker_result.get('scope_name') or app_id}."
+        ),
+        "app_id": picker_result.get("app_id"),
+        "scope_name": picker_result.get("scope_name"),
+        "scope_display_name": picker_result.get("scope_display_name"),
     }
 
 

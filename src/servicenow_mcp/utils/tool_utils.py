@@ -31,10 +31,12 @@ from servicenow_mcp.tools.change_tools import (
     submit_change_for_approval as submit_change_for_approval_tool,
 )
 from servicenow_mcp.tools.changeset_tools import (
+    GetCurrentScopeParams,
     GetCurrentUpdateSetParams,
     GetChangesetDetailsParams,
 )
 from servicenow_mcp.tools.changeset_tools import (
+    get_current_scope as get_current_scope_tool,
     get_current_update_set as get_current_update_set_tool,
     get_changeset_details as get_changeset_details_tool,
 )
@@ -205,7 +207,9 @@ from servicenow_mcp.tools.system_tools import (
     get_current_user as get_current_user_tool,
 )
 from servicenow_mcp.tools.changeset_tools import (
+    SetCurrentScopeParams,
     SetCurrentUpdateSetParams,
+    set_current_scope as set_current_scope_tool,
     set_current_update_set as set_current_update_set_tool,
 )
 from servicenow_mcp.tools.request_tools import (
@@ -535,6 +539,16 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
                 "Return the currently active update set for the authenticated user. "
                 "The response is normalized to name, sys_id, state, and is_default "
                 "for downstream governance checks."
+            ),
+            "json",
+        ),
+        "get_current_scope": (
+            get_current_scope_tool,
+            GetCurrentScopeParams,
+            dict,
+            (
+                "Return the currently active Next Experience application scope for the authenticated UI session. "
+                "Uses the same application picker endpoint the ServiceNow UI uses."
             ),
             "json",
         ),
@@ -982,6 +996,16 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
                 "so all subsequent platform changes are captured in it. "
                 "Call this before scripting or configuration work to ensure changes land in the "
                 "correct update set. Use query_records on sys_update_set to find available update set sys_ids."
+            ),
+            "json",
+        ),
+        "set_current_scope": (
+            set_current_scope_tool,
+            SetCurrentScopeParams,
+            dict,
+            (
+                "Set the currently active Next Experience application scope for the authenticated UI session "
+                "using the platform application picker endpoint. Requires the target app_id."
             ),
             "json",
         ),

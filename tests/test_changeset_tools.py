@@ -11,11 +11,15 @@ from unittest.mock import MagicMock, patch
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.changeset_tools import (
+    GetCurrentScopeParams,
     GetCurrentUpdateSetParams,
     GetChangesetDetailsParams,
+    SetCurrentScopeParams,
     SetCurrentUpdateSetParams,
+    get_current_scope,
     get_current_update_set,
     get_changeset_details,
+    set_current_scope,
     set_current_update_set,
 )
 from servicenow_mcp.utils.config import ServerConfig, AuthConfig, AuthType, BasicAuthConfig
@@ -101,6 +105,86 @@ class TestGetCurrentUpdateSet(unittest.TestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(result["name"], "STRY0099 - Feature")
+
+
+class TestScopePickerTools(unittest.TestCase):
+    def setUp(self):
+        auth_config = AuthConfig(
+            type=AuthType.BASIC,
+            basic=BasicAuthConfig(username="svc_account", password="pw"),
+        )
+        self.config = ServerConfig(instance_url="https://test.service-now.com", auth=auth_config)
+        self.auth = MagicMock(spec=AuthManager)
+
+    @patch("servicenow_mcp.tools.script_tools._get_ui_session")
+    def test_get_current_scope_success(self, mock_ui_session):
+        session = MagicMock()
+        response = MagicMock()
+        response.raise_for_status.return_value = None
+        response.status_code = 200
+        response.json.return_value = {
+            "result": {
+                "current": {
+                    "app_id": "scope123",
+                    "scope": "x_acme_app",
+                    "scopeDisplayName": "Acme App",
+                }
+            }
+        }
+        session.request.return_value = response
+        mock_ui_session.return_value = (session, "token123", None)
+
+        result = get_current_scope(self.config, self.auth, GetCurrentScopeParams())
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["app_id"], "scope123")
+        self.assertEqual(result["scope_name"], "x_acme_app")
+        self.assertEqual(result["scope_display_name"], "Acme App")
+        session.request.assert_called_once()
+
+    @patch("servicenow_mcp.tools.script_tools._get_ui_session")
+    def test_get_current_scope_session_failure(self, mock_ui_session):
+        mock_ui_session.return_value = (None, None, "login_failed")
+
+        result = get_current_scope(self.config, self.auth, {})
+
+        self.assertFalse(result["success"])
+        self.assertIn("login_failed", result["message"])
+
+    @patch("servicenow_mcp.tools.script_tools._get_ui_session")
+    def test_set_current_scope_success(self, mock_ui_session):
+        session = MagicMock()
+        response = MagicMock()
+        response.raise_for_status.return_value = None
+        response.status_code = 200
+        response.json.return_value = {
+            "application": {
+                "id": "scope123",
+                "scope": "x_acme_app",
+                "scopeDisplayName": "Acme App",
+            }
+        }
+        session.request.return_value = response
+        mock_ui_session.return_value = (session, "token123", None)
+
+        result = set_current_scope(
+            self.config,
+            self.auth,
+            SetCurrentScopeParams(app_id="scope123"),
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["app_id"], "scope123")
+        self.assertEqual(result["scope_name"], "x_acme_app")
+        self.assertIn("Acme App", result["message"])
+        _, kwargs = session.request.call_args
+        self.assertEqual(kwargs["json"], {"app_id": "scope123"})
+        self.assertEqual(kwargs["headers"]["X-UserToken"], "token123")
+
+    def test_set_current_scope_rejects_blank_app_id(self):
+        result = set_current_scope(self.config, self.auth, {"app_id": "   "})
+        self.assertFalse(result["success"])
+        self.assertIn("cannot be empty", result["message"])
 
 
 class TestSetCurrentUpdateSet(unittest.TestCase):
@@ -251,6 +335,14 @@ class TestChangesetToolsParams(unittest.TestCase):
     def test_get_current_update_set_params(self):
         params = GetCurrentUpdateSetParams()
         self.assertIsInstance(params, GetCurrentUpdateSetParams)
+
+    def test_get_current_scope_params(self):
+        params = GetCurrentScopeParams()
+        self.assertIsInstance(params, GetCurrentScopeParams)
+
+    def test_set_current_scope_params(self):
+        params = SetCurrentScopeParams(app_id="scope123")
+        self.assertEqual(params.app_id, "scope123")
 
 
 if __name__ == "__main__":

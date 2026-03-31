@@ -104,7 +104,9 @@ executor:
   # System:
   - get_current_user
   # Changeset (update set management — CRUD via table_tools + sys_update_set blueprint):
+  - get_current_scope
   - get_current_update_set
+  - set_current_scope
   - set_current_update_set
 
 platform_developer:
@@ -154,8 +156,10 @@ platform_developer:
   # Request Fulfillment (compound only; CRUD via table_tools + architecture blueprint)
   - get_ritm_variables
   # Changesets (CRUD via table_tools + sys_update_set blueprint)
+  - get_current_scope
   - get_current_update_set
   - get_changeset_details
+  - set_current_scope
   - set_current_update_set
 
 agile_management:
@@ -335,6 +339,7 @@ full:
   - update_action
   - publish_action
   # Changeset (CRUD via table_tools + sys_update_set blueprint)
+  - get_current_scope
   - get_current_update_set
   - get_changeset_details
   # User/Group Role Management (compound grant/revoke only; list → query_records on sys_user_has_role / sys_group_has_role)
@@ -357,7 +362,9 @@ full:
   # System (sys_properties CRUD → query_records on sys_properties)
   - get_current_user
   # Update Set Activation
+  - get_current_scope
   - get_current_update_set
+  - set_current_scope
   - set_current_update_set
   # Integration Platform — compound only; CRUD via table_tools + integration architecture blueprint
   - get_rest_message
