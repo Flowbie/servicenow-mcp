@@ -226,6 +226,33 @@ def _parse_script_json_result(direct_output: str) -> Optional[Dict[str, Any]]:
 
 
 def _parse_scope_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    result = payload.get("result")
+    if isinstance(result, dict):
+        current_value = result.get("current")
+        app_list = result.get("list")
+        if isinstance(current_value, str) and isinstance(app_list, list):
+            for item in app_list:
+                if not isinstance(item, dict):
+                    continue
+                sys_id = item.get("sysId") or item.get("sys_id") or item.get("app_id") or item.get("id")
+                scope_name = item.get("scopeName") or item.get("scope") or item.get("name")
+                if current_value in {sys_id, scope_name}:
+                    display_name = item.get("name") or item.get("label") or scope_name
+                    return {
+                        "success": True,
+                        "app_id": sys_id if isinstance(sys_id, str) and sys_id else current_value,
+                        "scope_name": scope_name if isinstance(scope_name, str) and scope_name else current_value,
+                        "scope_display_name": (
+                            display_name if isinstance(display_name, str) and display_name else current_value
+                        ),
+                    }
+            return {
+                "success": True,
+                "app_id": current_value,
+                "scope_name": current_value,
+                "scope_display_name": current_value.title() if current_value.islower() else current_value,
+            }
+
     candidates: List[Dict[str, Any]] = [payload]
     for key in ("result", "data", "application", "picker"):
         nested = payload.get(key)
@@ -264,13 +291,11 @@ def _parse_scope_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
                     if isinstance(scope_display_name, str) and scope_display_name
                     else (scope_name if isinstance(scope_name, str) and scope_name else None)
                 ),
-                "raw": payload,
             }
 
     return {
         "success": False,
         "message": "Could not parse application scope from picker response",
-        "raw": payload,
     }
 
 
@@ -281,22 +306,18 @@ def _call_application_picker(
     *,
     json_body: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    from servicenow_mcp.tools.script_tools import _get_ui_session
-
-    session, csrf_token, failure_reason = _get_ui_session(config, auth_manager)
-    if session is None:
-        return {
-            "success": False,
-            "message": f"Could not establish authenticated UI session: {failure_reason}",
-        }
-
     url = f"{config.instance_url.rstrip('/')}/api/now/ui/concoursepicker/application"
-    headers = {"Accept": "application/json"}
-    if csrf_token:
-        headers["X-UserToken"] = csrf_token
+    headers = auth_manager.get_headers()
+    auth_config = getattr(auth_manager, "config", None)
+    logger.info(
+        "application_picker | method=%s | auth_type=%s | url=%s",
+        method.upper(),
+        getattr(auth_config, "type", "unknown"),
+        url,
+    )
 
     try:
-        response = session.request(
+        response = requests.request(
             method.upper(),
             url,
             json=json_body,
@@ -305,21 +326,46 @@ def _call_application_picker(
         )
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
-        logger.error(f"Error calling application picker endpoint: {e}")
+        status_code = getattr(getattr(e, "response", None), "status_code", None)
+        response_text = getattr(getattr(e, "response", None), "text", "")[:500]
+        logger.error(
+            "application_picker | request failed | method=%s | status=%s | error=%s | body=%s",
+            method.upper(),
+            status_code,
+            e,
+            response_text,
+        )
         return {
             "success": False,
-            "message": f"Error calling application picker endpoint: {str(e)}",
+            "message": (
+                f"Error calling application picker endpoint: {str(e)}"
+                + (f" | status={status_code}" if status_code else "")
+            ),
+            "status_code": status_code,
+            "response_preview": response_text or None,
         }
 
     try:
         payload = response.json()
     except ValueError:
+        logger.warning(
+            "application_picker | non_json_response | method=%s | status=%s | body=%s",
+            method.upper(),
+            response.status_code,
+            response.text[:500],
+        )
         return {
             "success": False,
             "message": "Application picker returned non-JSON response",
             "status_code": response.status_code,
+            "response_preview": response.text[:500],
         }
 
+    logger.info(
+        "application_picker | success | method=%s | status=%s",
+        method.upper(),
+        response.status_code,
+    )
     parsed = _parse_scope_payload(payload)
     if not parsed.get("success"):
         parsed["status_code"] = response.status_code

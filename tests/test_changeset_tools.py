@@ -9,6 +9,8 @@ removed — those are handled by table_tools + sys_update_set architecture bluep
 import unittest
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.changeset_tools import (
     GetCurrentScopeParams,
@@ -116,9 +118,8 @@ class TestScopePickerTools(unittest.TestCase):
         self.config = ServerConfig(instance_url="https://test.service-now.com", auth=auth_config)
         self.auth = MagicMock(spec=AuthManager)
 
-    @patch("servicenow_mcp.tools.script_tools._get_ui_session")
-    def test_get_current_scope_success(self, mock_ui_session):
-        session = MagicMock()
+    @patch("servicenow_mcp.tools.changeset_tools.requests.request")
+    def test_get_current_scope_success(self, mock_request):
         response = MagicMock()
         response.raise_for_status.return_value = None
         response.status_code = 200
@@ -131,8 +132,8 @@ class TestScopePickerTools(unittest.TestCase):
                 }
             }
         }
-        session.request.return_value = response
-        mock_ui_session.return_value = (session, "token123", None)
+        mock_request.return_value = response
+        self.auth.get_headers.return_value = {"Authorization": "Basic abc"}
 
         result = get_current_scope(self.config, self.auth, GetCurrentScopeParams())
 
@@ -140,20 +141,61 @@ class TestScopePickerTools(unittest.TestCase):
         self.assertEqual(result["app_id"], "scope123")
         self.assertEqual(result["scope_name"], "x_acme_app")
         self.assertEqual(result["scope_display_name"], "Acme App")
-        session.request.assert_called_once()
+        mock_request.assert_called_once()
 
-    @patch("servicenow_mcp.tools.script_tools._get_ui_session")
-    def test_get_current_scope_session_failure(self, mock_ui_session):
-        mock_ui_session.return_value = (None, None, "login_failed")
+    @patch("servicenow_mcp.tools.changeset_tools.requests.request")
+    def test_get_current_scope_request_failure(self, mock_request):
+        error_response = MagicMock()
+        error_response.status_code = 401
+        error_response.text = '{"error":"unauthorized"}'
+        mock_request.side_effect = requests.exceptions.HTTPError(
+            "401 Client Error",
+            response=error_response,
+        )
+        self.auth.get_headers.return_value = {"Authorization": "Basic abc"}
 
         result = get_current_scope(self.config, self.auth, {})
 
         self.assertFalse(result["success"])
-        self.assertIn("login_failed", result["message"])
+        self.assertIn("status=401", result["message"])
+        self.assertEqual(result["status_code"], 401)
 
-    @patch("servicenow_mcp.tools.script_tools._get_ui_session")
-    def test_set_current_scope_success(self, mock_ui_session):
-        session = MagicMock()
+    @patch("servicenow_mcp.tools.changeset_tools.requests.request")
+    def test_get_current_scope_success_with_current_string_and_list(self, mock_request):
+        response = MagicMock()
+        response.raise_for_status.return_value = None
+        response.status_code = 200
+        response.json.return_value = {
+            "result": {
+                "current": "global",
+                "list": [
+                    {
+                        "sysId": "global",
+                        "scopeName": "global",
+                        "name": "Global",
+                        "className": "sys_scope",
+                    },
+                    {
+                        "sysId": "abc123",
+                        "scopeName": "x_acme_app",
+                        "name": "Acme App",
+                        "className": "sys_store_app",
+                    },
+                ],
+            }
+        }
+        mock_request.return_value = response
+        self.auth.get_headers.return_value = {"Authorization": "Basic abc"}
+
+        result = get_current_scope(self.config, self.auth, {})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["app_id"], "global")
+        self.assertEqual(result["scope_name"], "global")
+        self.assertEqual(result["scope_display_name"], "Global")
+
+    @patch("servicenow_mcp.tools.changeset_tools.requests.request")
+    def test_set_current_scope_success(self, mock_request):
         response = MagicMock()
         response.raise_for_status.return_value = None
         response.status_code = 200
@@ -164,8 +206,8 @@ class TestScopePickerTools(unittest.TestCase):
                 "scopeDisplayName": "Acme App",
             }
         }
-        session.request.return_value = response
-        mock_ui_session.return_value = (session, "token123", None)
+        mock_request.return_value = response
+        self.auth.get_headers.return_value = {"Authorization": "Basic abc"}
 
         result = set_current_scope(
             self.config,
@@ -177,9 +219,9 @@ class TestScopePickerTools(unittest.TestCase):
         self.assertEqual(result["app_id"], "scope123")
         self.assertEqual(result["scope_name"], "x_acme_app")
         self.assertIn("Acme App", result["message"])
-        _, kwargs = session.request.call_args
+        _, kwargs = mock_request.call_args
         self.assertEqual(kwargs["json"], {"app_id": "scope123"})
-        self.assertEqual(kwargs["headers"]["X-UserToken"], "token123")
+        self.assertEqual(kwargs["headers"]["Authorization"], "Basic abc")
 
     def test_set_current_scope_rejects_blank_app_id(self):
         result = set_current_scope(self.config, self.auth, {"app_id": "   "})
