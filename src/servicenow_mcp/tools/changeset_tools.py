@@ -57,8 +57,8 @@ class SetCurrentScopeParams(BaseModel):
     app_id: str = Field(
         ...,
         description=(
-            "Application picker app_id for the target scope. This is the same identifier "
-            "used by the Next Experience application picker endpoint."
+            "Scope name (e.g. 'sn_grc', 'global', 'x_acme_app') or sys_id of the "
+            "target application scope from the sys_scope table."
         ),
     )
 
@@ -225,152 +225,6 @@ def _parse_script_json_result(direct_output: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _parse_scope_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
-    result = payload.get("result")
-    if isinstance(result, dict):
-        current_value = result.get("current")
-        app_list = result.get("list")
-        if isinstance(current_value, str) and isinstance(app_list, list):
-            for item in app_list:
-                if not isinstance(item, dict):
-                    continue
-                sys_id = item.get("sysId") or item.get("sys_id") or item.get("app_id") or item.get("id")
-                scope_name = item.get("scopeName") or item.get("scope") or item.get("name")
-                if current_value in {sys_id, scope_name}:
-                    display_name = item.get("name") or item.get("label") or scope_name
-                    return {
-                        "success": True,
-                        "app_id": sys_id if isinstance(sys_id, str) and sys_id else current_value,
-                        "scope_name": scope_name if isinstance(scope_name, str) and scope_name else current_value,
-                        "scope_display_name": (
-                            display_name if isinstance(display_name, str) and display_name else current_value
-                        ),
-                    }
-            return {
-                "success": True,
-                "app_id": current_value,
-                "scope_name": current_value,
-                "scope_display_name": current_value.title() if current_value.islower() else current_value,
-            }
-
-    candidates: List[Dict[str, Any]] = [payload]
-    for key in ("result", "data", "application", "picker"):
-        nested = payload.get(key)
-        if isinstance(nested, dict):
-            candidates.append(nested)
-    for candidate in list(candidates):
-        for key in ("current", "selected", "value"):
-            nested = candidate.get(key)
-            if isinstance(nested, dict):
-                candidates.append(nested)
-
-    for candidate in candidates:
-        app_id = candidate.get("app_id") or candidate.get("id") or candidate.get("sys_id") or candidate.get("value")
-        scope_name = (
-            candidate.get("scope")
-            or candidate.get("scopeName")
-            or candidate.get("name")
-            or candidate.get("label")
-            or candidate.get("displayValue")
-            or candidate.get("display_value")
-        )
-        scope_display_name = (
-            candidate.get("scopeDisplayName")
-            or candidate.get("display_name")
-            or candidate.get("displayName")
-            or candidate.get("title")
-            or scope_name
-        )
-        if isinstance(app_id, str) and app_id:
-            return {
-                "success": True,
-                "app_id": app_id,
-                "scope_name": scope_name if isinstance(scope_name, str) and scope_name else None,
-                "scope_display_name": (
-                    scope_display_name
-                    if isinstance(scope_display_name, str) and scope_display_name
-                    else (scope_name if isinstance(scope_name, str) and scope_name else None)
-                ),
-            }
-
-    return {
-        "success": False,
-        "message": "Could not parse application scope from picker response",
-    }
-
-
-def _call_application_picker(
-    config: ServerConfig,
-    auth_manager: AuthManager,
-    method: str,
-    *,
-    json_body: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    url = f"{config.instance_url.rstrip('/')}/api/now/ui/concoursepicker/application"
-    headers = auth_manager.get_headers()
-    auth_config = getattr(auth_manager, "config", None)
-    logger.info(
-        "application_picker | method=%s | auth_type=%s | url=%s",
-        method.upper(),
-        getattr(auth_config, "type", "unknown"),
-        url,
-    )
-
-    try:
-        response = requests.request(
-            method.upper(),
-            url,
-            json=json_body,
-            headers=headers,
-            timeout=config.timeout,
-        )
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        status_code = getattr(getattr(e, "response", None), "status_code", None)
-        response_text = getattr(getattr(e, "response", None), "text", "")[:500]
-        logger.error(
-            "application_picker | request failed | method=%s | status=%s | error=%s | body=%s",
-            method.upper(),
-            status_code,
-            e,
-            response_text,
-        )
-        return {
-            "success": False,
-            "message": (
-                f"Error calling application picker endpoint: {str(e)}"
-                + (f" | status={status_code}" if status_code else "")
-            ),
-            "status_code": status_code,
-            "response_preview": response_text or None,
-        }
-
-    try:
-        payload = response.json()
-    except ValueError:
-        logger.warning(
-            "application_picker | non_json_response | method=%s | status=%s | body=%s",
-            method.upper(),
-            response.status_code,
-            response.text[:500],
-        )
-        return {
-            "success": False,
-            "message": "Application picker returned non-JSON response",
-            "status_code": response.status_code,
-            "response_preview": response.text[:500],
-        }
-
-    logger.info(
-        "application_picker | success | method=%s | status=%s",
-        method.upper(),
-        response.status_code,
-    )
-    parsed = _parse_scope_payload(payload)
-    if not parsed.get("success"):
-        parsed["status_code"] = response.status_code
-    return parsed
-
 
 def get_current_update_set(
     config: ServerConfig,
@@ -460,20 +314,57 @@ def get_current_scope(
     params: Union[Dict[str, Any], GetCurrentScopeParams, None] = None,
 ) -> Dict[str, Any]:
     """
-    Get the currently active Next Experience application scope for the authenticated UI session.
+    Get the currently active application scope for the authenticated user.
 
-    Uses the same application picker endpoint that the ServiceNow UI and tools like SN Utils use.
+    Uses gs.getCurrentApplicationId() via background script — works with
+    standard REST API credentials (no browser session required).
     """
-    result = _call_application_picker(config, auth_manager, "GET")
-    if not result.get("success"):
-        return result
+    from servicenow_mcp.tools.script_tools import RunBackgroundScriptParams, run_background_script
 
-    return {
-        "success": True,
-        "app_id": result.get("app_id"),
-        "scope_name": result.get("scope_name"),
-        "scope_display_name": result.get("scope_display_name"),
+    script = """\
+var appId = gs.getCurrentApplicationId();
+if (!appId) {
+    gs.info(JSON.stringify({success: false, message: 'No current application scope'}) + ' | run_id=' + __MFCP_RUN_ID);
+} else {
+    var scopeGr = new GlideRecord('sys_scope');
+    if (scopeGr.get(appId)) {
+        gs.info(JSON.stringify({
+            success: true,
+            app_id: appId,
+            scope_name: scopeGr.getValue('scope'),
+            scope_display_name: scopeGr.getDisplayValue('name')
+        }) + ' | run_id=' + __MFCP_RUN_ID);
+    } else {
+        gs.info(JSON.stringify({
+            success: true,
+            app_id: appId,
+            scope_name: null,
+            scope_display_name: null
+        }) + ' | run_id=' + __MFCP_RUN_ID);
     }
+}
+"""
+
+    bg = run_background_script(
+        config,
+        auth_manager,
+        RunBackgroundScriptParams(
+            description="Read current application scope via gs.getCurrentApplicationId() — no writes.",
+            script=script,
+        ),
+    )
+
+    if not bg.success:
+        return {"success": False, "message": f"Background script failed: {bg.message}"}
+
+    data = _parse_script_json_result(bg.direct_output)
+    if data is None:
+        return {
+            "success": False,
+            "message": f"Could not parse scope result from script output: {bg.direct_output[:300]}",
+        }
+
+    return data
 
 
 def set_current_scope(
@@ -482,11 +373,15 @@ def set_current_scope(
     params: Union[Dict[str, Any], SetCurrentScopeParams],
 ) -> Dict[str, Any]:
     """
-    Set the currently active Next Experience application scope for the authenticated UI session.
+    Set the currently active application scope for the authenticated user.
 
-    Sends a PUT to /api/now/ui/concoursepicker/application with the selected app_id, mirroring
-    the behavior of the platform application picker.
+    Uses gs.setCurrentApplicationId() via background script — works with
+    standard REST API credentials (no browser session required).
+
+    app_id accepts either a scope name (e.g. 'sn_grc', 'global') or a sys_id.
     """
+    from servicenow_mcp.tools.script_tools import RunBackgroundScriptParams, run_background_script
+
     result = _unwrap_and_validate_params(
         params,
         SetCurrentScopeParams,
@@ -499,24 +394,61 @@ def set_current_scope(
     if not app_id:
         return {"success": False, "message": "app_id cannot be empty"}
 
-    picker_result = _call_application_picker(
+    # Sanitise — scope names are alphanumeric + underscore; sys_ids are hex + hyphens
+    if not re.fullmatch(r"[a-zA-Z0-9_\-]+", app_id):
+        return {"success": False, "message": f"Invalid app_id format: {app_id!r}"}
+
+    script = f"""\
+var appId = '{app_id}';
+// Try by scope name first, then by sys_id
+var scopeGr = new GlideRecord('sys_scope');
+var found = scopeGr.get('scope', appId);
+if (!found) {{
+    scopeGr = new GlideRecord('sys_scope');
+    found = scopeGr.get(appId);
+}}
+if (!found) {{
+    gs.info(JSON.stringify({{success: false, message: 'Application scope not found: ' + appId}}) + ' | run_id=' + __MFCP_RUN_ID);
+}} else {{
+    var sysId = scopeGr.getUniqueValue();
+    gs.setCurrentApplicationId(sysId);
+    gs.info(JSON.stringify({{
+        success: true,
+        app_id: sysId,
+        scope_name: scopeGr.getValue('scope'),
+        scope_display_name: scopeGr.getDisplayValue('name')
+    }}) + ' | run_id=' + __MFCP_RUN_ID);
+}}
+"""
+
+    bg = run_background_script(
         config,
         auth_manager,
-        "PUT",
-        json_body={"app_id": app_id},
+        RunBackgroundScriptParams(
+            description=f"Set application scope to {app_id!r} via gs.setCurrentApplicationId().",
+            script=script,
+        ),
     )
-    if not picker_result.get("success"):
-        return picker_result
+
+    if not bg.success:
+        return {"success": False, "message": f"Background script failed: {bg.message}"}
+
+    data = _parse_script_json_result(bg.direct_output)
+    if data is None:
+        return {
+            "success": False,
+            "message": f"Could not parse scope result from script output: {bg.direct_output[:300]}",
+        }
+
+    if not data.get("success"):
+        return data
 
     return {
         "success": True,
-        "message": (
-            f"Application scope set to "
-            f"{picker_result.get('scope_display_name') or picker_result.get('scope_name') or app_id}."
-        ),
-        "app_id": picker_result.get("app_id"),
-        "scope_name": picker_result.get("scope_name"),
-        "scope_display_name": picker_result.get("scope_display_name"),
+        "message": f"Application scope set to {data.get('scope_display_name') or data.get('scope_name') or app_id}.",
+        "app_id": data.get("app_id"),
+        "scope_name": data.get("scope_name"),
+        "scope_display_name": data.get("scope_display_name"),
     }
 
 

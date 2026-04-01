@@ -9,8 +9,6 @@ removed — those are handled by table_tools + sys_update_set architecture bluep
 import unittest
 from unittest.mock import MagicMock, patch
 
-import requests
-
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.changeset_tools import (
     GetCurrentScopeParams,
@@ -118,115 +116,105 @@ class TestScopePickerTools(unittest.TestCase):
         self.config = ServerConfig(instance_url="https://test.service-now.com", auth=auth_config)
         self.auth = MagicMock(spec=AuthManager)
 
-    @patch("servicenow_mcp.tools.changeset_tools.requests.request")
-    def test_get_current_scope_success(self, mock_request):
-        response = MagicMock()
-        response.raise_for_status.return_value = None
-        response.status_code = 200
-        response.json.return_value = {
-            "result": {
-                "current": {
-                    "app_id": "scope123",
-                    "scope": "x_acme_app",
-                    "scopeDisplayName": "Acme App",
-                }
-            }
-        }
-        mock_request.return_value = response
-        self.auth.get_headers.return_value = {"Authorization": "Basic abc"}
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_get_current_scope_success(self, mock_bg):
+        output = '[INFO] {"success": true, "app_id": "53f81621cb200200829cf865734c9c58", "scope_name": "sn_grc", "scope_display_name": "GRC: Profiles"} | run_id=abc'
+        mock_bg.return_value = _make_bg_result(output)
 
         result = get_current_scope(self.config, self.auth, GetCurrentScopeParams())
 
         self.assertTrue(result["success"])
-        self.assertEqual(result["app_id"], "scope123")
-        self.assertEqual(result["scope_name"], "x_acme_app")
-        self.assertEqual(result["scope_display_name"], "Acme App")
-        mock_request.assert_called_once()
+        self.assertEqual(result["app_id"], "53f81621cb200200829cf865734c9c58")
+        self.assertEqual(result["scope_name"], "sn_grc")
+        self.assertEqual(result["scope_display_name"], "GRC: Profiles")
 
-    @patch("servicenow_mcp.tools.changeset_tools.requests.request")
-    def test_get_current_scope_request_failure(self, mock_request):
-        error_response = MagicMock()
-        error_response.status_code = 401
-        error_response.text = '{"error":"unauthorized"}'
-        mock_request.side_effect = requests.exceptions.HTTPError(
-            "401 Client Error",
-            response=error_response,
-        )
-        self.auth.get_headers.return_value = {"Authorization": "Basic abc"}
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_get_current_scope_no_scope(self, mock_bg):
+        output = '[INFO] {"success": false, "message": "No current application scope"} | run_id=abc'
+        mock_bg.return_value = _make_bg_result(output)
 
         result = get_current_scope(self.config, self.auth, {})
 
         self.assertFalse(result["success"])
-        self.assertIn("status=401", result["message"])
-        self.assertEqual(result["status_code"], 401)
+        self.assertIn("No current application scope", result["message"])
 
-    @patch("servicenow_mcp.tools.changeset_tools.requests.request")
-    def test_get_current_scope_success_with_current_string_and_list(self, mock_request):
-        response = MagicMock()
-        response.raise_for_status.return_value = None
-        response.status_code = 200
-        response.json.return_value = {
-            "result": {
-                "current": "global",
-                "list": [
-                    {
-                        "sysId": "global",
-                        "scopeName": "global",
-                        "name": "Global",
-                        "className": "sys_scope",
-                    },
-                    {
-                        "sysId": "abc123",
-                        "scopeName": "x_acme_app",
-                        "name": "Acme App",
-                        "className": "sys_store_app",
-                    },
-                ],
-            }
-        }
-        mock_request.return_value = response
-        self.auth.get_headers.return_value = {"Authorization": "Basic abc"}
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_get_current_scope_script_failure(self, mock_bg):
+        mock_bg.return_value = _make_bg_result("", success=False)
 
         result = get_current_scope(self.config, self.auth, {})
 
-        self.assertTrue(result["success"])
-        self.assertEqual(result["app_id"], "global")
-        self.assertEqual(result["scope_name"], "global")
-        self.assertEqual(result["scope_display_name"], "Global")
+        self.assertFalse(result["success"])
+        self.assertIn("Background script failed", result["message"])
 
-    @patch("servicenow_mcp.tools.changeset_tools.requests.request")
-    def test_set_current_scope_success(self, mock_request):
-        response = MagicMock()
-        response.raise_for_status.return_value = None
-        response.status_code = 200
-        response.json.return_value = {
-            "application": {
-                "id": "scope123",
-                "scope": "x_acme_app",
-                "scopeDisplayName": "Acme App",
-            }
-        }
-        mock_request.return_value = response
-        self.auth.get_headers.return_value = {"Authorization": "Basic abc"}
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_get_current_scope_unparseable_output(self, mock_bg):
+        mock_bg.return_value = _make_bg_result("[INFO] unexpected non-json | run_id=abc")
+
+        result = get_current_scope(self.config, self.auth, {})
+
+        self.assertFalse(result["success"])
+        self.assertIn("Could not parse", result["message"])
+
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_set_current_scope_success_by_scope_name(self, mock_bg):
+        output = '[INFO] {"success": true, "app_id": "53f81621cb200200829cf865734c9c58", "scope_name": "sn_grc", "scope_display_name": "GRC: Profiles"} | run_id=abc'
+        mock_bg.return_value = _make_bg_result(output)
 
         result = set_current_scope(
-            self.config,
-            self.auth,
-            SetCurrentScopeParams(app_id="scope123"),
+            self.config, self.auth,
+            SetCurrentScopeParams(app_id="sn_grc"),
         )
 
         self.assertTrue(result["success"])
-        self.assertEqual(result["app_id"], "scope123")
-        self.assertEqual(result["scope_name"], "x_acme_app")
-        self.assertIn("Acme App", result["message"])
-        _, kwargs = mock_request.call_args
-        self.assertEqual(kwargs["json"], {"app_id": "scope123"})
-        self.assertEqual(kwargs["headers"]["Authorization"], "Basic abc")
+        self.assertEqual(result["app_id"], "53f81621cb200200829cf865734c9c58")
+        self.assertEqual(result["scope_name"], "sn_grc")
+        self.assertIn("GRC: Profiles", result["message"])
+
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_set_current_scope_success_by_sys_id(self, mock_bg):
+        output = '[INFO] {"success": true, "app_id": "53f81621cb200200829cf865734c9c58", "scope_name": "sn_grc", "scope_display_name": "GRC: Profiles"} | run_id=abc'
+        mock_bg.return_value = _make_bg_result(output)
+
+        result = set_current_scope(
+            self.config, self.auth,
+            SetCurrentScopeParams(app_id="53f81621cb200200829cf865734c9c58"),
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["app_id"], "53f81621cb200200829cf865734c9c58")
+
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_set_current_scope_not_found(self, mock_bg):
+        output = '[INFO] {"success": false, "message": "Application scope not found: unknown_scope"} | run_id=abc'
+        mock_bg.return_value = _make_bg_result(output)
+
+        result = set_current_scope(
+            self.config, self.auth,
+            SetCurrentScopeParams(app_id="unknown_scope"),
+        )
+
+        self.assertFalse(result["success"])
+        self.assertIn("not found", result["message"])
 
     def test_set_current_scope_rejects_blank_app_id(self):
         result = set_current_scope(self.config, self.auth, {"app_id": "   "})
         self.assertFalse(result["success"])
         self.assertIn("cannot be empty", result["message"])
+
+    def test_set_current_scope_rejects_invalid_chars(self):
+        result = set_current_scope(self.config, self.auth, {"app_id": "'; DROP TABLE--"})
+        self.assertFalse(result["success"])
+        self.assertIn("Invalid app_id", result["message"])
+
+    @patch("servicenow_mcp.tools.script_tools.run_background_script")
+    def test_set_current_scope_script_failure(self, mock_bg):
+        mock_bg.return_value = _make_bg_result("", success=False)
+
+        result = set_current_scope(self.config, self.auth, {"app_id": "sn_grc"})
+
+        self.assertFalse(result["success"])
+        self.assertIn("Background script failed", result["message"])
 
 
 class TestSetCurrentUpdateSet(unittest.TestCase):
