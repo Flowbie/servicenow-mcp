@@ -111,18 +111,8 @@ def assert_update_set_compliance_for_write(
     expected_update_set_name: str | None = None,
 ) -> UpdateSetComplianceResult:
     classification = classify_table(table)
-    if classification == TableGovernanceClass.EXEMPT:
+    if classification in (TableGovernanceClass.EXEMPT, TableGovernanceClass.UNKNOWN):
         return UpdateSetComplianceResult(allowed=True, classification=classification)
-    if classification == TableGovernanceClass.UNKNOWN:
-        return UpdateSetComplianceResult(
-            allowed=False,
-            classification=classification,
-            reason=(
-                f"Table '{table}' is not yet classified for update-set governance. "
-                "Write blocked until the table is explicitly marked as configuration-tracked "
-                "or update-set-exempt."
-            ),
-        )
     if current_update_set is None or not current_update_set.sys_id or not current_update_set.name:
         return UpdateSetComplianceResult(
             allowed=False,

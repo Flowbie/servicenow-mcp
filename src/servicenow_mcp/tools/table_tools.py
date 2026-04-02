@@ -7,7 +7,7 @@ for the target table.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 from pydantic import BaseModel, Field
@@ -21,6 +21,15 @@ from servicenow_mcp.utils.update_set_policy import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Tables that extend `task` — mandatory fields may live on the parent table.
+_TASK_CHILD_TABLES: frozenset = frozenset({
+    "incident", "change_request", "problem", "sc_task",
+    "sn_si_incident", "sm_order", "hr_case",
+    "sn_risk_response_task", "sn_risk_avoidance_task",
+    "sn_risk_acceptance_task", "sn_risk_mitigation_task",
+    "sn_risk_transfer_task", "sn_risk_response_sub_task",
+})
 
 
 def _enforce_update_set_policy(
@@ -58,6 +67,54 @@ def _enforce_update_set_policy(
             "blocked_by": "update_set_policy",
         },
     }
+
+
+def _fetch_mandatory_fields(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    table: str,
+) -> Tuple[Set[str], Optional[str]]:
+    """
+    Query sys_dictionary for mandatory fields on `table` that have no default value.
+
+    Returns (mandatory_fields, fetch_error).
+    - mandatory_fields: field names that are mandatory and have no configured default.
+      Fields with a default_value are excluded — ServiceNow will populate them automatically.
+    - fetch_error: set if sys_dictionary was unreachable; None on success.
+
+    Also checks the `task` parent table for known task-hierarchy tables so that
+    mandatory inherited fields (e.g. short_description on incident) are caught.
+    """
+    tables_to_check = [table]
+    if table in _TASK_CHILD_TABLES:
+        tables_to_check.append("task")
+
+    mandatory: Set[str] = set()
+    for t in tables_to_check:
+        url = f"{config.api_url}/table/sys_dictionary"
+        query_params = {
+            "sysparm_query": f"name={t}^mandatory=true^active=true",
+            "sysparm_fields": "element,default_value",
+            "sysparm_limit": 200,
+        }
+        try:
+            response = requests.get(
+                url,
+                params=query_params,
+                headers=auth_manager.get_headers(),
+                timeout=config.timeout,
+            )
+            response.raise_for_status()
+            for rec in response.json().get("result", []):
+                element = rec.get("element", "").strip()
+                default_value = rec.get("default_value", "")
+                if element and not default_value:
+                    mandatory.add(element)
+        except requests.RequestException as e:
+            logger.warning("_fetch_mandatory_fields | table=%s | error=%s", t, e)
+            return set(), str(e)
+
+    return mandatory, None
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +310,22 @@ def create_record(
     policy_error = _enforce_update_set_policy(config, auth_manager, params.table)
     if policy_error:
         return policy_error
+
+    mandatory_fields, fetch_error = _fetch_mandatory_fields(config, auth_manager, params.table)
+    if not fetch_error and mandatory_fields:
+        missing = sorted(mandatory_fields - set(params.fields.keys()))
+        if missing:
+            return {
+                "success": False,
+                "table": params.table,
+                "error": (
+                    f"Missing mandatory fields: {missing}. "
+                    "Populate all mandatory fields before calling create_record. "
+                    "Use get_field_metadata to inspect each field if needed."
+                ),
+                "missing_mandatory_fields": missing,
+            }
+
     url = f"{config.api_url}/table/{params.table}"
     try:
         response = requests.post(

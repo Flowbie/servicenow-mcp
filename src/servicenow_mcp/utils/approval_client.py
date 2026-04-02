@@ -218,10 +218,20 @@ def _guess_record_identifier(record: dict | None, fallback: str | None = None) -
     return fallback
 
 
-def _fetch_table_record(config: Any, auth_manager: Any, table: str, sys_id: str) -> dict:
+def _fetch_table_record(
+    config: Any,
+    auth_manager: Any,
+    table: str,
+    sys_id: str,
+    display_value: str | None = "all",
+) -> dict:
+    params: dict[str, str] = {}
+    if display_value:
+        params["sysparm_display_value"] = display_value
     response = requests.get(
         f"{config.api_url}/table/{table}/{sys_id}",
         headers=auth_manager.get_headers(),
+        params=params or None,
         timeout=getattr(config, "timeout", 30),
     )
     response.raise_for_status()
@@ -229,15 +239,105 @@ def _fetch_table_record(config: Any, auth_manager: Any, table: str, sys_id: str)
     return result if isinstance(result, dict) else {}
 
 
-def _build_field_diff(fields: dict, before_record: dict | None = None) -> dict:
+def _extract_raw_record(record_all: dict) -> dict:
+    """Convert a sysparm_display_value=all response to a flat {field: raw_value} dict."""
+    result: dict[str, Any] = {}
+    for key, val in record_all.items():
+        result[key] = val.get("value") if isinstance(val, dict) else val
+    return result
+
+
+def _resolve_reference_display(
+    config: Any, auth_manager: Any, ref_table: str, sys_id: str
+) -> str | None:
+    """Return a human-readable name for a reference field's new sys_id value."""
+    try:
+        record = _fetch_table_record(config, auth_manager, ref_table, sys_id, display_value=None)
+        return _guess_record_identifier(record)
+    except Exception:
+        return None
+
+
+def _resolve_choice_display(
+    config: Any, auth_manager: Any, table_name: str, field_name: str, value: str
+) -> str | None:
+    """Return the display label for a choice field value via sys_choice lookup."""
+    try:
+        response = requests.get(
+            f"{config.api_url}/table/sys_choice",
+            headers=auth_manager.get_headers(),
+            params={
+                "sysparm_query": f"name={table_name}^element={field_name}^value={value}",
+                "sysparm_fields": "label",
+                "sysparm_limit": "1",
+            },
+            timeout=getattr(config, "timeout", 30),
+        )
+        response.raise_for_status()
+        results = response.json().get("result", [])
+        if results:
+            return results[0].get("label")
+    except Exception:
+        return None
+    return None
+
+
+def _build_field_diff(
+    fields: dict,
+    before_record: dict | None = None,
+    config: Any = None,
+    auth_manager: Any = None,
+    table: str | None = None,
+) -> dict:
+    """Build field diffs with raw and display values for before/after states.
+
+    before_record should be fetched with sysparm_display_value=all so each field
+    is either a plain string or {"value": ..., "display_value": ..., "link": ...}.
+    """
     diffs: dict[str, dict[str, Any]] = {}
     for field, after_value in (fields or {}).items():
-        before_value = None
+        before_raw: Any = None
+        before_display: str | None = None
+        after_display: str | None = None
+        before_data: Any = None
+
         if isinstance(before_record, dict):
-            before_value = before_record.get(field)
+            before_data = before_record.get(field)
+            if isinstance(before_data, dict):
+                before_raw = before_data.get("value")
+                disp = before_data.get("display_value")
+                before_display = disp if disp != before_raw else None
+            else:
+                before_raw = before_data
+
+        after_raw = str(after_value) if after_value is not None else None
+
+        # Attempt to resolve a display value for the new (after) value.
+        if after_raw and config and auth_manager and isinstance(before_data, dict):
+            link = before_data.get("link", "")
+            if link:
+                # Reference field — extract target table from the link URL:
+                # .../api/now/table/<table_name>/<sys_id>
+                parts = link.rstrip("/").split("/")
+                try:
+                    table_idx = parts.index("table")
+                    ref_table = parts[table_idx + 1]
+                    after_display = _resolve_reference_display(
+                        config, auth_manager, ref_table, after_raw
+                    )
+                except (ValueError, IndexError):
+                    pass
+            elif before_data.get("display_value") != before_data.get("value") and table:
+                # Choice field (display_value differs from value, no link)
+                after_display = _resolve_choice_display(
+                    config, auth_manager, table, field, after_raw
+                )
+
         diffs[field] = {
-            "before": before_value,
-            "after": after_value,
+            "before": before_raw,
+            "after": after_raw,
+            "before_display": before_display,
+            "after_display": after_display,
         }
     return diffs
 
@@ -258,14 +358,15 @@ def _build_create_record_payload(config: Any, auth_manager: Any, raw_params: dic
 def _build_update_record_payload(config: Any, auth_manager: Any, raw_params: dict) -> dict:
     table = raw_params.get("table", "")
     sys_id = raw_params.get("sys_id", "")
-    before_record = _fetch_table_record(config, auth_manager, table, sys_id)
+    # Fetch with display_value=all to get both raw and display values per field.
+    before_record = _fetch_table_record(config, auth_manager, table, sys_id, display_value="all")
     fields = raw_params.get("fields", {}) or {}
     return {
         "tool_name": "update_record",
         "operation": "update",
         "table": table,
-        "record_identifier": _guess_record_identifier(before_record, sys_id),
-        "fields": _build_field_diff(fields, before_record),
+        "record_identifier": _guess_record_identifier(_extract_raw_record(before_record), sys_id),
+        "fields": _build_field_diff(fields, before_record, config, auth_manager, table),
         "raw_params": raw_params,
     }
 
@@ -273,12 +374,12 @@ def _build_update_record_payload(config: Any, auth_manager: Any, raw_params: dic
 def _build_delete_record_payload(config: Any, auth_manager: Any, raw_params: dict) -> dict:
     table = raw_params.get("table", "")
     sys_id = raw_params.get("sys_id", "")
-    before_record = _fetch_table_record(config, auth_manager, table, sys_id)
+    before_record = _fetch_table_record(config, auth_manager, table, sys_id, display_value="all")
     return {
         "tool_name": "delete_record",
         "operation": "delete",
         "table": table,
-        "record_identifier": _guess_record_identifier(before_record, sys_id),
+        "record_identifier": _guess_record_identifier(_extract_raw_record(before_record), sys_id),
         "fields": {},
         "raw_params": raw_params,
     }
