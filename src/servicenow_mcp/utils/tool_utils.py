@@ -686,9 +686,11 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
                 "Update an existing record in any ServiceNow table via PATCH. "
                 "Use this when no domain-specific update tool exists for the target table. "
                 "Only provided fields are modified. "
-                "REQUIRED before calling this tool: grep the architecture blueprint for the target field name "
-                "and output '[BLUEPRINT CHECK: <table> | field: <field> | status: <derived — write <alt_field(s)> instead | writable>]'. "
-                "This line must appear in your response before the tool call — it cannot be skipped. "
+                "REQUIRED before calling this tool: Grep the file architecture/<table>_architecture.md "
+                "for the exact field name being written, then quote the verbatim matching line(s) from that file "
+                "in your response. Do NOT paraphrase or summarise — paste the raw grep output. "
+                "If the output contains 'derived', 'Data Lookup', 'do not write', or 'overwritten', "
+                "do not write that field directly; find the correct fields to write instead. "
                 "Use verify_fields after the update to confirm values persisted."
             ),
             "json",
