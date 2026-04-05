@@ -153,6 +153,14 @@ platform_developer:
   - get_action
   - update_action
   - publish_action
+  - list_action_types
+  - list_action_type_inputs
+  - list_flow_logic_types
+  - add_steps_to_flow
+  - delete_flow
+  - delete_subflow
+  - delete_action
+  - get_flow_execution_history
   # Request Fulfillment (compound only; CRUD via table_tools + architecture blueprint)
   - get_ritm_variables
   # Changesets (CRUD via table_tools + sys_update_set blueprint)
@@ -338,6 +346,14 @@ full:
   - get_action
   - update_action
   - publish_action
+  - list_action_types
+  - list_action_type_inputs
+  - list_flow_logic_types
+  - add_steps_to_flow
+  - delete_flow
+  - delete_subflow
+  - delete_action
+  - get_flow_execution_history
   # Changeset (CRUD via table_tools + sys_update_set blueprint)
   - get_current_scope
   - get_current_update_set
