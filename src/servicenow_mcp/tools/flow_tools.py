@@ -16,7 +16,6 @@ API sequence for create_flow:
   8. DELETE /api/now/table/sys_hub_flow_safe_edit           — release Flow Designer edit lock
 """
 
-import copy
 import json
 import logging
 import time
@@ -2974,7 +2973,7 @@ def add_logic_to_flow(
             message=f"Failed to fetch flow: {e}" + (f" | response: {_body}" if _body else ""),
         )
 
-    flow_data = copy.deepcopy(get_response.json().get("result", {}).get("data", {}))
+    flow_data = get_response.json().get("result", {}).get("data", {})
     if not flow_data:
         return AddLogicToFlowResponse(
             success=False,
@@ -3031,17 +3030,17 @@ def add_logic_to_flow(
         "snapshot": {},
     }
 
-    # Step 3: Append to flowLogicInstances and PUT back
+    # Step 3: Build PUT body with new logic instance appended (do not mutate flow_data)
     logic_instances = list(flow_data.get("flowLogicInstances", []))
     logic_instances.append(new_logic)
-    flow_data["flowLogicInstances"] = logic_instances
+    put_body = {**flow_data, "flowLogicInstances": logic_instances}
 
     # Step 4: PUT modified payload back
     try:
         put_response = requests.put(
             f"{processflow_base}/flow",
             params={"sysparm_transaction_scope": "global"},
-            json=flow_data,
+            json=put_body,
             headers=headers,
             timeout=config.timeout,
         )
