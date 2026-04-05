@@ -325,3 +325,47 @@ class TestAddStepsToFlow(unittest.TestCase):
         mock_post.return_value.raise_for_status.side_effect = requests.HTTPError("500")
         result = add_steps_to_flow(_make_config(), _make_auth(), AddStepsToFlowParams(flow_sys_id="flow123", actions=[]))
         self.assertTrue(result.success)
+
+
+class TestDeleteArtifacts(unittest.TestCase):
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.delete")
+    def test_delete_flow_success(self, mock_del):
+        from servicenow_mcp.tools.flow_tools import DeleteFlowParams, delete_flow
+        mock_del.return_value.raise_for_status = MagicMock()
+        result = delete_flow(_make_config(), _make_auth(), DeleteFlowParams(sys_id="flow123"))
+        self.assertTrue(result.success)
+        self.assertEqual(result.sys_id, "flow123")
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.delete")
+    def test_delete_flow_calls_sys_hub_flow_table(self, mock_del):
+        from servicenow_mcp.tools.flow_tools import DeleteFlowParams, delete_flow
+        mock_del.return_value.raise_for_status = MagicMock()
+        delete_flow(_make_config(), _make_auth(), DeleteFlowParams(sys_id="FLOW_ID"))
+        url = mock_del.call_args[0][0]
+        self.assertIn("sys_hub_flow/FLOW_ID", url)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.delete")
+    def test_delete_flow_http_error_returns_failure(self, mock_del):
+        from servicenow_mcp.tools.flow_tools import DeleteFlowParams, delete_flow
+        mock_del.return_value.raise_for_status.side_effect = requests.HTTPError("403")
+        mock_del.return_value.text = "Forbidden"
+        result = delete_flow(_make_config(), _make_auth(), DeleteFlowParams(sys_id="X"))
+        self.assertFalse(result.success)
+        self.assertIn("Failed", result.message)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.delete")
+    def test_delete_action_calls_action_type_definition_table(self, mock_del):
+        from servicenow_mcp.tools.flow_tools import DeleteActionParams, delete_action
+        mock_del.return_value.raise_for_status = MagicMock()
+        delete_action(_make_config(), _make_auth(), DeleteActionParams(sys_id="ACT_ID"))
+        url = mock_del.call_args[0][0]
+        self.assertIn("sys_hub_action_type_definition/ACT_ID", url)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.delete")
+    def test_delete_subflow_calls_sys_hub_flow_table(self, mock_del):
+        from servicenow_mcp.tools.flow_tools import DeleteSubflowParams, delete_subflow
+        mock_del.return_value.raise_for_status = MagicMock()
+        delete_subflow(_make_config(), _make_auth(), DeleteSubflowParams(sys_id="SUB_ID"))
+        url = mock_del.call_args[0][0]
+        self.assertIn("sys_hub_flow/SUB_ID", url)

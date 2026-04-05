@@ -512,6 +512,32 @@ class AddStepsToFlowResponse(BaseModel):
     steps_added: int = 0
 
 
+class DeleteArtifactParams(BaseModel):
+    """Common delete parameter — sys_id of the artifact to delete."""
+
+    sys_id: str = Field(..., description="sys_id of the artifact to delete")
+
+
+class DeleteFlowParams(DeleteArtifactParams):
+    """Parameters for delete_flow."""
+
+
+class DeleteSubflowParams(DeleteArtifactParams):
+    """Parameters for delete_subflow."""
+
+
+class DeleteActionParams(DeleteArtifactParams):
+    """Parameters for delete_action."""
+
+
+class DeleteArtifactResponse(BaseModel):
+    """Response from delete_* tools."""
+
+    success: bool
+    message: str
+    sys_id: str | None = None
+
+
 class ArtifactSummary(BaseModel):
     """Compact artifact summary used by list_* tools."""
 
@@ -2505,3 +2531,67 @@ def _build_action_instances(flow_sys_id: str, actions: list[ActionInstanceParam]
             }
         )
     return result
+
+
+_ARTIFACT_TABLE_MAP: dict[str, str] = {
+    "flow": "sys_hub_flow",
+    "subflow": "sys_hub_flow",
+    "action": "sys_hub_action_type_definition",
+}
+
+
+def _delete_artifact(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    artifact_type: str,
+    sys_id: str,
+) -> DeleteArtifactResponse:
+    """Delete a flow artifact via the Table API DELETE endpoint."""
+    table = _ARTIFACT_TABLE_MAP[artifact_type]
+    try:
+        response = requests.delete(
+            f"{config.api_url}/table/{table}/{sys_id}",
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "_delete_artifact | failed | artifact_type=%s | sys_id=%s | error=%s%s",
+            artifact_type, sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return DeleteArtifactResponse(
+            success=False,
+            message=f"Failed to delete {artifact_type} {sys_id}: {e}" + (f" | body: {_body}" if _body else ""),
+            sys_id=sys_id,
+        )
+    logger.info("_delete_artifact | deleted | artifact_type=%s | sys_id=%s", artifact_type, sys_id)
+    return DeleteArtifactResponse(success=True, message=f"Deleted {artifact_type} {sys_id}.", sys_id=sys_id)
+
+
+def delete_flow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: DeleteFlowParams,
+) -> DeleteArtifactResponse:
+    """Delete a flow by sys_id. Irreversible — ensure no dependent subflows or actions reference this flow."""
+    return _delete_artifact(config, auth_manager, "flow", params.sys_id)
+
+
+def delete_subflow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: DeleteSubflowParams,
+) -> DeleteArtifactResponse:
+    """Delete a subflow by sys_id."""
+    return _delete_artifact(config, auth_manager, "subflow", params.sys_id)
+
+
+def delete_action(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: DeleteActionParams,
+) -> DeleteArtifactResponse:
+    """Delete a custom action type by sys_id."""
+    return _delete_artifact(config, auth_manager, "action", params.sys_id)
