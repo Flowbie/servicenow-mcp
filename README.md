@@ -296,7 +296,7 @@ The default `config/tool_packages.yaml` includes the following role-based packag
 
 #### Flow Designer Tools
 
-These complement other Flow Designer tools exposed in the `platform_developer` and `full` tool packages (for example `create_flow`, `clone_flow`, `list_flows`, `add_steps_to_flow`, `publish_flow`).
+These complement other Flow Designer tools exposed in the `platform_developer` and `full` tool packages (for example `create_flow`, `clone_flow`, `add_steps_to_flow`, `add_subflow_step_to_flow`, `list_flows`, `publish_flow`).
 
 1. **clone_flow** - Duplicate an existing flow to a new draft flow (new sys_id) via processflow GET/POST/PUT
 2. **add_subflow_step_to_flow** - Append a subflow invocation step to a parent flow (`subFlowInstances`)
