@@ -384,6 +384,190 @@ class PublishActionParams(PublishArtifactParams):
     """Parameters for publish_action."""
 
 
+# ---------------------------------------------------------------------------
+# Action Type Catalog — list_action_types, list_action_type_inputs
+# ---------------------------------------------------------------------------
+
+
+class ListActionTypesParams(BaseModel):
+    """Parameters for list_action_types."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Search string to filter action types by name or internal_name. "
+            "Examples: 'Look Up Record', 'Create Record', 'Send Email'. "
+            "Returns up to limit results matching the name CONTAINS query."
+        ),
+    )
+    limit: int = Field(25, ge=1, le=200, description="Maximum number of results to return")
+
+
+class ActionTypeSummary(BaseModel):
+    """One action type from the action type catalog."""
+
+    definition_sys_id: str = Field(
+        ...,
+        description=(
+            "sys_hub_action_type_definition.sys_id — pass to list_action_type_inputs "
+            "to get input parameter definitions."
+        ),
+    )
+    base_sys_id: str = Field(
+        ...,
+        description=(
+            "sys_hub_action_type_base.sys_id — use as ActionInstanceParam.action_type_sys_id "
+            "when calling add_steps_to_flow or create_flow."
+        ),
+    )
+    name: str = Field(..., description="Display name (e.g. 'Look Up Record')")
+    internal_name: str | None = Field(None, description="Internal name (e.g. 'glide_record_lookup')")
+    spoke: str | None = Field(None, description="Spoke name (e.g. 'ServiceNow Core')")
+    description: str | None = Field(None, description="Action description")
+
+
+class ListActionTypesResult(BaseModel):
+    """Result from list_action_types."""
+
+    action_types: list[ActionTypeSummary]
+    message: str
+
+
+class ListActionTypeInputsParams(BaseModel):
+    """Parameters for list_action_type_inputs."""
+
+    action_type_sys_id: str = Field(
+        ...,
+        description=(
+            "sys_id of the action type definition (sys_hub_action_type_definition). "
+            "Use definition_sys_id from list_action_types to find this value."
+        ),
+    )
+
+
+class ActionTypeInput(BaseModel):
+    """One input parameter definition on an action type."""
+
+    sys_id: str = Field(..., description="sys_hub_action_input.sys_id — use as ActionInputParam.id in create_flow/add_steps_to_flow")
+    name: str = Field(..., description="Input parameter logical name from the 'element' field (e.g. 'table', 'conditions') — use as the key when setting values")
+    label: str = Field(..., description="Display label shown in Flow Designer")
+    type: str = Field(..., description="Field type (e.g. 'table_name', 'conditions', 'string')")
+    mandatory: bool = Field(False, description="Whether this input is required")
+    default_value: str | None = Field(None, description="Default value if any")
+    order: int = Field(0, description="Display order in Flow Designer")
+
+
+class ListActionTypeInputsResult(BaseModel):
+    """Result from list_action_type_inputs."""
+
+    action_type_sys_id: str
+    inputs: list[ActionTypeInput]
+    message: str
+
+
+class ListFlowLogicTypesParams(BaseModel):
+    """Parameters for list_flow_logic_types (no required inputs)."""
+    pass
+
+
+class FlowLogicType(BaseModel):
+    """One flow logic step type (e.g. If, Switch, For Each)."""
+
+    sys_id: str = Field(..., description="sys_id of this logic type — use when building flow logic steps")
+    name: str = Field(..., description="Display name (e.g. 'If', 'Switch', 'For Each')")
+    label: str | None = Field(None, description="UI label if different from name")
+    type_string: str | None = Field(None, description="Internal type string (e.g. 'if', 'switch', 'for_each')")
+
+
+class ListFlowLogicTypesResult(BaseModel):
+    """Result from list_flow_logic_types."""
+
+    logic_types: list[FlowLogicType]
+    message: str
+
+
+class AddStepsToFlowParams(BaseModel):
+    """Parameters for add_steps_to_flow."""
+
+    flow_sys_id: str = Field(
+        ...,
+        description="sys_id of the existing flow to modify (sys_hub_flow). Flow must be in draft state or will be set to draft on edit.",
+    )
+    actions: list[ActionInstanceParam] = Field(
+        default_factory=list,
+        description=(
+            "Action steps to append. Order values must not conflict with existing steps — "
+            "use get_flow_actions to inspect current orders before calling this tool."
+        ),
+    )
+
+
+class AddStepsToFlowResponse(BaseModel):
+    """Response from add_steps_to_flow."""
+
+    success: bool
+    message: str
+    flow_sys_id: str | None = None
+    steps_added: int = 0
+
+
+class DeleteArtifactParams(BaseModel):
+    """Common delete parameter — sys_id of the artifact to delete."""
+
+    sys_id: str = Field(..., description="sys_id of the artifact to delete")
+
+
+class DeleteFlowParams(DeleteArtifactParams):
+    """Parameters for delete_flow."""
+
+
+class DeleteSubflowParams(DeleteArtifactParams):
+    """Parameters for delete_subflow."""
+
+
+class DeleteActionParams(DeleteArtifactParams):
+    """Parameters for delete_action."""
+
+
+class DeleteArtifactResponse(BaseModel):
+    """Response from delete_* tools."""
+
+    success: bool
+    message: str
+    sys_id: str | None = None
+
+
+class GetFlowExecutionHistoryParams(BaseModel):
+    """Parameters for get_flow_execution_history."""
+
+    flow_sys_id: str = Field(..., description="sys_id of the flow to get execution history for")
+    limit: int = Field(20, ge=1, le=100, description="Maximum number of executions to return")
+    state: str | None = Field(
+        None,
+        description="Optional state filter. Common values: 'complete', 'error', 'running', 'cancelled'.",
+    )
+
+
+class FlowExecution(BaseModel):
+    """Summary of one flow execution from sys_hub_flow_context."""
+
+    sys_id: str
+    name: str | None = None
+    state: str | None = None
+    started: str | None = None
+    ended: str | None = None
+    error: str | None = None
+
+
+class GetFlowExecutionHistoryResult(BaseModel):
+    """Result from get_flow_execution_history."""
+
+    executions: list[FlowExecution]
+    count: int
+    message: str
+
+
 class ArtifactSummary(BaseModel):
     """Compact artifact summary used by list_* tools."""
 
@@ -430,6 +614,17 @@ _TRIGGER_TYPE_NAME_MAP = {
     "record_create_or_update": "Created or Updated",
     "record_update": "Updated",
     "recurrence": "Recurrence",
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "monthly": "Monthly",
+    "repeat": "Repeat",
+    "run_once": "Run Once",
+    "email": "Inbound Email",
+    "rest": "Trigger Rest",
+    "service_catalog": "Service Catalog",
+    "knowledge_management": "Knowledge Management",
+    "sla_task": "SLA Task",
+    "analytics": "Proactive Analytics",
 }
 
 _TRUNCATE_BODY_AT = 2000
@@ -1428,6 +1623,297 @@ def publish_action(
     return _publish_artifact(config, auth_manager, "action", params)
 
 
+def list_action_types(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: ListActionTypesParams,
+) -> ListActionTypesResult:
+    """
+    Search the action type catalog for action types matching a name query.
+
+    Returns both definition_sys_id (for list_action_type_inputs) and
+    base_sys_id (for ActionInstanceParam.action_type_sys_id in add_steps_to_flow
+    and create_flow). These are different sys_ids for the same action — both are
+    needed for the full create-and-configure workflow.
+
+    Args:
+        config: Server configuration.
+        auth_manager: Authentication manager.
+        params: Query string and limit.
+
+    Returns:
+        ListActionTypesResult with matching action types.
+    """
+    try:
+        response = requests.get(
+            f"{config.api_url}/table/sys_hub_action_type_definition",
+            params={
+                "sysparm_query": f"nameCONTAINS{params.query}^ORinternal_nameCONTAINS{params.query}",
+                "sysparm_fields": "sys_id,name,internal_name,action_type_base,spoke,description",
+                "sysparm_display_value": "true",
+                "sysparm_limit": params.limit,
+            },
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "list_action_types | request failed | query=%s | error=%s%s",
+            params.query, e, f" | body={_body}" if _body else "",
+        )
+        return ListActionTypesResult(
+            action_types=[],
+            message=f"Failed to fetch action types: {e}" + (f" | body: {_body}" if _body else ""),
+        )
+
+    records = response.json().get("result", [])
+    action_types = []
+    for r in records:
+        # action_type_base is a reference field; with display_value=true it comes as
+        # {"value": "<sys_id>", "display_value": "<name>"} or just a plain string.
+        atb = r.get("action_type_base", {})
+        base_sys_id = atb.get("value", "") if isinstance(atb, dict) else str(atb or "")
+        spoke_field = r.get("spoke", {})
+        spoke_name = spoke_field.get("display_value") if isinstance(spoke_field, dict) else str(spoke_field or "")
+        action_types.append(ActionTypeSummary(
+            definition_sys_id=r["sys_id"],
+            base_sys_id=base_sys_id,
+            name=r.get("name", ""),
+            internal_name=r.get("internal_name") or None,
+            spoke=spoke_name or None,
+            description=r.get("description") or None,
+        ))
+
+    logger.info("list_action_types | query=%s | found %d result(s)", params.query, len(action_types))
+    return ListActionTypesResult(
+        action_types=action_types,
+        message=f"Found {len(action_types)} action type(s) matching '{params.query}'.",
+    )
+
+
+def list_action_type_inputs(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: ListActionTypeInputsParams,
+) -> ListActionTypeInputsResult:
+    """
+    Return all input parameter definitions for a given action type.
+
+    Queries sys_hub_action_input filtered by definition sys_id and returns
+    the sys_id, name, label, type, mandatory flag, and default value for each
+    input. The sys_id field maps directly to ActionInputParam.id in
+    create_flow and add_steps_to_flow — eliminating the need to hardcode
+    instance-specific parameter sys_ids.
+
+    NOTE: The logical name of each input is in the 'element' field (not 'name').
+    The query field is 'model=' (not 'action_type=').
+    Both verified against live sys_hub_action_input records.
+
+    Args:
+        config: Server configuration.
+        auth_manager: Authentication manager.
+        params: Contains action_type_sys_id (definition sys_id) to query against.
+
+    Returns:
+        ListActionTypeInputsResult with the inputs list and a summary message.
+    """
+    try:
+        response = requests.get(
+            f"{config.api_url}/table/sys_hub_action_input",
+            params={
+                # NOTE: The query field is `model`, NOT `action_type` — verified against live instance.
+                # `action_type` does not exist on sys_hub_action_input.
+                "sysparm_query": f"model={params.action_type_sys_id}",
+                "sysparm_fields": "sys_id,element,label,type,mandatory,default_value,order",
+                "sysparm_orderby": "order",
+                "sysparm_limit": 200,
+            },
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "list_action_type_inputs | request failed | action_type=%s | error=%s%s",
+            params.action_type_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return ListActionTypeInputsResult(
+            action_type_sys_id=params.action_type_sys_id,
+            inputs=[],
+            message=f"Failed to fetch action type inputs: {e}" + (f" | body: {_body}" if _body else ""),
+        )
+
+    records = response.json().get("result", [])
+    inputs = [
+        ActionTypeInput(
+            sys_id=r["sys_id"],
+            # element = logical name (e.g. "table", "conditions") — NOT the `name` field.
+            # Verified against live sys_hub_action_input records.
+            name=r.get("element", ""),
+            label=r.get("label", ""),
+            type=r.get("type", ""),
+            mandatory=_coerce_bool(r.get("mandatory", False)),
+            default_value=r.get("default_value") or None,
+            order=int(r.get("order") or 0),
+        )
+        for r in records
+    ]
+    logger.info(
+        "list_action_type_inputs | action_type=%s | found %d inputs",
+        params.action_type_sys_id, len(inputs),
+    )
+    return ListActionTypeInputsResult(
+        action_type_sys_id=params.action_type_sys_id,
+        inputs=inputs,
+        message=f"Found {len(inputs)} input(s) for action type {params.action_type_sys_id}.",
+    )
+
+
+def list_flow_logic_types(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    _params: ListFlowLogicTypesParams,
+) -> ListFlowLogicTypesResult:
+    """
+    List all available Flow Designer logic step types (If, Switch, For Each, etc.).
+
+    Calls GET /api/now/processflow/flow_logic/types. The sys_id values returned
+    are the identifiers needed to add flow logic steps to a flow payload.
+    """
+    try:
+        response = requests.get(
+            f"{config.api_url}/processflow/flow_logic/types",
+            params={"sysparm_transaction_scope": "global"},
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("list_flow_logic_types | request failed | error=%s%s", e, f" | body={_body}" if _body else "")
+        return ListFlowLogicTypesResult(
+            logic_types=[],
+            message=f"Failed to fetch flow logic types: {e}" + (f" | body: {_body}" if _body else ""),
+        )
+
+    data = response.json()
+    # The API may return {"result": [...]} or a bare list.
+    raw = data.get("result", data) if isinstance(data, dict) else data
+    logic_types: list[FlowLogicType] = []
+    if isinstance(raw, list):
+        for t in raw:
+            if isinstance(t, dict):
+                logic_types.append(FlowLogicType(
+                    sys_id=t.get("sys_id") or t.get("id", ""),
+                    name=t.get("name") or t.get("label", ""),
+                    label=t.get("label"),
+                    type_string=t.get("type") or t.get("typeString"),
+                ))
+
+    logger.info("list_flow_logic_types | found %d logic type(s)", len(logic_types))
+    return ListFlowLogicTypesResult(
+        logic_types=logic_types,
+        message=f"Found {len(logic_types)} flow logic type(s).",
+    )
+
+
+def add_steps_to_flow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: AddStepsToFlowParams,
+) -> AddStepsToFlowResponse:
+    """
+    Add action steps to an existing flow using the GET→mutate→PUT pattern.
+
+    Sequence:
+      1. GET /processflow/flow/{sys_id}       — fetch current payload
+      2. Append new action instances           — built via _build_action_instances
+      3. PUT /processflow/flow                 — write back modified payload
+      4. POST /processflow/versioning/create_version — save a new version
+
+    The flow must exist. Order values in params.actions must not clash with
+    existing steps — use get_flow_actions first to see current orders.
+    """
+    processflow_base = f"{config.api_url}/processflow"
+    headers = auth_manager.get_headers()
+
+    # Step 1: GET current flow payload
+    try:
+        get_response = requests.get(
+            f"{processflow_base}/flow/{params.flow_sys_id}",
+            headers=headers,
+            timeout=config.timeout,
+        )
+        get_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("add_steps_to_flow | GET failed | flow_sys_id=%s | error=%s%s", params.flow_sys_id, e, f" | body={_body}" if _body else "")
+        return AddStepsToFlowResponse(
+            success=False,
+            message=f"Failed to fetch flow {params.flow_sys_id}: {e}" + (f" | body: {_body}" if _body else ""),
+        )
+
+    flow_data = get_response.json().get("result", {}).get("data", {})
+    if not flow_data:
+        return AddStepsToFlowResponse(
+            success=False,
+            message=f"GET /processflow/flow/{params.flow_sys_id} returned no data.",
+            flow_sys_id=params.flow_sys_id,
+        )
+
+    # Step 2: Append new action instances to existing ones
+    new_instances = _build_action_instances(params.flow_sys_id, params.actions)
+    flow_data["actionInstances"] = (flow_data.get("actionInstances") or []) + new_instances
+
+    # Step 3: PUT modified payload back
+    try:
+        put_response = requests.put(
+            f"{processflow_base}/flow",
+            params={"sysparm_transaction_scope": "global"},
+            json=flow_data,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        put_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("add_steps_to_flow | PUT failed | flow_sys_id=%s | error=%s%s", params.flow_sys_id, e, f" | body={_body}" if _body else "")
+        return AddStepsToFlowResponse(
+            success=False,
+            message=f"Failed to update flow {params.flow_sys_id}: {e}" + (f" | body: {_body}" if _body else ""),
+            flow_sys_id=params.flow_sys_id,
+        )
+
+    # Step 4: Save version (non-fatal if it fails)
+    try:
+        requests.post(
+            f"{processflow_base}/versioning/create_version",
+            params={"sysparm_transaction_scope": "global"},
+            json={
+                "item_sys_id": params.flow_sys_id,
+                "type": "Save",
+                "annotation": "",
+                "favorite": False,
+            },
+            headers=headers,
+            timeout=config.timeout,
+        ).raise_for_status()
+        logger.info("add_steps_to_flow | version saved | flow_sys_id=%s", params.flow_sys_id)
+    except requests.RequestException as e:
+        logger.warning("add_steps_to_flow | create_version failed (non-fatal) | flow_sys_id=%s | error=%s", params.flow_sys_id, e)
+
+    logger.info("add_steps_to_flow | success | flow_sys_id=%s | steps_added=%d", params.flow_sys_id, len(params.actions))
+    return AddStepsToFlowResponse(
+        success=True,
+        message=f"Added {len(params.actions)} step(s) to flow {params.flow_sys_id}.",
+        flow_sys_id=params.flow_sys_id,
+        steps_added=len(params.actions),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
@@ -2075,3 +2561,130 @@ def _build_action_instances(flow_sys_id: str, actions: list[ActionInstanceParam]
             }
         )
     return result
+
+
+_ARTIFACT_TABLE_MAP: dict[str, str] = {
+    "flow": "sys_hub_flow",
+    "subflow": "sys_hub_flow",
+    "action": "sys_hub_action_type_definition",
+}
+
+
+def _delete_artifact(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    artifact_type: str,
+    sys_id: str,
+) -> DeleteArtifactResponse:
+    """Delete a flow artifact via the Table API DELETE endpoint."""
+    table = _ARTIFACT_TABLE_MAP[artifact_type]
+    try:
+        response = requests.delete(
+            f"{config.api_url}/table/{table}/{sys_id}",
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "_delete_artifact | failed | artifact_type=%s | sys_id=%s | error=%s%s",
+            artifact_type, sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return DeleteArtifactResponse(
+            success=False,
+            message=f"Failed to delete {artifact_type} {sys_id}: {e}" + (f" | body: {_body}" if _body else ""),
+            sys_id=sys_id,
+        )
+    logger.info("_delete_artifact | deleted | artifact_type=%s | sys_id=%s", artifact_type, sys_id)
+    return DeleteArtifactResponse(success=True, message=f"Deleted {artifact_type} {sys_id}.", sys_id=sys_id)
+
+
+def delete_flow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: DeleteFlowParams,
+) -> DeleteArtifactResponse:
+    """Delete a flow by sys_id. Irreversible — ensure no dependent subflows or actions reference this flow."""
+    return _delete_artifact(config, auth_manager, "flow", params.sys_id)
+
+
+def delete_subflow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: DeleteSubflowParams,
+) -> DeleteArtifactResponse:
+    """Delete a subflow by sys_id."""
+    return _delete_artifact(config, auth_manager, "subflow", params.sys_id)
+
+
+def delete_action(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: DeleteActionParams,
+) -> DeleteArtifactResponse:
+    """Delete a custom action type by sys_id."""
+    return _delete_artifact(config, auth_manager, "action", params.sys_id)
+
+
+def get_flow_execution_history(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: GetFlowExecutionHistoryParams,
+) -> GetFlowExecutionHistoryResult:
+    """
+    Return recent executions of a flow from sys_hub_flow_context.
+
+    Each execution record includes state, start/end times, and any error
+    message. Useful for debugging flows that are failing or running unexpectedly.
+    """
+    query = f"flow={params.flow_sys_id}^ORDERBYDESCsys_created_on"
+    if params.state:
+        query += f"^state={params.state}"
+
+    try:
+        response = requests.get(
+            f"{config.api_url}/table/sys_hub_flow_context",
+            params={
+                "sysparm_query": query,
+                "sysparm_fields": "sys_id,name,state,started,ended,error",
+                "sysparm_limit": params.limit,
+                "sysparm_display_value": "true",
+            },
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "get_flow_execution_history | request failed | flow_sys_id=%s | error=%s%s",
+            params.flow_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return GetFlowExecutionHistoryResult(
+            executions=[],
+            count=0,
+            message=f"Failed to fetch execution history for flow {params.flow_sys_id}: {e}" + (f" | body: {_body}" if _body else ""),
+        )
+
+    records = response.json().get("result", [])
+    executions = [
+        FlowExecution(
+            sys_id=r["sys_id"],
+            name=r.get("name") or None,
+            state=r.get("state") or None,
+            started=r.get("started") or None,
+            ended=r.get("ended") or None,
+            error=r.get("error") or None,
+        )
+        for r in records
+    ]
+    logger.info(
+        "get_flow_execution_history | flow_sys_id=%s | found %d execution(s)",
+        params.flow_sys_id, len(executions),
+    )
+    return GetFlowExecutionHistoryResult(
+        executions=executions,
+        count=len(executions),
+        message=f"Found {len(executions)} execution(s) for flow {params.flow_sys_id}.",
+    )

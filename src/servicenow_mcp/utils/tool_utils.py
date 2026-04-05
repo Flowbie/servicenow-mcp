@@ -123,19 +123,38 @@ from servicenow_mcp.tools.scrum_task_tools import (
     close_scrum_task as close_scrum_task_tool,
 )
 from servicenow_mcp.tools.flow_tools import (
+    ActionTypeInput,
+    ActionTypeSummary,
+    AddStepsToFlowParams,
+    AddStepsToFlowResponse,
     CreateActionParams,
     CreateFlowParams,
     CreateFlowResponse,
     CreateSubflowParams,
+    DeleteActionParams,
+    DeleteArtifactParams,
+    DeleteArtifactResponse,
+    DeleteFlowParams,
+    DeleteSubflowParams,
+    FlowExecution,
+    FlowLogicType,
     GetActionParams,
     GetArtifactResponse,
     GetFlowActionsParams,
+    GetFlowExecutionHistoryParams,
+    GetFlowExecutionHistoryResult,
     GetFlowParams,
     GetFlowTriggersParams,
     GetFlowVersionParams,
     GetSubflowParams,
+    ListActionTypeInputsParams,
+    ListActionTypeInputsResult,
     ListActionsParams,
+    ListActionTypesParams,
+    ListActionTypesResult,
     ListArtifactsResponse,
+    ListFlowLogicTypesParams,
+    ListFlowLogicTypesResult,
     ListFlowsParams,
     ListSubflowsParams,
     ListTriggerTypesParams,
@@ -149,16 +168,24 @@ from servicenow_mcp.tools.flow_tools import (
     UpdateSubflowParams,
 )
 from servicenow_mcp.tools.flow_tools import (
+    add_steps_to_flow as add_steps_to_flow_tool,
     create_action as create_action_tool,
     create_flow as create_flow_tool,
     create_subflow as create_subflow_tool,
+    delete_action as delete_action_tool,
+    delete_flow as delete_flow_tool,
+    delete_subflow as delete_subflow_tool,
     get_action as get_action_tool,
     get_flow as get_flow_tool,
     get_flow_actions as get_flow_actions_tool,
+    get_flow_execution_history as get_flow_execution_history_tool,
     get_flow_triggers as get_flow_triggers_tool,
     get_flow_version as get_flow_version_tool,
     get_subflow as get_subflow_tool,
+    list_action_type_inputs as list_action_type_inputs_tool,
+    list_action_types as list_action_types_tool,
     list_actions as list_actions_tool,
+    list_flow_logic_types as list_flow_logic_types_tool,
     list_flows as list_flows_tool,
     list_subflows as list_subflows_tool,
     list_trigger_types as list_trigger_types_tool,
@@ -521,6 +548,80 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             PublishActionParams,
             MutationResponse,
             "Publish a Flow Designer custom action.",
+            "json",
+        ),
+        "list_action_types": (
+            list_action_types_tool,
+            ListActionTypesParams,
+            ListActionTypesResult,
+            (
+                "Search the action type catalog by name. Returns both definition_sys_id (for list_action_type_inputs) "
+                "and base_sys_id (for ActionInstanceParam.action_type_sys_id in add_steps_to_flow/create_flow). "
+                "These are different sys_ids — both are required for the full flow authoring workflow."
+            ),
+            "json",
+        ),
+        "list_action_type_inputs": (
+            list_action_type_inputs_tool,
+            ListActionTypeInputsParams,
+            ListActionTypeInputsResult,
+            (
+                "Return all input parameter definitions (sys_ids, types, mandatory flags) for a given action type. "
+                "Use this to discover the exact ActionInputParam.id values needed by create_flow and add_steps_to_flow "
+                "without hardcoding instance-specific sys_ids."
+            ),
+            "json",
+        ),
+        "list_flow_logic_types": (
+            list_flow_logic_types_tool,
+            ListFlowLogicTypesParams,
+            ListFlowLogicTypesResult,
+            (
+                "List all Flow Designer logic step types (If, Switch, For Each, Wait for Condition, etc.). "
+                "Returns sys_id values needed to add logic steps to a flow."
+            ),
+            "json",
+        ),
+        "add_steps_to_flow": (
+            add_steps_to_flow_tool,
+            AddStepsToFlowParams,
+            AddStepsToFlowResponse,
+            (
+                "Add action steps to an existing flow using GET→mutate→PUT. Fetches the current flow payload, "
+                "appends new action instances, writes back, and saves a version. "
+                "Use get_flow_actions first to see existing step orders."
+            ),
+            "json",
+        ),
+        "delete_flow": (
+            delete_flow_tool,
+            DeleteFlowParams,
+            DeleteArtifactResponse,
+            "Delete a flow by sys_id. Irreversible.",
+            "json",
+        ),
+        "delete_subflow": (
+            delete_subflow_tool,
+            DeleteSubflowParams,
+            DeleteArtifactResponse,
+            "Delete a subflow by sys_id. Irreversible.",
+            "json",
+        ),
+        "delete_action": (
+            delete_action_tool,
+            DeleteActionParams,
+            DeleteArtifactResponse,
+            "Delete a custom action type definition by sys_id. Irreversible.",
+            "json",
+        ),
+        "get_flow_execution_history": (
+            get_flow_execution_history_tool,
+            GetFlowExecutionHistoryParams,
+            GetFlowExecutionHistoryResult,
+            (
+                "Return recent executions of a flow from sys_hub_flow_context. Includes state, timing, and error details. "
+                "Useful for debugging flows that are failing or running unexpectedly."
+            ),
             "json",
         ),
         # Changeset Management Tools
