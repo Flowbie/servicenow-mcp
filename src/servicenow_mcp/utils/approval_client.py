@@ -44,6 +44,7 @@ WRITE_TOOLS = {
     "run_background_script",
     # Flow Designer
     "create_flow",
+    "clone_flow",
     "update_flow",
     "publish_flow",
     "create_subflow",

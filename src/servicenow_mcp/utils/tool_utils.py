@@ -175,6 +175,8 @@ from servicenow_mcp.tools.flow_tools import (
     PublishSubflowParams,
     RemoveStepsFromFlowParams,
     RemoveStepsFromFlowResponse,
+    CloneFlowParams,
+    CloneFlowResponse,
     UpdateActionParams,
     UpdateFlowParams,
     UpdateSubflowParams,
@@ -184,6 +186,7 @@ from servicenow_mcp.tools.flow_tools import (
     add_steps_to_flow as add_steps_to_flow_tool,
     create_action as create_action_tool,
     create_flow as create_flow_tool,
+    clone_flow as clone_flow_tool,
     create_subflow as create_subflow_tool,
     delete_action as delete_action_tool,
     delete_flow as delete_flow_tool,
@@ -461,6 +464,18 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             GetFlowParams,
             dict,
             "Get the detail view of a single Flow Designer flow by sys_id",
+            "json",
+        ),
+        "clone_flow": (
+            clone_flow_tool,
+            CloneFlowParams,
+            CloneFlowResponse,
+            (
+                "Duplicate an existing Flow Designer flow to a new draft flow (new sys_id). "
+                "Fetches the source via GET /processflow/flow/{id}, creates a new shell, "
+                "copies trigger/action/logic/subflow instances with regenerated ids, then Save. "
+                "Use after list_flows/get_flow when reusing an existing design."
+            ),
             "json",
         ),
         "get_flow_triggers": (

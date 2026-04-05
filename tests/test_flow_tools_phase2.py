@@ -884,3 +884,104 @@ def test_get_flow_execution_detail_strips_execution_sys_id(config, auth):
         )
     script = mock_post.call_args.kwargs.get("json", {}).get("script", "")
     assert json.dumps(EXEC_CTX_ID.strip()) in script or EXEC_CTX_ID.strip() in script
+
+
+CLONE_SOURCE = "a" * 32
+CLONE_NEW = "b" * 32
+
+
+def test_clone_flow_success(config, auth):
+    """GET source, POST shell, PUT cloned instances, Save version."""
+    from servicenow_mcp.tools.flow_tools import CloneFlowParams, clone_flow
+
+    table_row = {
+        "sys_id": CLONE_SOURCE,
+        "type": "flow",
+        "scope": "global",
+        "run_as": "user",
+        "access": "public",
+        "flow_priority": "MEDIUM",
+        "description": "",
+    }
+    src_payload = {
+        "result": {
+            "data": {
+                "id": CLONE_SOURCE,
+                "name": "Source Flow",
+                "triggerInstances": [
+                    {
+                        "id": "trigold",
+                        "flowSysId": CLONE_SOURCE,
+                        "type": "record_create",
+                        "remoteSysId": "td1",
+                    }
+                ],
+                "actionInstances": [
+                    {
+                        "id": "actold",
+                        "flowSysId": CLONE_SOURCE,
+                        "order": "1",
+                        "uiUniqueIdentifier": "u1u1u1u1u1u1u1u1u1u1u1u1u1u1",
+                        "deleted": False,
+                    }
+                ],
+                "flowLogicInstances": [],
+                "subFlowInstances": [],
+            }
+        }
+    }
+    shell_resp = {
+        "result": {"data": {"id": CLONE_NEW, "internalName": "u_cloned_flow", "name": "Cloned"}}
+    }
+
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, \
+            patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post, \
+            patch("servicenow_mcp.tools.flow_tools.requests.put") as mock_put, \
+            patch("servicenow_mcp.tools.flow_tools._patch_flow_version_trigger_type", return_value=None), \
+            patch("servicenow_mcp.tools.flow_tools._release_flow_edit_lock", return_value=None):
+        mock_get.side_effect = [
+            _make_response(200, {"result": table_row}),
+            _make_response(200, src_payload),
+        ]
+        mock_post.side_effect = [
+            _make_response(200, shell_resp),
+            _make_response(200, MOCK_VERSION_RESPONSE),
+            _make_response(200, MOCK_VERSION_RESPONSE),
+        ]
+        mock_put.return_value = _make_response(200, {"result": {"data": {"id": CLONE_NEW}}})
+
+        result = clone_flow(
+            config,
+            auth,
+            CloneFlowParams(source_flow_sys_id=CLONE_SOURCE, name="Cloned Copy"),
+        )
+
+    assert result.success is True
+    assert result.flow_sys_id == CLONE_NEW
+    assert result.source_flow_sys_id == CLONE_SOURCE
+    put_body = mock_put.call_args.kwargs.get("json") or mock_put.call_args[1].get("json")
+    assert put_body["id"] == CLONE_NEW
+    assert len(put_body["triggerInstances"]) == 1
+    assert put_body["triggerInstances"][0]["flowSysId"] == CLONE_NEW
+    assert put_body["triggerInstances"][0]["id"] != "trigold"
+    assert len(put_body["actionInstances"]) == 1
+    assert put_body["actionInstances"][0]["flowSysId"] == CLONE_NEW
+    assert put_body["actionInstances"][0]["uiUniqueIdentifier"] != "u1u1u1u1u1u1u1u1u1u1u1u1u1u1"
+
+
+def test_clone_flow_rejects_subflow_type(config, auth):
+    """Refuses when sys_hub_flow.type is subflow."""
+    from servicenow_mcp.tools.flow_tools import CloneFlowParams, clone_flow
+
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get:
+        mock_get.return_value = _make_response(
+            200,
+            {"result": {"sys_id": CLONE_SOURCE, "type": "subflow"}},
+        )
+        result = clone_flow(
+            config,
+            auth,
+            CloneFlowParams(source_flow_sys_id=CLONE_SOURCE, name="X"),
+        )
+    assert result.success is False
+    assert "type=flow" in result.message

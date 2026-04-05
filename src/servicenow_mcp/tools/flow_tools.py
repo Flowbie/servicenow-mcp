@@ -264,6 +264,44 @@ class CreateFlowResponse(BaseModel):
     flow_internal_name: str | None = Field(None, description="Auto-generated internal name of the flow")
 
 
+class CloneFlowParams(BaseModel):
+    """Parameters for clone_flow — duplicate an existing flow with a new sys_id."""
+
+    source_flow_sys_id: str = Field(..., description="sys_id of the flow to clone (sys_hub_flow)")
+    name: str = Field(..., description="Display name for the new flow")
+    description: str | None = Field(
+        None,
+        description="Description for the new flow; if omitted, copied from the source flow table row when available",
+    )
+    scope: str | None = Field(
+        None,
+        description="Application scope (sys_id or 'global'); defaults from source flow when omitted",
+    )
+    run_as: Literal["user", "system"] | None = Field(
+        None,
+        description="Run-as context; defaults from source flow when omitted",
+    )
+    access: Literal["public", "package_private", "private"] | None = Field(
+        None,
+        description="Access level; defaults from source flow when omitted",
+    )
+    flow_priority: Literal["LOW", "MEDIUM", "HIGH"] | None = Field(
+        None,
+        description="Flow priority; defaults from source flow when omitted",
+    )
+
+
+class CloneFlowResponse(BaseModel):
+    """Response from clone_flow."""
+
+    success: bool = Field(..., description="Whether the clone completed")
+    message: str = Field(..., description="Human-readable result")
+    flow_sys_id: str | None = Field(None, description="sys_id of the new flow")
+    flow_name: str | None = Field(None, description="Name of the new flow")
+    flow_internal_name: str | None = Field(None, description="Internal name of the new flow")
+    source_flow_sys_id: str | None = Field(None, description="sys_id of the source flow")
+
+
 class ListArtifactsParams(BaseModel):
     """Common pagination/filter parameters for flow artifacts."""
 
@@ -2202,6 +2240,395 @@ def add_steps_to_flow(
         message=f"Added {len(params.actions)} step(s) to flow {params.flow_sys_id}.",
         flow_sys_id=params.flow_sys_id,
         steps_added=len(params.actions),
+    )
+
+
+def _deep_clone_json(obj: Any) -> Any:
+    """Deep copy JSON-serialisable structures."""
+    return json.loads(json.dumps(obj))
+
+
+def _clone_flow_instance_arrays(source_flow_data: dict, new_flow_id: str) -> dict[str, Any]:
+    """Build trigger/action/logic/subflow arrays for a cloned flow (new instance ids and flowSysId)."""
+    src = _deep_clone_json(source_flow_data)
+
+    ui_map: dict[str, str] = {}
+
+    def collect_uis(arr: list | None) -> None:
+        if not arr:
+            return
+        for inst in arr:
+            if isinstance(inst, dict) and inst.get("uiUniqueIdentifier"):
+                u = inst["uiUniqueIdentifier"]
+                if isinstance(u, str) and u and u not in ui_map:
+                    ui_map[u] = uuid.uuid4().hex
+
+    for key in ("actionInstances", "flowLogicInstances", "subFlowInstances"):
+        collect_uis(src.get(key))
+
+    def remap_triggers(arr: list | None) -> list[dict]:
+        out: list[dict] = []
+        if not arr:
+            return out
+        for inst in arr:
+            if not isinstance(inst, dict):
+                continue
+            n = _deep_clone_json(inst)
+            n["id"] = uuid.uuid4().hex
+            n["flowSysId"] = new_flow_id
+            n.pop("sys_id", None)
+            out.append(n)
+        return out
+
+    def remap_actions(arr: list | None) -> list[dict]:
+        out: list[dict] = []
+        if not arr:
+            return out
+        for inst in arr:
+            if not isinstance(inst, dict):
+                continue
+            n = _deep_clone_json(inst)
+            n["id"] = uuid.uuid4().hex
+            n["flowSysId"] = new_flow_id
+            n.pop("sys_id", None)
+            old_u = n.get("uiUniqueIdentifier")
+            if isinstance(old_u, str) and old_u:
+                n["uiUniqueIdentifier"] = ui_map.get(old_u, uuid.uuid4().hex)
+            out.append(n)
+        return out
+
+    def remap_logic(arr: list | None) -> list[dict]:
+        out: list[dict] = []
+        if not arr:
+            return out
+        for inst in arr:
+            if not isinstance(inst, dict):
+                continue
+            n = _deep_clone_json(inst)
+            n["id"] = uuid.uuid4().hex
+            n["flowSysId"] = new_flow_id
+            n.pop("sys_id", None)
+            old_u = n.get("uiUniqueIdentifier")
+            if isinstance(old_u, str) and old_u:
+                n["uiUniqueIdentifier"] = ui_map.get(old_u, uuid.uuid4().hex)
+            par = n.get("parent") or ""
+            if isinstance(par, str) and par and par in ui_map:
+                n["parent"] = ui_map[par]
+            out.append(n)
+        return out
+
+    def remap_subflows(arr: list | None) -> list[dict]:
+        out: list[dict] = []
+        if not arr:
+            return out
+        for inst in arr:
+            if not isinstance(inst, dict):
+                continue
+            n = _deep_clone_json(inst)
+            n["id"] = uuid.uuid4().hex
+            n["flowSysId"] = new_flow_id
+            n.pop("sys_id", None)
+            old_u = n.get("uiUniqueIdentifier")
+            if isinstance(old_u, str) and old_u:
+                n["uiUniqueIdentifier"] = ui_map.get(old_u, uuid.uuid4().hex)
+            out.append(n)
+        return out
+
+    return {
+        "triggerInstances": remap_triggers(src.get("triggerInstances")),
+        "actionInstances": remap_actions(src.get("actionInstances")),
+        "flowLogicInstances": remap_logic(src.get("flowLogicInstances")),
+        "subFlowInstances": remap_subflows(src.get("subFlowInstances")),
+    }
+
+
+def _fetch_sys_hub_flow_row_for_clone(
+    config: ServerConfig, auth_manager: AuthManager, source_sys_id: str
+) -> tuple[dict | None, str | None]:
+    """Load sys_hub_flow row for clone metadata. Returns (record, error_message)."""
+    try:
+        response = requests.get(
+            f"{config.api_url}/table/sys_hub_flow/{source_sys_id}",
+            headers=auth_manager.get_headers(),
+            params={
+                "sysparm_fields": "sys_id,name,description,type,scope,run_as,access,flow_priority",
+            },
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+        return response.json().get("result", {}) or {}, None
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        return None, str(e) + (f" | {_body}" if _body else "")
+
+
+def _defaults_from_flow_row(rec: dict) -> dict[str, Any]:
+    """Map sys_hub_flow row fields to create_flow-style defaults."""
+    scope = rec.get("scope")
+    if isinstance(scope, dict):
+        scope_s = str(scope.get("value") or "global")
+    else:
+        scope_s = str(scope) if scope else "global"
+
+    run_as: Literal["user", "system"] = "user"
+    ra = rec.get("run_as")
+    if isinstance(ra, dict):
+        rv = str(ra.get("value") or "").lower()
+    else:
+        rv = str(ra or "").lower()
+    if rv == "system" or "system" in rv:
+        run_as = "system"
+
+    access: Literal["public", "package_private", "private"] = "public"
+    ac = rec.get("access")
+    if isinstance(ac, dict):
+        av = str(ac.get("value") or "").lower()
+    else:
+        av = str(ac or "").lower()
+    if "package" in av and "private" in av:
+        access = "package_private"
+    elif "private" in av and "package" not in av:
+        access = "private"
+
+    fp: Literal["LOW", "MEDIUM", "HIGH"] = "MEDIUM"
+    pr = rec.get("flow_priority")
+    if isinstance(pr, dict):
+        pv = str(pr.get("value") or "").upper()
+    else:
+        pv = str(pr or "").upper()
+    if "LOW" in pv:
+        fp = "LOW"
+    elif "HIGH" in pv:
+        fp = "HIGH"
+
+    desc = rec.get("description")
+    if isinstance(desc, dict):
+        desc_s = str(desc.get("display_value") or desc.get("value") or "")
+    else:
+        desc_s = str(desc) if desc else ""
+
+    return {
+        "scope": scope_s,
+        "run_as": run_as,
+        "access": access,
+        "flow_priority": fp,
+        "description": desc_s,
+    }
+
+
+def clone_flow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: CloneFlowParams,
+) -> CloneFlowResponse:
+    """
+    Duplicate an existing Flow Designer flow to a new draft flow (new sys_id).
+
+    Uses GET /processflow/flow/{source}, POST /processflow/flow (new shell), PUT with
+    cloned instance arrays (regenerated ids and uiUniqueIdentifier map), then Save
+    version. Subflow step references to other flows are preserved by sys_id; complex
+    graphs with undocumented cross-step references may require manual fix-up in Flow Designer.
+    """
+    processflow_base = f"{config.api_url}/processflow"
+    headers = auth_manager.get_headers()
+    version_query_params = {"sysparm_transaction_scope": "global"}
+
+    row, row_err = _fetch_sys_hub_flow_row_for_clone(config, auth_manager, params.source_flow_sys_id)
+    if row is None:
+        return CloneFlowResponse(
+            success=False,
+            message=f"Cannot load source flow {params.source_flow_sys_id}: {row_err}",
+            source_flow_sys_id=params.source_flow_sys_id,
+        )
+    tval = row.get("type")
+    if isinstance(tval, dict):
+        tstr = str(tval.get("value") or "").lower()
+    else:
+        tstr = str(tval or "").lower()
+    if tstr and tstr != "flow":
+        return CloneFlowResponse(
+            success=False,
+            message=f"clone_flow only supports type=flow; source has type={tstr}. Use a flow sys_id.",
+            source_flow_sys_id=params.source_flow_sys_id,
+        )
+
+    meta = _defaults_from_flow_row(row)
+    scope = params.scope if params.scope is not None else meta["scope"]
+    run_as = params.run_as if params.run_as is not None else meta["run_as"]
+    access = params.access if params.access is not None else meta["access"]
+    flow_priority = params.flow_priority if params.flow_priority is not None else meta["flow_priority"]
+    description = params.description if params.description is not None else meta["description"]
+
+    # Step 1: GET source processflow payload
+    try:
+        get_response = requests.get(
+            f"{processflow_base}/flow/{params.source_flow_sys_id}",
+            headers=headers,
+            timeout=config.timeout,
+        )
+        get_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("clone_flow | GET source failed | error=%s%s", e, f" | body={_body}" if _body else "")
+        return CloneFlowResponse(
+            success=False,
+            message=f"Failed to fetch source flow payload: {e}" + (f" | {_body}" if _body else ""),
+            source_flow_sys_id=params.source_flow_sys_id,
+        )
+
+    src_data = get_response.json().get("result", {}).get("data", {})
+    if not src_data:
+        return CloneFlowResponse(
+            success=False,
+            message=f"GET /processflow/flow/{params.source_flow_sys_id} returned no data.",
+            source_flow_sys_id=params.source_flow_sys_id,
+        )
+
+    # Step 2: POST new shell
+    shell_body = {
+        "name": params.name,
+        "type": "flow",
+        "scope": scope,
+        "runAs": run_as,
+        "access": access,
+        "flowPriority": flow_priority,
+        "status": "draft",
+        "active": False,
+        "deleted": False,
+        "security": {"can_read": True, "can_write": True},
+        "scopeName": "",
+        "scopeDisplayName": "",
+        "userHasRolesAssignedToFlow": True,
+        "runWithRoles": {"value": "", "displayValue": ""},
+        "description": description or "",
+        "protection": "",
+    }
+
+    try:
+        shell_response = requests.post(
+            f"{processflow_base}/flow",
+            params={
+                "param_only_properties": "true",
+                "sysparm_transaction_scope": "global",
+            },
+            json=shell_body,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        shell_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("clone_flow | shell POST failed | error=%s%s", e, f" | body={_body}" if _body else "")
+        return CloneFlowResponse(
+            success=False,
+            message=f"Failed to create flow shell: {e}" + (f" | response: {_body}" if _body else ""),
+            source_flow_sys_id=params.source_flow_sys_id,
+        )
+
+    shell_result = shell_response.json()
+    flow_data = shell_result.get("result", {}).get("data", {})
+    new_flow_id = flow_data.get("id")
+    flow_internal_name = flow_data.get("internalName")
+
+    if not new_flow_id:
+        return CloneFlowResponse(
+            success=False,
+            message=f"Shell POST returned no flow id. Raw: {shell_result}",
+            source_flow_sys_id=params.source_flow_sys_id,
+        )
+
+    cloned_arrays = _clone_flow_instance_arrays(src_data, new_flow_id)
+    put_body = dict(flow_data)
+    put_body["triggerInstances"] = cloned_arrays["triggerInstances"]
+    put_body["actionInstances"] = cloned_arrays["actionInstances"]
+    put_body["flowLogicInstances"] = cloned_arrays["flowLogicInstances"]
+    put_body["subFlowInstances"] = cloned_arrays["subFlowInstances"]
+
+    # Step 3: Initial autosave (non-fatal)
+    try:
+        requests.post(
+            f"{processflow_base}/versioning/create_version",
+            params=version_query_params,
+            json={
+                "item_sys_id": new_flow_id,
+                "type": "Autosave",
+                "annotation": "",
+                "favorite": False,
+            },
+            headers=headers,
+            timeout=config.timeout,
+        ).raise_for_status()
+    except requests.RequestException as e:
+        logger.warning("clone_flow | initial autosave failed (non-fatal) | flow_sys_id=%s | error=%s", new_flow_id, e)
+
+    # Step 4: PUT cloned content
+    try:
+        put_response = requests.put(
+            f"{processflow_base}/flow",
+            params={"sysparm_transaction_scope": "global"},
+            json=put_body,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        put_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("clone_flow | PUT failed | new_flow_id=%s | error=%s%s", new_flow_id, e, f" | body={_body}" if _body else "")
+        return CloneFlowResponse(
+            success=False,
+            message=(
+                f"New flow shell created (sys_id={new_flow_id}) but PUT to copy steps failed: {e}"
+                + (f" | {_body}" if _body else "")
+            ),
+            flow_sys_id=new_flow_id,
+            flow_name=params.name,
+            flow_internal_name=flow_internal_name,
+            source_flow_sys_id=params.source_flow_sys_id,
+        )
+
+    # Step 5: Save version
+    try:
+        requests.post(
+            f"{processflow_base}/versioning/create_version",
+            params=version_query_params,
+            json={
+                "item_sys_id": new_flow_id,
+                "type": "Save",
+                "annotation": "",
+                "favorite": False,
+            },
+            headers=headers,
+            timeout=config.timeout,
+        ).raise_for_status()
+    except requests.RequestException as e:
+        logger.warning("clone_flow | Save version failed (non-fatal) | flow_sys_id=%s | error=%s", new_flow_id, e)
+
+    # Step 6: Patch record trigger payload if applicable
+    needs_patch = any(
+        isinstance(t, dict) and str(t.get("type") or "") in _RECORD_TRIGGER_TYPES
+        for t in (cloned_arrays.get("triggerInstances") or [])
+    )
+    if needs_patch:
+        patch_err = _patch_flow_version_trigger_type(config, auth_manager, new_flow_id)
+        if patch_err:
+            logger.warning("clone_flow | fTriggerType patch failed (non-fatal) | flow_sys_id=%s | %s", new_flow_id, patch_err)
+
+    lock_err = _release_flow_edit_lock(config, auth_manager, new_flow_id)
+    if lock_err:
+        logger.warning("clone_flow | safeEdit lock release failed (non-fatal) | flow_sys_id=%s | %s", new_flow_id, lock_err)
+
+    logger.info(
+        "clone_flow | success | source=%s | new=%s",
+        params.source_flow_sys_id,
+        new_flow_id,
+    )
+    return CloneFlowResponse(
+        success=True,
+        message=f"Cloned flow to '{params.name}' (draft). New sys_id={new_flow_id}.",
+        flow_sys_id=new_flow_id,
+        flow_name=params.name,
+        flow_internal_name=flow_internal_name,
+        source_flow_sys_id=params.source_flow_sys_id,
     )
 
 

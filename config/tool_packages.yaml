@@ -136,6 +136,7 @@ platform_developer:
   # Flow Designer
   - list_trigger_types
   - create_flow
+  - clone_flow
   - list_flows
   - get_flow
   - get_flow_triggers
@@ -335,6 +336,7 @@ full:
   # Flow Designer
   - list_trigger_types
   - create_flow
+  - clone_flow
   - list_flows
   - get_flow
   - get_flow_triggers
