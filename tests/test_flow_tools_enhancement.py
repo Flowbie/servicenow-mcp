@@ -369,3 +369,66 @@ class TestDeleteArtifacts(unittest.TestCase):
         delete_subflow(_make_config(), _make_auth(), DeleteSubflowParams(sys_id="SUB_ID"))
         url = mock_del.call_args[0][0]
         self.assertIn("sys_hub_flow/SUB_ID", url)
+
+
+class TestGetFlowExecutionHistory(unittest.TestCase):
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_returns_executions(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import GetFlowExecutionHistoryParams, get_flow_execution_history
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = {
+            "result": [
+                {"sys_id": "exec1", "name": "Run 1", "state": "complete", "started": "2026-04-01 10:00:00", "ended": "2026-04-01 10:00:05", "error": ""},
+                {"sys_id": "exec2", "name": "Run 2", "state": "error", "started": "2026-04-01 11:00:00", "ended": "", "error": "Timeout"},
+            ]
+        }
+        params = GetFlowExecutionHistoryParams(flow_sys_id="flow123")
+        result = get_flow_execution_history(_make_config(), _make_auth(), params)
+        self.assertEqual(result.count, 2)
+        self.assertEqual(result.executions[0].sys_id, "exec1")
+        self.assertEqual(result.executions[1].error, "Timeout")
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_queries_sys_hub_flow_context(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import GetFlowExecutionHistoryParams, get_flow_execution_history
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = {"result": []}
+        get_flow_execution_history(_make_config(), _make_auth(), GetFlowExecutionHistoryParams(flow_sys_id="FQID"))
+        url = mock_get.call_args[0][0]
+        self.assertIn("sys_hub_flow_context", url)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_flow_sys_id_in_query(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import GetFlowExecutionHistoryParams, get_flow_execution_history
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = {"result": []}
+        get_flow_execution_history(_make_config(), _make_auth(), GetFlowExecutionHistoryParams(flow_sys_id="FQID"))
+        query = mock_get.call_args[1]["params"]["sysparm_query"]
+        self.assertIn("FQID", query)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_state_filter_applied(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import GetFlowExecutionHistoryParams, get_flow_execution_history
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = {"result": []}
+        get_flow_execution_history(_make_config(), _make_auth(), GetFlowExecutionHistoryParams(flow_sys_id="X", state="error"))
+        query = mock_get.call_args[1]["params"]["sysparm_query"]
+        self.assertIn("error", query)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_http_error_returns_empty(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import GetFlowExecutionHistoryParams, get_flow_execution_history
+        mock_get.return_value.raise_for_status.side_effect = requests.HTTPError("500")
+        mock_get.return_value.text = "Error"
+        result = get_flow_execution_history(_make_config(), _make_auth(), GetFlowExecutionHistoryParams(flow_sys_id="X"))
+        self.assertEqual(result.count, 0)
+        self.assertIn("Failed", result.message)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_respects_limit(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import GetFlowExecutionHistoryParams, get_flow_execution_history
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = {"result": []}
+        get_flow_execution_history(_make_config(), _make_auth(), GetFlowExecutionHistoryParams(flow_sys_id="X", limit=5))
+        self.assertEqual(mock_get.call_args[1]["params"]["sysparm_limit"], 5)

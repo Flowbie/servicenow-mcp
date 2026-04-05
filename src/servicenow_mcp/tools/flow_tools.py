@@ -538,6 +538,36 @@ class DeleteArtifactResponse(BaseModel):
     sys_id: str | None = None
 
 
+class GetFlowExecutionHistoryParams(BaseModel):
+    """Parameters for get_flow_execution_history."""
+
+    flow_sys_id: str = Field(..., description="sys_id of the flow to get execution history for")
+    limit: int = Field(20, ge=1, le=100, description="Maximum number of executions to return")
+    state: str | None = Field(
+        None,
+        description="Optional state filter. Common values: 'complete', 'error', 'running', 'cancelled'.",
+    )
+
+
+class FlowExecution(BaseModel):
+    """Summary of one flow execution from sys_hub_flow_context."""
+
+    sys_id: str
+    name: str | None = None
+    state: str | None = None
+    started: str | None = None
+    ended: str | None = None
+    error: str | None = None
+
+
+class GetFlowExecutionHistoryResult(BaseModel):
+    """Result from get_flow_execution_history."""
+
+    executions: list[FlowExecution]
+    count: int
+    message: str
+
+
 class ArtifactSummary(BaseModel):
     """Compact artifact summary used by list_* tools."""
 
@@ -2595,3 +2625,66 @@ def delete_action(
 ) -> DeleteArtifactResponse:
     """Delete a custom action type by sys_id."""
     return _delete_artifact(config, auth_manager, "action", params.sys_id)
+
+
+def get_flow_execution_history(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: GetFlowExecutionHistoryParams,
+) -> GetFlowExecutionHistoryResult:
+    """
+    Return recent executions of a flow from sys_hub_flow_context.
+
+    Each execution record includes state, start/end times, and any error
+    message. Useful for debugging flows that are failing or running unexpectedly.
+    """
+    query = f"flow={params.flow_sys_id}^ORDERBYDESCsys_created_on"
+    if params.state:
+        query += f"^state={params.state}"
+
+    try:
+        response = requests.get(
+            f"{config.api_url}/table/sys_hub_flow_context",
+            params={
+                "sysparm_query": query,
+                "sysparm_fields": "sys_id,name,state,started,ended,error",
+                "sysparm_limit": params.limit,
+                "sysparm_display_value": "true",
+            },
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "get_flow_execution_history | request failed | flow_sys_id=%s | error=%s%s",
+            params.flow_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return GetFlowExecutionHistoryResult(
+            executions=[],
+            count=0,
+            message=f"Failed to fetch execution history for flow {params.flow_sys_id}: {e}" + (f" | body: {_body}" if _body else ""),
+        )
+
+    records = response.json().get("result", [])
+    executions = [
+        FlowExecution(
+            sys_id=r["sys_id"],
+            name=r.get("name") or None,
+            state=r.get("state") or None,
+            started=r.get("started") or None,
+            ended=r.get("ended") or None,
+            error=r.get("error") or None,
+        )
+        for r in records
+    ]
+    logger.info(
+        "get_flow_execution_history | flow_sys_id=%s | found %d execution(s)",
+        params.flow_sys_id, len(executions),
+    )
+    return GetFlowExecutionHistoryResult(
+        executions=executions,
+        count=len(executions),
+        message=f"Found {len(executions)} execution(s) for flow {params.flow_sys_id}.",
+    )
