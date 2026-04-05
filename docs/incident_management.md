@@ -1,200 +1,53 @@
-# Incident Management
+# Incident management (Table API)
 
-This document describes the incident management functionality provided by the ServiceNow MCP server.
+This fork does **not** expose incident-specific MCP tools (for example `create_incident` or `update_incident`). Incidents are rows on the **`incident`** table (which extends **`task`**). Use the generic Table API tools and your instance blueprint for field names, mandatory columns, and state values.
 
-## Overview
+## Tools to use
 
-The incident management module allows LLMs to interact with ServiceNow incidents through the Model Context Protocol (MCP). It provides resources for querying incident data and tools for creating, updating, and resolving incidents.
+- **`query_records`** – list and filter incidents (encoded query, limit, fields).
+- **`get_record`** – fetch one row by `sys_id` from `incident` (or related table).
+- **`create_record`** – create an incident; supply required task/incident fields per blueprint.
+- **`update_record`** – update state, assignment, work notes, etc.
+- **`delete_record`** – only when appropriate and allowed by policy (rare for production incidents).
 
-## Resources
+Supporting protocol tools (when in your package): **`get_field_metadata`**, **`verify_fields`**, **`list_table_fields`**.
 
-### List Incidents
+## Typical flows
 
-Retrieves a list of incidents from ServiceNow.
+### Resolve display number to sys_id
 
-**Resource Name:** `incidents`
+Use **`query_records`** on `incident` with something like `number=INC0010001`, then use the returned `sys_id` for **`get_record`** or **`update_record`**.
 
-**Parameters:**
-- `limit` (int, default: 10): Maximum number of incidents to return
-- `offset` (int, default: 0): Offset for pagination
-- `state` (string, optional): Filter by incident state
-- `assigned_to` (string, optional): Filter by assigned user
-- `category` (string, optional): Filter by category
-- `query` (string, optional): Search query for incidents
+### Create an incident
 
-**Example:**
-```python
-incidents = await mcp.get_resource("servicenow", "incidents", {
-    "limit": 5,
-    "state": "1",  # New
-    "category": "Software"
-})
+Call **`create_record`** with `table="incident"` and a fields map. Common fields include `short_description`, `caller_id`, `category`, `subcategory`, `impact`, `urgency`, `priority`, `assignment_group`, `assigned_to` — **confirm on your instance** via dictionary or blueprint.
 
-for incident in incidents:
-    print(f"{incident.number}: {incident.short_description}")
-```
+### Add work notes or comments
 
-### Get Incident
+Usually **`update_record`** on `incident` with `work_notes` (append semantics depend on instance business rules) or journal fields as defined in your blueprint.
 
-Retrieves a specific incident from ServiceNow by ID or number.
+### Resolve or close
 
-**Resource Name:** `incident`
+**`update_record`** with the correct `state`, `close_notes`, `close_code`, etc., per your instance’s choice list and workflow.
 
-**Parameters:**
-- `incident_id` (string): Incident ID or sys_id
+## State and priority reference
 
-**Example:**
-```python
-incident = await mcp.get_resource("servicenow", "incident", "INC0010001")
-print(f"Incident: {incident.number}")
-print(f"Description: {incident.short_description}")
-print(f"State: {incident.state}")
-```
+Numeric state values are common in many instances (verify with **`query_records`** on `sys_choice` or your blueprint):
 
-## Tools
+**State (typical):**
 
-### Create Incident
+- `1` New  
+- `2` In Progress  
+- `3` On Hold  
+- `4` Resolved  
+- `5` Closed  
+- `6` Canceled  
 
-Creates a new incident in ServiceNow.
+**Priority (typical):**
 
-**Tool Name:** `create_incident`
+- `1` Critical through `5` Planning  
 
-**Parameters:**
-- `short_description` (string, required): Short description of the incident
-- `description` (string, optional): Detailed description of the incident
-- `caller_id` (string, optional): User who reported the incident
-- `category` (string, optional): Category of the incident
-- `subcategory` (string, optional): Subcategory of the incident
-- `priority` (string, optional): Priority of the incident
-- `impact` (string, optional): Impact of the incident
-- `urgency` (string, optional): Urgency of the incident
-- `assigned_to` (string, optional): User assigned to the incident
-- `assignment_group` (string, optional): Group assigned to the incident
+## Related documentation
 
-**Example:**
-```python
-result = await mcp.use_tool("servicenow", "create_incident", {
-    "short_description": "Email service is down",
-    "description": "Users are unable to send or receive emails.",
-    "category": "Software",
-    "priority": "1"
-})
-
-print(f"Incident created: {result.incident_number}")
-```
-
-### Update Incident
-
-Updates an existing incident in ServiceNow.
-
-**Tool Name:** `update_incident`
-
-**Parameters:**
-- `incident_id` (string, required): Incident ID or sys_id
-- `short_description` (string, optional): Short description of the incident
-- `description` (string, optional): Detailed description of the incident
-- `state` (string, optional): State of the incident
-- `category` (string, optional): Category of the incident
-- `subcategory` (string, optional): Subcategory of the incident
-- `priority` (string, optional): Priority of the incident
-- `impact` (string, optional): Impact of the incident
-- `urgency` (string, optional): Urgency of the incident
-- `assigned_to` (string, optional): User assigned to the incident
-- `assignment_group` (string, optional): Group assigned to the incident
-- `work_notes` (string, optional): Work notes to add to the incident
-- `close_notes` (string, optional): Close notes to add to the incident
-- `close_code` (string, optional): Close code for the incident
-
-**Example:**
-```python
-result = await mcp.use_tool("servicenow", "update_incident", {
-    "incident_id": "INC0010001",
-    "priority": "2",
-    "assigned_to": "admin",
-    "work_notes": "Investigating the issue."
-})
-
-print(f"Incident updated: {result.success}")
-```
-
-### Add Comment
-
-Adds a comment to an incident in ServiceNow.
-
-**Tool Name:** `add_comment`
-
-**Parameters:**
-- `incident_id` (string, required): Incident ID or sys_id
-- `comment` (string, required): Comment to add to the incident
-- `is_work_note` (boolean, default: false): Whether the comment is a work note
-
-**Example:**
-```python
-result = await mcp.use_tool("servicenow", "add_comment", {
-    "incident_id": "INC0010001",
-    "comment": "The issue is being investigated by the network team.",
-    "is_work_note": true
-})
-
-print(f"Comment added: {result.success}")
-```
-
-### Resolve Incident
-
-Resolves an incident in ServiceNow.
-
-**Tool Name:** `resolve_incident`
-
-**Parameters:**
-- `incident_id` (string, required): Incident ID or sys_id
-- `resolution_code` (string, required): Resolution code for the incident
-- `resolution_notes` (string, required): Resolution notes for the incident
-
-**Example:**
-```python
-result = await mcp.use_tool("servicenow", "resolve_incident", {
-    "incident_id": "INC0010001",
-    "resolution_code": "Solved (Permanently)",
-    "resolution_notes": "The email service has been restored."
-})
-
-print(f"Incident resolved: {result.success}")
-```
-
-## State Values
-
-ServiceNow incident states are represented by numeric values:
-
-- `1`: New
-- `2`: In Progress
-- `3`: On Hold
-- `4`: Resolved
-- `5`: Closed
-- `6`: Canceled
-
-## Priority Values
-
-ServiceNow incident priorities are represented by numeric values:
-
-- `1`: Critical
-- `2`: High
-- `3`: Moderate
-- `4`: Low
-- `5`: Planning
-
-## Testing
-
-You can test the incident management functionality using the provided test script:
-
-```bash
-python examples/test_incidents.py
-```
-
-Make sure to set the required environment variables in your `.env` file:
-
-```
-SERVICENOW_INSTANCE_URL=https://your-instance.service-now.com
-SERVICENOW_USERNAME=your-username
-SERVICENOW_PASSWORD=your-password
-SERVICENOW_AUTH_TYPE=basic
-``` 
+- [Table introspection](table_introspection.md) for field and relationship discovery  
+- Root [README](../README.md) for the full tooling model (no thin wrappers)  

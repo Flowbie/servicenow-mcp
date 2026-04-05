@@ -12,28 +12,22 @@ The introspection tools expose read-only views of ServiceNow table metadata and 
 
 All tools are **read-only** and safe to use in production for discovery (but you should still prefer sub-prod when experimenting).
 
-## Available Tools
+## Available tools
 
-### 1. get_table_metadata
+Dedicated blueprint helpers:
 
-Query `sys_db_object` for high-level metadata about a single table.
+### 1. Table metadata via `query_records` (`sys_db_object`)
 
-**Tool Name:** `get_table_metadata`
+The **`get_table_metadata`** and **`list_child_tables`** MCP tools were removed. Use **`query_records`** on **`sys_db_object`** instead.
 
-**Parameters (GetTableMetadataParams):**
-- `table` (string, required):  
-  ServiceNow table name (e.g. `"incident"`, `"change_request"`, `"task"`).
+**Single table (label, super_class, scope):**
 
-**Returns (GetTableMetadataResult):**
-- `table` (string): The table name that was queried.
-- `table_found` (bool): Whether a matching `sys_db_object` record was found.
-- `label` (string): Human-readable table label (e.g. `"Incident"`).
-- `extends` (string): Parent table name (value of `super_class`). Empty if the table does not extend another.
-- `scope` (string): Application scope or scope label if available.
-- `fetch_error` (string, optional): Error message if the query failed.
+- Table: `sys_db_object`  
+- Encoded query example: `name=incident` (use `sysparm_fields` to limit columns: `name,label,super_class,sys_scope` as needed).
 
 **Typical uses:**
-- Confirm what a table extends (e.g. `incident` extends `task`).
+
+- Confirm what a table extends (e.g. `incident` extends `task` via `super_class` reference).  
 - Build table hierarchy overviews for a module.
 
 ---
@@ -94,24 +88,19 @@ Derive **outbound relationships** for a table from its reference fields in `sys_
 
 ---
 
-### 4. list_child_tables
+### 4. Child tables via `query_records` (`sys_db_object.super_class`)
 
-List all tables that **extend** (inherit from) a parent table via `sys_db_object.super_class`.
+List tables that **extend** a parent by querying `sys_db_object` where **`super_class`** points at the parent table’s `sys_db_object` row.
 
-**Tool Name:** `list_child_tables`
+**Approach:**
 
-**Parameters (ListChildTablesParams):**
-- `parent_table` (string, required):  
-  Parent table name (e.g. `"task"`, `"cmdb_ci"`).
-
-**Returns (ListChildTablesResult):**
-- `parent_table` (string): Parent table that was queried.
-- `child_tables` (list of string): Names of tables whose `super_class` is the parent.
-- `fetch_error` (string, optional): Error message if the query failed.
+1. **`query_records`** on `sys_db_object` with `name=<parent_table>` to get the parent row’s **`sys_id`**.  
+2. **`query_records`** on `sys_db_object` with `super_class=<that_sys_id>` (or your instance’s equivalent encoded query) to list direct child table names.
 
 **Typical uses:**
-- Discover all task-hierarchy tables (`incident`, `problem`, `change_request`, etc.).
-- Inspect CMDB inheritance trees (e.g. under `cmdb_ci`).
+
+- Discover task-hierarchy tables (`incident`, `problem`, `change_request`, etc.).  
+- Inspect CMDB inheritance trees under `cmdb_ci`.
 
 ---
 
@@ -119,19 +108,15 @@ List all tables that **extend** (inherit from) a parent table via `sys_db_object
 
 > The examples below show conceptual usage via MCP. In Python, call the functions in `servicenow_mcp.tools.blueprint_tools` with `ServerConfig`, `AuthManager`, and the appropriate params models.
 
-### Get table metadata for `incident`
+### Get table metadata for `incident` (via `query_records`)
 
 ```python
-result = await mcp.use_tool("servicenow", "get_table_metadata", {
-    "table": "incident"
+result = await mcp.use_tool("servicenow", "query_records", {
+    "table": "sys_db_object",
+    "query": "name=incident",
+    "limit": 1
 })
-
-if result["table_found"]:
-    print(f"Table: {result['table']} (label={result['label']})")
-    print(f"Extends: {result['extends'] or 'none'}")
-    print(f"Scope: {result['scope'] or 'unknown'}")
-else:
-    print("Table not found or fetch_error:", result.get("fetch_error"))
+# Inspect result["records"][0] for label, super_class, sys_scope, etc.
 ```
 
 ### List non-system fields on `incident`
@@ -162,16 +147,22 @@ for rel in result["relationships"]:
     print(f"{rel['from_table']}.{rel['from_field']} -> {rel['to_table']}")
 ```
 
-### List child tables of `task`
+### List child tables of `task` (two-step `query_records`)
 
 ```python
-result = await mcp.use_tool("servicenow", "list_child_tables", {
-    "parent_table": "task"
+parent = await mcp.use_tool("servicenow", "query_records", {
+    "table": "sys_db_object",
+    "query": "name=task",
+    "limit": 1,
 })
-
-print(f"Child tables of task ({len(result['child_tables'])}):")
-for name in result["child_tables"]:
-    print(f"- {name}")
+parent_id = parent["records"][0]["sys_id"]
+children = await mcp.use_tool("servicenow", "query_records", {
+    "table": "sys_db_object",
+    "query": f"super_class={parent_id}",
+    "limit": 500,
+})
+for row in children["records"]:
+    print(row.get("name"))
 ```
 
 ---
@@ -186,10 +177,10 @@ for name in result["child_tables"]:
 
 3. **Combine tools for a complete picture**  
    Use:
-   - `get_table_metadata` for high-level table info and hierarchy.
+   - `query_records` on `sys_db_object` for high-level table info and hierarchy.
    - `list_table_fields` for detailed field definitions.
    - `list_table_relationships` for outbound relationships.
-   - `list_child_tables` to understand inheritance trees.
+   - `query_records` on `sys_db_object` (via `super_class`) to understand inheritance trees.
 
 4. **Feed results into blueprints and diagrams**  
    The outputs are ideal inputs for:
@@ -207,7 +198,7 @@ for name in result["child_tables"]:
   - Confirm credentials and that the user has access to the relevant tables.
   - Check the instance logs for REST API errors.
 
-### table_found is false (get_table_metadata)
+### No row returned for a table name (`sys_db_object`)
 
 - Cause: There is no `sys_db_object` record with the given `name`.
 - Resolution:

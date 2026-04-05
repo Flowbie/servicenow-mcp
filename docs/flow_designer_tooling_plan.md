@@ -8,16 +8,13 @@ Define a complete plan to evolve the MCP from legacy **Workflow** support to com
 
 ### Current state in this repository
 
-- The repo currently exposes `workflow_tools.py` (legacy Workflow engine), not `flow_tools.py`.
-- Existing workflow support is limited to:
-  - Workflow CRUD-lite (`list`, `get`, `create`, `update`, `activate`, `deactivate`)
-  - Workflow activity CRUD-lite (`add`, `update`, `delete`, `reorder`)
-- Tool registration in `tool_utils.py` and exports in `tools/__init__.py` only include workflow-oriented functions.
-- Existing docs (`docs/workflow_management.md`) describe legacy workflow features and do not cover Flow Designer objects (flows, subflows, actions, spokes, playbooks, decision tables, or modern flow logic controls).
+- **`flow_tools`** is registered in `tool_utils.py` and provides the Flow Designer authoring and execution surface (see [flow_designer.md](flow_designer.md) and the root README).
+- The **legacy Workflow engine** (`wf_*` tables) is **not** exposed as dedicated MCP tools; use the **generic Table API** and [workflow_management.md](workflow_management.md) for metadata reads/writes with a blueprint.
+- This plan document was written during the migration from “workflow-only” assumptions to Flow Designer; some later sections may read as historical gap analysis. Treat **`tool_utils.py`** as the source of truth for what ships today.
 
-### Key gap
+### Historical gap (largely addressed for Flow Designer)
 
-The MCP does not currently model Flow Designer primitives and cannot perform most requested actions such as creating subflows/actions/script steps, adding decision/parallel/loop/wait logic, or updating an in-progress flow graph.
+Earlier revisions of the MCP lacked Flow Designer primitives. The current `flow_tools` package covers the graph-oriented operations described in `flow_designer.md`. Remaining gaps, if any, should be tracked against live tool registration and integration tests, not this document alone.
 
 ---
 
@@ -32,6 +29,8 @@ The MCP does not currently model Flow Designer primitives and cannot perform mos
 ---
 
 ## Proposed Capability Matrix
+
+**Note:** The grid below is a **historical gap snapshot** from early planning. For the **current** Flow Designer tool surface, see [flow_designer.md](flow_designer.md) and `flow_tools` registration in `src/servicenow_mcp/utils/tool_utils.py`.
 
 Legend: ✅ present, ❌ missing, 🧩 partial.
 

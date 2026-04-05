@@ -1,369 +1,59 @@
-# User Management in ServiceNow MCP
-
-This document provides detailed information about the User Management tools available in the ServiceNow MCP server.
-
-## Overview
-
-The User Management tools allow you to create, update, and manage users and groups in ServiceNow. These tools are essential for setting up test environments, creating users with specific roles, and organizing users into assignment groups.
-
-## Available Tools
-
-### User Management
-
-1. **create_user** - Create a new user in ServiceNow
-2. **update_user** - Update an existing user in ServiceNow
-3. **get_user** - Get a specific user by ID, username, or email
-4. **list_users** - List users with filtering options
-
-### Group Management
-
-5. **create_group** - Create a new group in ServiceNow
-6. **update_group** - Update an existing group in ServiceNow
-7. **add_group_members** - Add members to a group in ServiceNow
-8. **remove_group_members** - Remove members from a group in ServiceNow
-9. **list_groups** - List groups with filtering options
-
-## Tool Details
-
-### create_user
+# Users and groups (Table API + role tools)
 
-Creates a new user in ServiceNow.
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| user_name | string | Yes | Username for the user |
-| first_name | string | Yes | First name of the user |
-| last_name | string | Yes | Last name of the user |
-| email | string | Yes | Email address of the user |
-| title | string | No | Job title of the user |
-| department | string | No | Department the user belongs to |
-| manager | string | No | Manager of the user (sys_id or username) |
-| roles | array | No | Roles to assign to the user |
-| phone | string | No | Phone number of the user |
-| mobile_phone | string | No | Mobile phone number of the user |
-| location | string | No | Location of the user |
-| password | string | No | Password for the user account |
-| active | boolean | No | Whether the user account is active (default: true) |
-
-#### Example
-
-```python
-# Create a new user in the Radiology department
-result = create_user({
-    "user_name": "alice.radiology",
-    "first_name": "Alice",
-    "last_name": "Radiology",
-    "email": "alice@example.com",
-    "title": "Doctor",
-    "department": "Radiology",
-    "roles": ["user"]
-})
-```
-
-### update_user
-
-Updates an existing user in ServiceNow.
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| user_id | string | Yes | User ID or sys_id to update |
-| user_name | string | No | Username for the user |
-| first_name | string | No | First name of the user |
-| last_name | string | No | Last name of the user |
-| email | string | No | Email address of the user |
-| title | string | No | Job title of the user |
-| department | string | No | Department the user belongs to |
-| manager | string | No | Manager of the user (sys_id or username) |
-| roles | array | No | Roles to assign to the user |
-| phone | string | No | Phone number of the user |
-| mobile_phone | string | No | Mobile phone number of the user |
-| location | string | No | Location of the user |
-| password | string | No | Password for the user account |
-| active | boolean | No | Whether the user account is active |
-
-#### Example
-
-```python
-# Update a user to set their manager
-result = update_user({
-    "user_id": "user123",
-    "manager": "user456",
-    "title": "Senior Doctor"
-})
-```
-
-### get_user
-
-Gets a specific user from ServiceNow.
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| user_id | string | No | User ID or sys_id |
-| user_name | string | No | Username of the user |
-| email | string | No | Email address of the user |
-
-**Note**: At least one of the parameters must be provided.
-
-#### Example
-
-```python
-# Get a user by username
-result = get_user({
-    "user_name": "alice.radiology"
-})
-```
-
-### list_users
-
-Lists users from ServiceNow with filtering options.
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| limit | integer | No | Maximum number of users to return (default: 10) |
-| offset | integer | No | Offset for pagination (default: 0) |
-| active | boolean | No | Filter by active status |
-| department | string | No | Filter by department |
-| query | string | No | Search query for users |
-
-#### Example
+This fork does **not** register thin MCP wrappers such as `create_user`, `list_users`, or `add_group_members`. User, group, and membership rows are manipulated with the **generic Table API** on the standard tables below. **Role assignment** has dedicated compound tools.
 
-```python
-# List users in the Radiology department
-result = list_users({
-    "department": "Radiology",
-    "active": true,
-    "limit": 20
-})
-```
-
-### create_group
+## Tables
 
-Creates a new group in ServiceNow.
+| Concept    | Table              |
+|-----------|--------------------|
+| User      | `sys_user`         |
+| Group     | `sys_user_group`   |
+| Membership| `sys_user_grmember`|
 
-#### Parameters
+Use **`query_records`**, **`get_record`**, **`create_record`**, **`update_record`** as appropriate. Always use **`sys_id`** for references (`manager`, `user`, `group`) when the API requires it.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| name | string | Yes | Name of the group |
-| description | string | No | Description of the group |
-| manager | string | No | Manager of the group (sys_id or username) |
-| parent | string | No | Parent group (sys_id or name) |
-| type | string | No | Type of the group |
-| email | string | No | Email address for the group |
-| members | array | No | List of user sys_ids or usernames to add as members |
-| active | boolean | No | Whether the group is active (default: true) |
+## Compound role tools
 
-#### Example
+When in your package:
 
-```python
-# Create a new group for Biomedical Engineering
-result = create_group({
-    "name": "Biomedical Engineering",
-    "description": "Group for biomedical engineering staff",
-    "manager": "user456",
-    "members": ["admin", "alice.radiology"]
-})
-```
-
-### update_group
+- **`grant_role_to_user`** / **`revoke_role_from_user`**  
+- **`grant_role_to_group`** / **`revoke_role_from_group`**  
 
-Updates an existing group in ServiceNow.
+Use these instead of writing `sys_user_has_role` directly unless your runbook specifies otherwise.
 
-#### Parameters
+## Typical scenarios
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| group_id | string | Yes | Group ID or sys_id to update |
-| name | string | No | Name of the group |
-| description | string | No | Description of the group |
-| manager | string | No | Manager of the group (sys_id or username) |
-| parent | string | No | Parent group (sys_id or name) |
-| type | string | No | Type of the group |
-| email | string | No | Email address for the group |
-| active | boolean | No | Whether the group is active |
-
-#### Example
-
-```python
-# Update a group to change its manager
-result = update_group({
-    "group_id": "group123",
-    "description": "Updated description for biomedical engineering group",
-    "manager": "user789"
-})
-```
-
-### add_group_members
-
-Adds members to a group in ServiceNow.
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| group_id | string | Yes | Group ID or sys_id |
-| members | array | Yes | List of user sys_ids or usernames to add as members |
-
-#### Example
-
-```python
-# Add members to the Biomedical Engineering group
-result = add_group_members({
-    "group_id": "group123",
-    "members": ["bob.chiefradiology", "admin"]
-})
-```
-
-### remove_group_members
-
-Removes members from a group in ServiceNow.
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| group_id | string | Yes | Group ID or sys_id |
-| members | array | Yes | List of user sys_ids or usernames to remove as members |
-
-#### Example
-
-```python
-# Remove a member from the Biomedical Engineering group
-result = remove_group_members({
-    "group_id": "group123",
-    "members": ["alice.radiology"]
-})
-```
-
-### list_groups
-
-Lists groups from ServiceNow with filtering options.
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| limit | integer | No | Maximum number of groups to return (default: 10) |
-| offset | integer | No | Offset for pagination (default: 0) |
-| active | boolean | No | Filter by active status |
-| type | string | No | Filter by group type |
-| query | string | No | Case-insensitive search term that matches against group name or description fields. Uses ServiceNow's LIKE operator for partial matching. |
-
-#### Example
-
-```python
-# List active IT-type groups
-result = list_groups({
-    "active": true,
-    "type": "it",
-    "query": "support",
-    "limit": 20
-})
-```
-
-## Common Scenarios
-
-### Creating Test Users and Groups for Approval Workflows
-
-To set up test users and groups for an approval workflow:
-
-1. Create department head user:
-
-```python
-bob_result = create_user({
-    "user_name": "bob.chiefradiology",
-    "first_name": "Bob",
-    "last_name": "ChiefRadiology",
-    "email": "bob@example.com",
-    "title": "Chief of Radiology",
-    "department": "Radiology",
-    "roles": ["itil", "admin"]  # assign ITIL role for approvals
-})
-```
-
-2. Create staff user with department head as manager:
-
-```python
-alice_result = create_user({
-    "user_name": "alice.radiology",
-    "first_name": "Alice",
-    "last_name": "Radiology",
-    "email": "alice@example.com",
-    "title": "Doctor",
-    "department": "Radiology",
-    "manager": bob_result.user_id  # Set Bob as Alice's manager
-})
-```
-
-3. Create assignment group for fulfillment:
-
-```python
-group_result = create_group({
-    "name": "Biomedical Engineering",
-    "description": "Group for biomedical engineering staff",
-    "members": ["admin"]  # Add administrator as a member
-})
-```
-
-### Finding Users in a Department
-
-To find all users in a specific department:
-
-```python
-users = list_users({
-    "department": "Radiology",
-    "limit": 50
-})
-```
-
-### Setting up Role-Based Access Control
-
-To assign specific roles to users:
-
-```python
-# Assign ITIL role to a user so they can approve changes
-update_user({
-    "user_id": "user123",
-    "roles": ["itil"]
-})
-```
+### Create a user
+
+`create_record` on `sys_user` with `user_name`, `first_name`, `last_name`, `email`, and optional `department`, `title`, `manager` (reference), etc. Confirm mandatory fields via **`list_table_fields`** or blueprint.
+
+### Find users
+
+`query_records` on `sys_user` with encoded query (department, active, name contains).
+
+### Create a group
+
+`create_record` on `sys_user_group` with `name` and optional `description`, `manager`, `type`.
+
+### Add a user to a group
+
+`create_record` on `sys_user_grmember` with `user` and `group` references (`sys_id`).
+
+### Remove membership
+
+`delete_record` on the specific `sys_user_grmember` row (find it with `query_records` first), or `update_record` if your process deactivates instead of deleting.
+
+### Grant ITIL (or another role)
+
+`grant_role_to_user` with user and role identifiers as defined by the tool params (often `sys_id`).
 
 ## Troubleshooting
 
-### Common Errors
+- **Duplicate user_name:** query first, then update instead of create.  
+- **Invalid reference:** resolve manager/group/user with `query_records` before writing.  
+- **Role not applied:** confirm role name/sys_id and that the compound tool succeeded.
 
-1. **User already exists**
-   - This error occurs when trying to create a user with a username that already exists
-   - Solution: Use a different username or update the existing user instead
+## See also
 
-2. **User not found**
-   - This error occurs when trying to update, get, or add a user that doesn't exist
-   - Solution: Verify the user ID, username, or email is correct
-
-3. **Role not found**
-   - This error occurs when trying to assign a role that doesn't exist
-   - Solution: Check the role name and make sure it exists in the ServiceNow instance
-
-4. **Group not found**
-   - This error occurs when trying to update or add members to a group that doesn't exist
-   - Solution: Verify the group ID is correct
-
-## Best Practices
-
-1. **Use meaningful usernames**: Create usernames that reflect the user's identity, such as "firstname.lastname"
-
-2. **Set up proper role assignments**: Only assign the necessary roles to users to maintain security best practices
-
-3. **Organize users into appropriate groups**: Use groups to organize users based on departments, functions, or teams
-
-4. **Manage group memberships carefully**: Add or remove users from groups to ensure proper assignment and notification routing
-
-5. **Set managers for hierarchical approval flows**: When creating users that will be part of approval workflows, make sure to set the manager field appropriately 
+- [README](../README.md)  
+- [Table introspection](table_introspection.md)  

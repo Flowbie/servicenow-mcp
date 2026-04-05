@@ -85,12 +85,12 @@ The Executor requires these tools to be in the active package:
 - list_table_relationships
 - list_child_tables
 
-**Required per task type:**
-- Scripting tasks: create_script_include, update_script_include
-- Change management: create_change_request, update_change_request
-- Incident management: create_incident, update_incident
-- Changeset management: create_changeset, update_changeset, commit_changeset
-- Flow tasks: create_flow (when available)
+**Required per task type (representative):**
+- Scripting tasks: `create_record` / `update_record` on scripting tables (for example `sys_script_include`) per blueprint; optional `run_background_script` when justified
+- Change management: `create_record` / `update_record` on `change_request` (and related rows); compound approval: `submit_change_for_approval`, `approve_change`, `reject_change`
+- Incident management: `query_records` / `create_record` / `update_record` on `incident` (no incident-specific MCP tools)
+- Update set / changeset session: `get_current_update_set`, `set_current_update_set`, `get_changeset_details`; listing or creating update sets: Table API on `sys_update_set`
+- Flow tasks: `flow_tools` (for example `create_flow`, `clone_flow`, …) when included in the active package
 
 The `executor` tool package in `config/tool_packages.yaml` provides the minimum
 required set for scripting tasks. For other domains, use `platform_developer`

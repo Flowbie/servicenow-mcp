@@ -1,213 +1,45 @@
-# Knowledge Base Management
+# Knowledge base (Table API)
 
-The ServiceNow MCP server provides tools for managing knowledge bases, categories, and articles in ServiceNow.
+Knowledge operations use the **generic Table API** against ServiceNow KB tables. This fork does **not** register upstream-style tools such as `create_knowledge_base`, `list_articles`, or `publish_article`.
 
-## Overview
+## Primary tables
 
-Knowledge bases in ServiceNow allow organizations to store and share information in a structured format. This can include documentation, FAQs, troubleshooting guides, and other knowledge resources.
+| Purpose        | Table name           |
+|----------------|----------------------|
+| Knowledge base | `kb_knowledge_base`  |
+| Category       | `kb_category`        |
+| Article        | `kb_knowledge`       |
 
-The ServiceNow MCP Knowledge Base tools provide a way to create and manage knowledge bases, categories, and articles through the ServiceNow API.
+REST path shape: `/api/now/table/{table}` — surfaced by **`query_records`**, **`get_record`**, **`create_record`**, **`update_record`**, **`delete_record`**.
 
-## Available Tools
+## Operations (conceptual)
 
-### Knowledge Base Management
+### Knowledge base
 
-1. **create_knowledge_base** - Create a new knowledge base in ServiceNow
-   - Parameters:
-     - `title` - Title of the knowledge base
-     - `description` (optional) - Description of the knowledge base
-     - `owner` (optional) - The specified admin user or group
-     - `managers` (optional) - Users who can manage this knowledge base
-     - `publish_workflow` (optional) - Publication workflow
-     - `retire_workflow` (optional) - Retirement workflow
+- **List / search:** `query_records` on `kb_knowledge_base` with `sysparm_query` as needed.  
+- **Create:** `create_record` with fields such as `title`, `description`, owner references — **per your blueprint**.  
+- **Update:** `update_record` with `sys_id` and changed fields.
 
-2. **list_knowledge_bases** - List knowledge bases from ServiceNow
-   - Parameters:
-     - `limit` (optional, default: 10) - Maximum number of knowledge bases to return
-     - `offset` (optional, default: 0) - Offset for pagination
-     - `active` (optional) - Filter by active status
-     - `query` (optional) - Search query for knowledge bases
+### Categories
 
-### Category Management
+- **Create:** `create_record` on `kb_category` with `kb_knowledge_base` reference and optional `parent_category`.  
+- **List:** `query_records` filtering on base and parent.
 
-1. **create_category** - Create a new category in a knowledge base
-   - Parameters:
-     - `title` - Title of the category
-     - `description` (optional) - Description of the category
-     - `knowledge_base` - The knowledge base to create the category in
-     - `parent_category` (optional) - Parent category (if creating a subcategory)
-     - `active` (optional, default: true) - Whether the category is active
+### Articles
 
-2. **list_categories** - List categories in a knowledge base
-   - Parameters:
-     - `knowledge_base` (optional) - Filter by knowledge base ID
-     - `parent_category` (optional) - Filter by parent category ID
-     - `limit` (optional, default: 10) - Maximum number of categories to return
-     - `offset` (optional, default: 0) - Offset for pagination
-     - `active` (optional) - Filter by active status
-     - `query` (optional) - Search query for categories
+- **Create:** `create_record` on `kb_knowledge` with `short_description`, body/text fields, category, and base references as required by your instance.  
+- **Update:** `update_record` for content or metadata.  
+- **Publish / workflow state:** set the appropriate workflow or state fields your instance uses (often choice or workflow-driven); use **`get_field_metadata`** and **`list_table_fields`** to avoid writing read-only columns.
 
-### Article Management
+### List and filter articles
 
-1. **create_article** - Create a new knowledge article
-   - Parameters:
-     - `title` - Title of the article
-     - `text` - The main body text for the article
-     - `short_description` - Short description of the article
-     - `knowledge_base` - The knowledge base to create the article in
-     - `category` - Category for the article
-     - `keywords` (optional) - Keywords for search
-     - `article_type` (optional, default: "text") - The type of article
+Use **`query_records`** on `kb_knowledge` with encoded queries (for example by `kb_category`, `workflow_state`, or text search fields your blueprint documents).
 
-2. **update_article** - Update an existing knowledge article
-   - Parameters:
-     - `article_id` - ID of the article to update
-     - `title` (optional) - Updated title of the article
-     - `text` (optional) - Updated main body text for the article
-     - `short_description` (optional) - Updated short description
-     - `category` (optional) - Updated category for the article
-     - `keywords` (optional) - Updated keywords for search
+## Error handling
 
-3. **publish_article** - Publish a knowledge article
-   - Parameters:
-     - `article_id` - ID of the article to publish
-     - `workflow_state` (optional, default: "published") - The workflow state to set
-     - `workflow_version` (optional) - The workflow version to use
+Table API responses are returned by the MCP tools as structured results. On failure, check the tool output for HTTP or ServiceNow error messages, missing mandatory fields, or governance blocks.
 
-4. **list_articles** - List knowledge articles with filtering options
-   - Parameters:
-     - `limit` (optional, default: 10) - Maximum number of articles to return
-     - `offset` (optional, default: 0) - Offset for pagination
-     - `knowledge_base` (optional) - Filter by knowledge base
-     - `category` (optional) - Filter by category
-     - `query` (optional) - Search query for articles
-     - `workflow_state` (optional) - Filter by workflow state
+## See also
 
-5. **get_article** - Get a specific knowledge article by ID
-   - Parameters:
-     - `article_id` - ID of the article to get
-
-## Example Usage
-
-### Creating a Knowledge Base
-
-```python
-response = create_knowledge_base({
-    "title": "Healthcare IT Knowledge Base",
-    "description": "Knowledge base for healthcare IT resources and documentation",
-    "owner": "healthcare_admins"
-})
-print(f"Knowledge base created with ID: {response['kb_id']}")
-```
-
-### Listing Knowledge Bases
-
-```python
-response = list_knowledge_bases({
-    "active": True,
-    "query": "IT",
-    "limit": 20
-})
-print(f"Found {response['count']} knowledge bases")
-for kb in response['knowledge_bases']:
-    print(f"- {kb['title']}")
-```
-
-### Creating a Category
-
-```python
-response = create_category({
-    "title": "Network Configuration",
-    "description": "Articles related to network configuration in healthcare environments",
-    "knowledge_base": "healthcare_kb"
-})
-print(f"Category created with ID: {response['category_id']}")
-```
-
-### Creating an Article
-
-```python
-response = create_article({
-    "title": "VPN Setup for Remote Clinicians",
-    "short_description": "Step-by-step guide for setting up VPN access for remote clinicians",
-    "text": "# VPN Setup Guide\n\n1. Install the VPN client...",
-    "knowledge_base": "healthcare_kb",
-    "category": "network_config",
-    "keywords": "vpn, remote access, clinicians, setup"
-})
-print(f"Article created with ID: {response['article_id']}")
-```
-
-### Updating an Article
-
-```python
-response = update_article({
-    "article_id": "kb0010001",
-    "text": "# Updated VPN Setup Guide\n\n1. Download the latest VPN client...",
-    "keywords": "vpn, remote access, clinicians, setup, configuration"
-})
-print(f"Article updated: {response['success']}")
-```
-
-### Publishing an Article
-
-```python
-response = publish_article({
-    "article_id": "kb0010001"
-})
-print(f"Article published: {response['success']}")
-```
-
-### Listing Articles
-
-```python
-response = list_articles({
-    "knowledge_base": "healthcare_kb",
-    "category": "network_config",
-    "limit": 20
-})
-print(f"Found {response['count']} articles")
-for article in response['articles']:
-    print(f"- {article['title']}")
-```
-
-### Getting Article Details
-
-```python
-response = get_article({
-    "article_id": "kb0010001"
-})
-article = response['article']
-print(f"Title: {article['title']}")
-print(f"Category: {article['category']}")
-print(f"Views: {article['views']}")
-```
-
-### Listing Categories
-
-```python
-response = list_categories({
-    "knowledge_base": "healthcare_kb",
-    "active": True,
-    "limit": 20
-})
-print(f"Found {response['count']} categories")
-for category in response['categories']:
-    print(f"- {category['title']}")
-```
-
-## ServiceNow API Endpoints
-
-The Knowledge Base tools use the following ServiceNow API endpoints:
-
-- `/table/kb_knowledge_base` - Knowledge base table API
-- `/table/kb_category` - Category table API
-- `/table/kb_knowledge` - Knowledge article table API
-
-## Error Handling
-
-All knowledge base tools handle errors gracefully and return responses with `success` and `message` fields. If an operation fails, the `success` field will be `false` and the `message` field will contain information about the error.
-
-## Additional Information
-
-For more information about knowledge management in ServiceNow, see the [ServiceNow Knowledge Management documentation](https://docs.servicenow.com/bundle/tokyo-servicenow-platform/page/product/knowledge-management/concept/c_KnowledgeManagement.html).
+- [README](../README.md) – tooling model  
+- [ServiceNow Knowledge Management](https://docs.servicenow.com/) – product documentation for your release  

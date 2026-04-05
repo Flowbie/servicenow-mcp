@@ -1,191 +1,49 @@
-# ServiceNow MCP Change Management Tools
+# Change management (compound approval + Table API)
 
-This document provides information about the change management tools available in the ServiceNow MCP server.
+Change workflows use a **small set of compound MCP tools** for approval actions, plus the **generic Table API** for `change_request` and related task rows.
 
-## Overview
+## Compound tools (registered)
 
-The change management tools allow Claude to interact with ServiceNow's change management functionality, enabling users to create, update, and manage change requests through natural language conversations.
+These are implemented in `change_tools` and registered in `tool_utils.py`:
 
-## Available Tools
+1. **`submit_change_for_approval`** – submit a change for approval (`change_id`, optional comments).  
+2. **`approve_change`** – approve (`change_id`, optional approver and comments).  
+3. **`reject_change`** – reject (`change_id`, `rejection_reason`, optional approver).
 
-The ServiceNow MCP server provides the following change management tools:
+Parameters use **change request identifiers** your instance accepts; resolve `CHG...` numbers to **`sys_id`** with **`query_records`** on `change_request` when needed.
 
-### Core Change Request Management
+## Everything else: Table API
 
-1. **create_change_request** - Create a new change request in ServiceNow
-   - Parameters:
-     - `short_description` (required): Short description of the change request
-     - `description`: Detailed description of the change request
-     - `type` (required): Type of change (normal, standard, emergency)
-     - `risk`: Risk level of the change
-     - `impact`: Impact of the change
-     - `category`: Category of the change
-     - `requested_by`: User who requested the change
-     - `assignment_group`: Group assigned to the change
-     - `start_date`: Planned start date (YYYY-MM-DD HH:MM:SS)
-     - `end_date`: Planned end date (YYYY-MM-DD HH:MM:SS)
+There are **no** registered MCP tools named `create_change_request`, `update_change_request`, `list_change_requests`, `get_change_request_details`, or `add_change_task` in this fork. Instead:
 
-2. **update_change_request** - Update an existing change request
-   - Parameters:
-     - `change_id` (required): Change request ID or sys_id
-     - `short_description`: Short description of the change request
-     - `description`: Detailed description of the change request
-     - `state`: State of the change request
-     - `risk`: Risk level of the change
-     - `impact`: Impact of the change
-     - `category`: Category of the change
-     - `assignment_group`: Group assigned to the change
-     - `start_date`: Planned start date (YYYY-MM-DD HH:MM:SS)
-     - `end_date`: Planned end date (YYYY-MM-DD HH:MM:SS)
-     - `work_notes`: Work notes to add to the change request
+| Goal | Approach |
+|------|----------|
+| Create change | `create_record` on `change_request` with required fields from your blueprint |
+| Update fields / state | `update_record` |
+| List / filter | `query_records` with encoded query |
+| One row detail | `get_record` |
+| Change tasks | `create_record` / `update_record` on `change_task` (or your instance’s task table) per blueprint |
 
-3. **list_change_requests** - List change requests with filtering options
-   - Parameters:
-     - `limit`: Maximum number of records to return (default: 10)
-     - `offset`: Offset to start from (default: 0)
-     - `state`: Filter by state
-     - `type`: Filter by type (normal, standard, emergency)
-     - `category`: Filter by category
-     - `assignment_group`: Filter by assignment group
-     - `timeframe`: Filter by timeframe (upcoming, in-progress, completed)
-     - `query`: Additional query string
+Use **`get_field_metadata`**, **`list_table_fields`**, and **`verify_fields`** (when in package) around writes.
 
-4. **get_change_request_details** - Get detailed information about a specific change request
-   - Parameters:
-     - `change_id` (required): Change request ID or sys_id
+## Example natural language (Claude)
 
-5. **add_change_task** - Add a task to a change request
-   - Parameters:
-     - `change_id` (required): Change request ID or sys_id
-     - `short_description` (required): Short description of the task
-     - `description`: Detailed description of the task
-     - `assigned_to`: User assigned to the task
-     - `planned_start_date`: Planned start date (YYYY-MM-DD HH:MM:SS)
-     - `planned_end_date`: Planned end date (YYYY-MM-DD HH:MM:SS)
+Same intents as before, but implementation is Table API + the three compound tools above — for example:
 
-### Change Approval Workflow
+- "Create a normal change for server maintenance" → `create_record` on `change_request`.  
+- "Submit CHG0012345 for approval" → resolve sys_id, then `submit_change_for_approval`.  
+- "Approve the change with comment …" → `approve_change`.  
+- "List emergency changes this week" → `query_records` on `change_request`.
 
-1. **submit_change_for_approval** - Submit a change request for approval
-   - Parameters:
-     - `change_id` (required): Change request ID or sys_id
-     - `approval_comments`: Comments for the approval request
+## Programmatic note
 
-2. **approve_change** - Approve a change request
-   - Parameters:
-     - `change_id` (required): Change request ID or sys_id
-     - `approver_id`: ID of the approver
-     - `approval_comments`: Comments for the approval
-
-3. **reject_change** - Reject a change request
-   - Parameters:
-     - `change_id` (required): Change request ID or sys_id
-     - `approver_id`: ID of the approver
-     - `rejection_reason` (required): Reason for rejection
-
-## Example Usage with Claude
-
-Once the ServiceNow MCP server is configured with Claude Desktop, you can ask Claude to perform actions like:
-
-### Creating and Managing Change Requests
-
-- "Create a change request for server maintenance to apply security patches tomorrow night"
-- "Schedule a database upgrade for next Tuesday from 2 AM to 4 AM"
-- "Create an emergency change to fix the critical security vulnerability in our web application"
-
-### Adding Tasks and Implementation Details
-
-- "Add a task to the server maintenance change for pre-implementation checks"
-- "Add a task to verify system backups before starting the database upgrade"
-- "Update the implementation plan for the network change to include rollback procedures"
-
-### Approval Workflow
-
-- "Submit the server maintenance change for approval"
-- "Show me all changes waiting for my approval"
-- "Approve the database upgrade change with comment: implementation plan looks thorough"
-- "Reject the network change due to insufficient testing"
-
-### Querying Change Information
-
-- "Show me all emergency changes scheduled for this week"
-- "What's the status of the database upgrade change?"
-- "List all changes assigned to the Network team"
-- "Show me the details of change CHG0010001"
-
-## Example Code
-
-Here's an example of how to use the change management tools programmatically:
-
-```python
-from servicenow_mcp.auth.auth_manager import AuthManager
-from servicenow_mcp.tools.change_tools import create_change_request
-from servicenow_mcp.utils.config import ServerConfig
-
-# Create server configuration
-server_config = ServerConfig(
-    instance_url="https://your-instance.service-now.com",
-)
-
-# Create authentication manager
-auth_manager = AuthManager(
-    auth_type="basic",
-    username="your-username",
-    password="your-password",
-    instance_url="https://your-instance.service-now.com",
-)
-
-# Create a change request
-create_params = {
-    "short_description": "Server maintenance - Apply security patches",
-    "description": "Apply the latest security patches to the application servers.",
-    "type": "normal",
-    "risk": "moderate",
-    "impact": "medium",
-    "category": "Hardware",
-    "start_date": "2023-12-15 01:00:00",
-    "end_date": "2023-12-15 03:00:00",
-}
-
-result = create_change_request(auth_manager, server_config, create_params)
-print(result)
-```
-
-For a complete example, see the [change_management_demo.py](../examples/change_management_demo.py) script.
-
-## Integration with Claude Desktop
-
-To configure the ServiceNow MCP server with change management tools in Claude Desktop:
-
-1. Edit the Claude Desktop configuration file at `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or the appropriate path for your OS:
-
-```json
-{
-  "mcpServers": {
-    "ServiceNow": {
-      "command": "/Users/yourusername/dev/servicenow-mcp/.venv/bin/python",
-      "args": [
-        "-m",
-        "servicenow_mcp.cli"
-      ],
-      "env": {
-        "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
-        "SERVICENOW_USERNAME": "your-username",
-        "SERVICENOW_PASSWORD": "your-password",
-        "SERVICENOW_AUTH_TYPE": "basic"
-      }
-    }
-  }
-}
-```
-
-2. Restart Claude Desktop to apply the changes
+Example scripts that import `create_change_request` from `change_tools` may be **out of date** relative to the current registration. Prefer calling the MCP tools (`create_record` / compound tools) or read `src/servicenow_mcp/utils/tool_utils.py` for the live list.
 
 ## Customization
 
-The change management tools can be customized to match your organization's specific ServiceNow configuration:
+Instance-specific states, choice values, and approval flows should be captured in your **architecture blueprint** and validated with **`query_records`** on `sys_choice` where needed.
 
-- State values may need to be adjusted based on your ServiceNow instance configuration
-- Additional fields can be added to the parameter models if needed
-- Approval workflows may need to be modified to match your organization's approval process
+## See also
 
-To customize the tools, modify the `change_tools.py` file in the `src/servicenow_mcp/tools` directory. 
+- [README](../README.md)  
+- [Incident management](incident_management.md) (same Table API pattern)  

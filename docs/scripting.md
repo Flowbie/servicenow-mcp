@@ -7,7 +7,7 @@ This document describes the scripting tools provided by the ServiceNow MCP serve
 The scripting tools enable powerful, low-level operations against a ServiceNow instance:
 
 - **Background scripts**: Execute arbitrary server-side JavaScript via the same mechanism as the “Background Script” module (`sys.scripts.do`) or a scripted REST API endpoint.
-- **Script Includes**: List, create, update, and delete Script Includes using the Table API.
+- **Script Includes**: Manage `sys_script_include` rows with the **generic Table API** tools (`query_records`, `get_record`, `create_record`, `update_record`, `delete_record`). Dedicated `list_script_include` / `create_script_include` MCP tools are **not** registered in this fork.
 
 These tools are powerful and can cause data loss or instance instability if misused. Always follow your organization’s governance, use sub-production environments for testing, and consider DRY_RUN patterns and change management approvals before running destructive scripts.
 
@@ -132,177 +132,29 @@ for entry in result["syslog_entries"]:
 
 ---
 
-## Script Include Management
+## Script Include management (Table API)
 
-The Script Include tools provide CRUD-style operations for `sys_script_include`. They are useful for managing reusable server-side logic from MCP.
+Use **`query_records`** / **`get_record`** / **`create_record`** / **`update_record`** / **`delete_record`** on table **`sys_script_include`**. Field names and mandatory columns depend on scope and instance; use **`list_table_fields`** and your blueprint before writes.
 
-### Tool: list_script_includes
-
-List Script Includes with optional filters.
-
-**Tool Name:** `list_script_includes`
-
-**Parameters (ListScriptIncludesParams):**
-
-- `limit` (int, optional, default: `10`): Maximum number of Script Includes to return.
-- `offset` (int, optional, default: `0`): Offset for pagination.
-- `active` (bool, optional): Filter by active status.
-- `client_callable` (bool, optional): Filter by client-callable status.
-- `query` (string, optional): Name search filter (e.g. `"MyUtil"`).
-
-**Returns:**
-
-A dictionary with:
-
-- `success` (bool)
-- `message` (string)
-- `script_includes` (list): Each entry includes `sys_id`, `name`, `description`, `api_name`, `client_callable`, `active`, `access`, `created_on`, `updated_on`, `created_by`, `updated_by`.
-- `total` (int): Count of returned Script Includes.
-- `limit`, `offset` (ints): Echoed paging parameters.
-
-### Tool: get_script_include
-
-Get a single Script Include by sys_id or name.
-
-**Tool Name:** `get_script_include`
-
-**Parameters (GetScriptIncludeParams):**
-
-- `script_include_id` (string, required):  
-  - `"sys_id:<sys_id>"` to query by sys_id, or  
-  - the Script Include `name` to query by name.
-
-**Returns:**
-
-- `success` (bool)
-- `message` (string)
-- `script_include` (dict, when found): Same shape as items from `list_script_includes` plus `script` content.
-
-### Tool: create_script_include
-
-Create a new Script Include.
-
-**Tool Name:** `create_script_include`
-
-**Parameters (CreateScriptIncludeParams):**
-
-- `name` (string, required): Name of the Script Include.
-- `script` (string, required): Full script content.
-- `description` (string, optional): Description.
-- `api_name` (string, optional): API name.
-- `client_callable` (bool, optional, default: `false`): Whether the Script Include is client-callable.
-- `active` (bool, optional, default: `true`): Whether it is active.
-- `access` (string, optional, default: `"package_private"`): Access level.
-
-**Returns (ScriptIncludeResponse):**
-
-- `success` (bool)
-- `message` (string)
-- `script_include_id` (string, optional): sys_id of the created Script Include.
-- `script_include_name` (string, optional): Name of the created Script Include.
-
-### Tool: update_script_include
-
-Update an existing Script Include.
-
-**Tool Name:** `update_script_include`
-
-**Parameters (UpdateScriptIncludeParams):**
-
-- `script_include_id` (string, required): Script Include ID or name.
-- `script` (string, optional): New script content.
-- `description` (string, optional)
-- `api_name` (string, optional)
-- `client_callable` (bool, optional)
-- `active` (bool, optional)
-- `access` (string, optional)
-
-**Returns (ScriptIncludeResponse):**
-
-- `success` (bool)
-- `message` (string)
-- `script_include_id`, `script_include_name` (optional): Identifiers of the updated Script Include.
-
-### Tool: delete_script_include
-
-Delete an existing Script Include.
-
-**Tool Name:** `delete_script_include`
-
-**Parameters (DeleteScriptIncludeParams):**
-
-- `script_include_id` (string, required): Script Include ID or name.
-
-**Returns (ScriptIncludeResponse):**
-
-- `success` (bool)
-- `message` (string)
-- `script_include_id`, `script_include_name` (optional): Identifiers of the deleted Script Include.
-
----
-
-## Script Include Usage Examples
-
-### List active Script Includes
+### List Script Includes (example)
 
 ```python
-result = await mcp.use_tool("servicenow", "list_script_includes", {
+result = await mcp.use_tool("servicenow", "query_records", {
+    "table": "sys_script_include",
+    "query": "active=true",
     "limit": 5,
-    "active": True
 })
-
-print(result["message"])
-for si in result["script_includes"]:
-    print(f"{si['sys_id']} | {si['name']} | client_callable={si['client_callable']}")
+for row in result.get("records", []):
+    print(row.get("sys_id"), row.get("name"), row.get("client_callable"))
 ```
 
-### Create a simple utility Script Include
+### Create / update / delete
 
-```python
-result = await mcp.use_tool("servicenow", "create_script_include", {
-    "name": "McpDemoUtil",
-    "description": "Utility functions created from MCP demo",
-    "script": '''
-        var McpDemoUtil = Class.create();
-        McpDemoUtil.prototype = {
-            initialize: function() {},
+- **Create:** `create_record` with `name`, `script`, and other required fields.  
+- **Update:** `update_record` with `sys_id` and changed fields (often `script`, `description`, `active`).  
+- **Delete:** `delete_record` when governance allows.
 
-            hello: function(name) {
-                return "Hello, " + name + " from MCP!";
-            },
-
-            type: "McpDemoUtil"
-        };
-    ''',
-    "client_callable": False,
-    "active": True,
-    "access": "package_private"
-})
-
-print(result["message"])
-print("Created Script Include ID:", result.get("script_include_id"))
-```
-
-### Update Script Include description
-
-```python
-result = await mcp.use_tool("servicenow", "update_script_include", {
-    "script_include_id": "McpDemoUtil",
-    "description": "Updated description from MCP scripting demo"
-})
-
-print(result["message"])
-```
-
-### Delete a Script Include (cleanup)
-
-```python
-result = await mcp.use_tool("servicenow", "delete_script_include", {
-    "script_include_id": "McpDemoUtil"
-})
-
-print(result["message"])
-```
+Follow update-set and scope rules enforced by the MCP write path.
 
 ---
 
@@ -318,7 +170,7 @@ print(result["message"])
    Use descriptive names, API names, and descriptions to make ownership and purpose obvious.
 
 4. **Clean up demo and experimental Script Includes**  
-   Use `delete_script_include` to remove proof-of-concept Script Includes when they are no longer needed.
+   Use `delete_record` on `sys_script_include` (when allowed) to remove proof-of-concept artifacts.
 
 5. **Avoid editing platform Script Includes blindly**  
    Prefer creating new Script Includes or extending behavior, and only modify existing ones when you fully understand their impact.
