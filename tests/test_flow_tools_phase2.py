@@ -590,3 +590,106 @@ def test_list_flow_io_request_failure(config, auth):
     assert result.inputs == []
     assert result.outputs == []
     assert "network error" in result.message
+
+
+# ---------------------------------------------------------------------------
+# Task 6: execute_flow
+# ---------------------------------------------------------------------------
+
+from servicenow_mcp.tools.flow_tools import (
+    ExecuteFlowParams,
+    execute_flow,
+)
+
+MOCK_FLOW_META_ROW = {
+    "result": [
+        {
+            "sys_id": FLOW_ID,
+            "internal_name": "u_test_flow",
+            "scope": "global",
+        }
+    ]
+}
+
+MOCK_SCRIPT_SUCCESS = {
+    "result": {
+        "status": "success",
+        "output": '{"executionId": "ctx123456789", "state": "running"}',
+    }
+}
+
+MOCK_SCRIPT_FAILURE = {
+    "result": {
+        "status": "error",
+        "output": "FlowAPI error: flow not found",
+    }
+}
+
+
+def test_execute_flow_success(config, auth):
+    """Calls scripted API and returns execution id."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, patch(
+        "servicenow_mcp.tools.flow_tools.requests.post"
+    ) as mock_post:
+        mock_get.return_value = _make_response(200, MOCK_FLOW_META_ROW)
+        mock_post.return_value = _make_response(200, MOCK_SCRIPT_SUCCESS)
+
+        params = ExecuteFlowParams(flow_sys_id=FLOW_ID)
+        result = execute_flow(config, auth, params)
+
+    assert result.success is True
+    assert result.execution_id == "ctx123456789"
+    assert result.execution_id is not None
+
+
+def test_execute_flow_with_inputs(config, auth):
+    """Flow inputs are passed to the background script."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, patch(
+        "servicenow_mcp.tools.flow_tools.requests.post"
+    ) as mock_post:
+        mock_get.return_value = _make_response(200, MOCK_FLOW_META_ROW)
+        mock_post.return_value = _make_response(200, MOCK_SCRIPT_SUCCESS)
+
+        params = ExecuteFlowParams(
+            flow_sys_id=FLOW_ID,
+            inputs={"record_sys_id": "abc123", "priority": "1"},
+        )
+        result = execute_flow(config, auth, params)
+
+    assert result.success is True
+    post_body = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json", {})
+    script_body = post_body.get("script", "")
+    assert "record_sys_id" in script_body
+    assert "abc123" in script_body
+
+
+def test_execute_flow_script_error(config, auth):
+    """Returns success=False when background script returns error status."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, patch(
+        "servicenow_mcp.tools.flow_tools.requests.post"
+    ) as mock_post:
+        mock_get.return_value = _make_response(200, MOCK_FLOW_META_ROW)
+        mock_post.return_value = _make_response(200, MOCK_SCRIPT_FAILURE)
+
+        params = ExecuteFlowParams(flow_sys_id=FLOW_ID)
+        result = execute_flow(config, auth, params)
+
+    assert result.success is False
+    assert "FlowAPI error" in result.message
+
+
+def test_execute_flow_request_failure(config, auth):
+    """Returns success=False on HTTP error."""
+    import requests as req_lib
+
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, patch(
+        "servicenow_mcp.tools.flow_tools.requests.post"
+    ) as mock_post:
+        mock_get.return_value = _make_response(200, MOCK_FLOW_META_ROW)
+        mock_post.side_effect = req_lib.RequestException("connection refused")
+
+        params = ExecuteFlowParams(flow_sys_id=FLOW_ID)
+        result = execute_flow(config, auth, params)
+
+    assert result.success is False
+    assert "connection refused" in result.message

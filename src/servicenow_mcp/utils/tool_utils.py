@@ -136,6 +136,8 @@ from servicenow_mcp.tools.flow_tools import (
     DeleteArtifactResponse,
     DeleteFlowParams,
     DeleteSubflowParams,
+    ExecuteFlowParams,
+    ExecuteFlowResponse,
     FlowExecution,
     FlowLogicType,
     GetActionParams,
@@ -149,10 +151,14 @@ from servicenow_mcp.tools.flow_tools import (
     GetSubflowParams,
     ListActionTypeInputsParams,
     ListActionTypeInputsResult,
+    ListActionTypeOutputsParams,
+    ListActionTypeOutputsResult,
     ListActionsParams,
     ListActionTypesParams,
     ListActionTypesResult,
     ListArtifactsResponse,
+    ListFlowIOParams,
+    ListFlowIOResult,
     ListFlowLogicTypesParams,
     ListFlowLogicTypesResult,
     ListFlowsParams,
@@ -160,14 +166,19 @@ from servicenow_mcp.tools.flow_tools import (
     ListTriggerTypesParams,
     ListTriggerTypesResult,
     MutationResponse,
+    AddLogicToFlowParams,
+    AddLogicToFlowResponse,
     PublishActionParams,
     PublishFlowParams,
     PublishSubflowParams,
+    RemoveStepsFromFlowParams,
+    RemoveStepsFromFlowResponse,
     UpdateActionParams,
     UpdateFlowParams,
     UpdateSubflowParams,
 )
 from servicenow_mcp.tools.flow_tools import (
+    add_logic_to_flow as add_logic_to_flow_tool,
     add_steps_to_flow as add_steps_to_flow_tool,
     create_action as create_action_tool,
     create_flow as create_flow_tool,
@@ -175,6 +186,7 @@ from servicenow_mcp.tools.flow_tools import (
     delete_action as delete_action_tool,
     delete_flow as delete_flow_tool,
     delete_subflow as delete_subflow_tool,
+    execute_flow as execute_flow_tool,
     get_action as get_action_tool,
     get_flow as get_flow_tool,
     get_flow_actions as get_flow_actions_tool,
@@ -183,8 +195,10 @@ from servicenow_mcp.tools.flow_tools import (
     get_flow_version as get_flow_version_tool,
     get_subflow as get_subflow_tool,
     list_action_type_inputs as list_action_type_inputs_tool,
+    list_action_type_outputs as list_action_type_outputs_tool,
     list_action_types as list_action_types_tool,
     list_actions as list_actions_tool,
+    list_flow_io as list_flow_io_tool,
     list_flow_logic_types as list_flow_logic_types_tool,
     list_flows as list_flows_tool,
     list_subflows as list_subflows_tool,
@@ -192,6 +206,7 @@ from servicenow_mcp.tools.flow_tools import (
     publish_action as publish_action_tool,
     publish_flow as publish_flow_tool,
     publish_subflow as publish_subflow_tool,
+    remove_steps_from_flow as remove_steps_from_flow_tool,
     update_action as update_action_tool,
     update_flow as update_flow_tool,
     update_subflow as update_subflow_tool,
@@ -572,6 +587,27 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
+        "list_action_type_outputs": (
+            list_action_type_outputs_tool,
+            ListActionTypeOutputsParams,
+            ListActionTypeOutputsResult,
+            (
+                "List output variable definitions (data pills) for an action type from sys_hub_action_output. "
+                "Use definition_sys_id from list_action_types (same as list_action_type_inputs). "
+                "Needed to wire action outputs into later step inputs."
+            ),
+            "json",
+        ),
+        "list_flow_io": (
+            list_flow_io_tool,
+            ListFlowIOParams,
+            ListFlowIOResult,
+            (
+                "List input and output variable definitions for a flow or subflow (sys_hub_flow_input / sys_hub_flow_output). "
+                "Use the flow sys_id to discover subflow inputs and exposed outputs for wiring."
+            ),
+            "json",
+        ),
         "list_flow_logic_types": (
             list_flow_logic_types_tool,
             ListFlowLogicTypesParams,
@@ -590,6 +626,26 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
                 "Add action steps to an existing flow using GET→mutate→PUT. Fetches the current flow payload, "
                 "appends new action instances, writes back, and saves a version. "
                 "Use get_flow_actions first to see existing step orders."
+            ),
+            "json",
+        ),
+        "remove_steps_from_flow": (
+            remove_steps_from_flow_tool,
+            RemoveStepsFromFlowParams,
+            RemoveStepsFromFlowResponse,
+            (
+                "Remove one or more action or logic steps from a flow by marking them deleted (GET→mutate→PUT→create_version). "
+                "Pass step id values from get_flow_actions / processflow payload."
+            ),
+            "json",
+        ),
+        "add_logic_to_flow": (
+            add_logic_to_flow_tool,
+            AddLogicToFlowParams,
+            AddLogicToFlowResponse,
+            (
+                "Add a Flow Logic step (If, Else, For Each, etc.) to an existing flow. "
+                "Use logic_type_sys_id from list_flow_logic_types. Same GET→mutate→PUT pattern as add_steps_to_flow."
             ),
             "json",
         ),
@@ -621,6 +677,17 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             (
                 "Return recent executions of a flow from sys_hub_flow_context. Includes state, timing, and error details. "
                 "Useful for debugging flows that are failing or running unexpectedly."
+            ),
+            "json",
+        ),
+        "execute_flow": (
+            execute_flow_tool,
+            ExecuteFlowParams,
+            ExecuteFlowResponse,
+            (
+                "Manually execute a flow for testing using GlideFlowAPI via the scripted background-script endpoint. "
+                "Returns an execution_id when the instance returns one; use get_flow_execution_history to track. "
+                "Use list_flow_io for required input names. Requires script_execution_api_resource_path in server config."
             ),
             "json",
         ),

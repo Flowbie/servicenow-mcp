@@ -672,6 +672,35 @@ class ListFlowIOResult(BaseModel):
     message: str
 
 
+class ExecuteFlowParams(BaseModel):
+    """Parameters for execute_flow."""
+
+    flow_sys_id: str = Field(
+        ...,
+        description=(
+            "sys_id of the flow to execute (sys_hub_flow). "
+            "The flow must be in draft or published state. "
+            "Draft flows can be executed for testing without publishing."
+        ),
+    )
+    inputs: dict[str, str] | None = Field(
+        None,
+        description=(
+            "Optional input values for the flow execution. "
+            "Key is the input variable element name, value is the string value. "
+            "Use list_flow_io to discover required input names."
+        ),
+    )
+
+
+class ExecuteFlowResponse(BaseModel):
+    """Response from execute_flow."""
+
+    success: bool
+    message: str
+    execution_id: str | None = None
+
+
 class DeleteArtifactParams(BaseModel):
     """Common delete parameter — sys_id of the artifact to delete."""
 
@@ -3323,4 +3352,169 @@ def list_flow_io(
         inputs=inputs,
         outputs=outputs,
         message=f"Found {len(inputs)} input(s) and {len(outputs)} output(s) for flow.",
+    )
+
+
+def execute_flow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: ExecuteFlowParams,
+) -> ExecuteFlowResponse:
+    """
+    Manually execute a flow for testing via server-side GlideFlowAPI.
+
+    Uses the configured scripted background-script endpoint to call
+    sn_fd.FlowAPI.startFlowAsync. The flow runs asynchronously; this returns an
+    execution context id when available, which can be correlated with
+    get_flow_execution_history.
+
+    Requires script_execution_api_resource_path on ServerConfig (same as run_background_script).
+
+    Args:
+        config: Server configuration.
+        auth_manager: Authentication manager.
+        params: flow_sys_id and optional input values.
+
+    Returns:
+        ExecuteFlowResponse with success flag, execution_id, and message.
+    """
+    if not config.script_execution_api_resource_path:
+        return ExecuteFlowResponse(
+            success=False,
+            message=(
+                "Script execution API is not configured (script_execution_api_resource_path). "
+                "Configure the scripted execution endpoint to run flows from MCP."
+            ),
+        )
+
+    headers = auth_manager.get_headers()
+
+    def _cell_str(raw: Any) -> str:
+        if isinstance(raw, dict):
+            return str(raw.get("value") or raw.get("display_value") or "") or ""
+        return str(raw) if raw is not None else ""
+
+    try:
+        meta_response = requests.get(
+            f"{config.api_url}/table/sys_hub_flow",
+            params={
+                "sysparm_query": f"sys_id={params.flow_sys_id}",
+                "sysparm_fields": "sys_id,internal_name,scope",
+                "sysparm_display_value": "all",
+                "sysparm_limit": 1,
+            },
+            headers=headers,
+            timeout=config.timeout,
+        )
+        meta_response.raise_for_status()
+        records = meta_response.json().get("result", [])
+        if not records:
+            return ExecuteFlowResponse(
+                success=False,
+                message=f"Flow not found: sys_id={params.flow_sys_id}",
+            )
+        flow_meta = records[0]
+        internal_name = _cell_str(flow_meta.get("internal_name")) or str(
+            flow_meta.get("internal_name") or ""
+        ).strip()
+        if not internal_name:
+            return ExecuteFlowResponse(
+                success=False,
+                message=f"Flow has no internal_name (sys_id={params.flow_sys_id}).",
+            )
+        scope_raw = flow_meta.get("scope")
+        scope = _cell_str(scope_raw) if scope_raw is not None else ""
+        if not scope:
+            scope = "global"
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "execute_flow | meta fetch failed | flow_sys_id=%s | error=%s%s",
+            params.flow_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return ExecuteFlowResponse(
+            success=False,
+            message=f"Failed to fetch flow metadata: {e}" + (f" | response: {_body}" if _body else ""),
+        )
+
+    inputs_obj = params.inputs or {}
+    inputs_js = json.dumps(inputs_obj)
+    scoped_name = f"{scope}.{internal_name}" if scope and scope != "global" else internal_name
+    flow_name_js = json.dumps(scoped_name)
+
+    script = f"""
+var flowName = {flow_name_js};
+var inputs = {inputs_js};
+try {{
+  var execution = sn_fd.FlowAPI.startFlowAsync(flowName, inputs);
+  var execId = execution ? execution.toString() : null;
+  gs.info("execute_flow | started | flow=" + flowName + " | execution=" + execId);
+  gs.print(JSON.stringify({{"executionId": execId, "state": "running", "flow": flowName}}));
+}} catch (e) {{
+  gs.print(JSON.stringify({{"error": e.message || String(e)}}));
+}}
+"""
+
+    url = f"{config.instance_url.rstrip('/')}{config.script_execution_api_resource_path}"
+    try:
+        script_response = requests.post(
+            url,
+            json={"script": script},
+            headers=headers,
+            timeout=max(config.timeout, 120),
+        )
+        script_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "execute_flow | script POST failed | flow_sys_id=%s | error=%s%s",
+            params.flow_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return ExecuteFlowResponse(
+            success=False,
+            message=f"Failed to execute flow: {e}" + (f" | response: {_body}" if _body else ""),
+        )
+
+    try:
+        payload = script_response.json()
+    except Exception:
+        return ExecuteFlowResponse(
+            success=False,
+            message="Script execution returned non-JSON response.",
+        )
+
+    result = payload.get("result", payload)
+    status = result.get("status", "")
+    output_str = result.get("output", "")
+
+    if status == "error":
+        return ExecuteFlowResponse(
+            success=False,
+            message=f"Flow execution failed: {output_str}",
+        )
+
+    execution_id: str | None = None
+    try:
+        output_data = json.loads(output_str) if output_str else {}
+        if isinstance(output_data, dict) and "error" in output_data:
+            return ExecuteFlowResponse(
+                success=False,
+                message=f"Flow execution failed: {output_data['error']}",
+            )
+        if isinstance(output_data, dict):
+            execution_id = output_data.get("executionId")
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+
+    logger.info(
+        "execute_flow | started | flow_sys_id=%s | execution_id=%s",
+        params.flow_sys_id, execution_id,
+    )
+    return ExecuteFlowResponse(
+        success=True,
+        message=(
+            f"Flow execution started. execution_id={execution_id}. "
+            "Use get_flow_execution_history to check status."
+        ),
+        execution_id=execution_id,
     )

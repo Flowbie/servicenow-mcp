@@ -294,6 +294,16 @@ The default `config/tool_packages.yaml` includes the following role-based packag
 4. **update_workflow** - Update an existing workflow in ServiceNow
 5. **delete_workflow** - Delete a workflow from ServiceNow
 
+#### Flow Designer Tools
+
+These complement other Flow Designer tools exposed in the `platform_developer` and `full` tool packages (for example `create_flow`, `list_flows`, `add_steps_to_flow`, `publish_flow`).
+
+1. **remove_steps_from_flow** - Remove action or logic steps from a flow by step id
+2. **add_logic_to_flow** - Add If/Else/For Each/Do Until logic blocks to a flow
+3. **list_action_type_outputs** - List output data pill definitions for an action type
+4. **list_flow_io** - List input and output variable definitions for a flow or subflow
+5. **execute_flow** - Manually execute a flow for testing via GlideFlowAPI (requires `script_execution_api_resource_path` in server config)
+
 #### Script Include Management Tools
 
 1. **list_script_includes** - List script includes from ServiceNow
@@ -503,6 +513,10 @@ Below are some example natural language queries you can use with Claude to inter
 - "Check whether all dependencies for story STRY0080729 are satisfied before we promote it"
 - "Validate that story STRY0080729 has sufficient test coverage to be marked ready for testing"
 - "Verify that story STRY0080729 has complete promotion instructions before we move it to production"
+
+#### Flow Designer Examples
+- "List input and output variables for subflow sys_id X using list_flow_io"
+- "Run flow sys_id Y for testing with execute_flow and optional input key/value pairs"
 
 #### Workflow Management Examples
 - "Show me all active workflows in ServiceNow"
