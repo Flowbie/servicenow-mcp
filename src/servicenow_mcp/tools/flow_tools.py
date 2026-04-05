@@ -384,11 +384,17 @@ class PublishActionParams(PublishArtifactParams):
     """Parameters for publish_action."""
 
 
+# ---------------------------------------------------------------------------
+# Action Type Catalog — list_action_types, list_action_type_inputs
+# ---------------------------------------------------------------------------
+
+
 class ListActionTypesParams(BaseModel):
     """Parameters for list_action_types."""
 
     query: str = Field(
         ...,
+        min_length=1,
         description=(
             "Search string to filter action types by name or internal_name. "
             "Examples: 'Look Up Record', 'Create Record', 'Send Email'. "
