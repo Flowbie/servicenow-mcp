@@ -384,6 +384,50 @@ class PublishActionParams(PublishArtifactParams):
     """Parameters for publish_action."""
 
 
+class ListActionTypesParams(BaseModel):
+    """Parameters for list_action_types."""
+
+    query: str = Field(
+        ...,
+        description=(
+            "Search string to filter action types by name or internal_name. "
+            "Examples: 'Look Up Record', 'Create Record', 'Send Email'. "
+            "Returns up to limit results matching the name CONTAINS query."
+        ),
+    )
+    limit: int = Field(25, ge=1, le=200, description="Maximum number of results to return")
+
+
+class ActionTypeSummary(BaseModel):
+    """One action type from the action type catalog."""
+
+    definition_sys_id: str = Field(
+        ...,
+        description=(
+            "sys_hub_action_type_definition.sys_id — pass to list_action_type_inputs "
+            "to get input parameter definitions."
+        ),
+    )
+    base_sys_id: str = Field(
+        ...,
+        description=(
+            "sys_hub_action_type_base.sys_id — use as ActionInstanceParam.action_type_sys_id "
+            "when calling add_steps_to_flow or create_flow."
+        ),
+    )
+    name: str = Field(..., description="Display name (e.g. 'Look Up Record')")
+    internal_name: str | None = Field(None, description="Internal name (e.g. 'glide_record_lookup')")
+    spoke: str | None = Field(None, description="Spoke name (e.g. 'ServiceNow Core')")
+    description: str | None = Field(None, description="Action description")
+
+
+class ListActionTypesResult(BaseModel):
+    """Result from list_action_types."""
+
+    action_types: list[ActionTypeSummary]
+    message: str
+
+
 class ArtifactSummary(BaseModel):
     """Compact artifact summary used by list_* tools."""
 
@@ -1437,6 +1481,76 @@ def publish_action(
 ) -> MutationResponse:
     """Publish a custom action artifact."""
     return _publish_artifact(config, auth_manager, "action", params)
+
+
+def list_action_types(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: ListActionTypesParams,
+) -> ListActionTypesResult:
+    """
+    Search the action type catalog for action types matching a name query.
+
+    Returns both definition_sys_id (for list_action_type_inputs) and
+    base_sys_id (for ActionInstanceParam.action_type_sys_id in add_steps_to_flow
+    and create_flow). These are different sys_ids for the same action — both are
+    needed for the full create-and-configure workflow.
+
+    Args:
+        config: Server configuration.
+        auth_manager: Authentication manager.
+        params: Query string and limit.
+
+    Returns:
+        ListActionTypesResult with matching action types.
+    """
+    try:
+        response = requests.get(
+            f"{config.api_url}/table/sys_hub_action_type_definition",
+            params={
+                "sysparm_query": f"nameCONTAINS{params.query}^ORinternal_nameCONTAINS{params.query}",
+                "sysparm_fields": "sys_id,name,internal_name,action_type_base,spoke,description",
+                "sysparm_display_value": "true",
+                "sysparm_limit": params.limit,
+            },
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "list_action_types | request failed | query=%s | error=%s%s",
+            params.query, e, f" | body={_body}" if _body else "",
+        )
+        return ListActionTypesResult(
+            action_types=[],
+            message=f"Failed to fetch action types: {e}" + (f" | body: {_body}" if _body else ""),
+        )
+
+    records = response.json().get("result", [])
+    action_types = []
+    for r in records:
+        # action_type_base is a reference field; with display_value=true it comes as
+        # {"value": "<sys_id>", "display_value": "<name>"} or just a plain string.
+        atb = r.get("action_type_base", {})
+        base_sys_id = atb.get("value", "") if isinstance(atb, dict) else str(atb or "")
+        spoke_field = r.get("spoke", {})
+        spoke_name = spoke_field.get("display_value") if isinstance(spoke_field, dict) else str(spoke_field or "")
+        action_types.append(ActionTypeSummary(
+            definition_sys_id=r["sys_id"],
+            base_sys_id=base_sys_id,
+            name=r.get("name", ""),
+            internal_name=r.get("internal_name") or None,
+            spoke=spoke_name or None,
+            description=r.get("description") or None,
+        ))
+
+    logger.info("list_action_types | query=%s | found %d result(s)", params.query, len(action_types))
+    return ListActionTypesResult(
+        action_types=action_types,
+        message=f"Found {len(action_types)} action type(s) matching '{params.query}'.",
+    )
 
 
 # ---------------------------------------------------------------------------
