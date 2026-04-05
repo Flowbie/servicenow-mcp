@@ -512,6 +512,32 @@ class AddStepsToFlowResponse(BaseModel):
     steps_added: int = 0
 
 
+class RemoveStepsFromFlowParams(BaseModel):
+    """Parameters for remove_steps_from_flow."""
+
+    flow_sys_id: str = Field(
+        ...,
+        description="sys_id of the flow to modify (sys_hub_flow).",
+    )
+    step_ids: list[str] = Field(
+        ...,
+        description=(
+            "List of step id values to remove. Each id must match a step's 'id' field "
+            "in the flow's actionInstances or flowLogicInstances array. "
+            "Use get_flow_actions or get_flow_version to discover current step ids."
+        ),
+    )
+
+
+class RemoveStepsFromFlowResponse(BaseModel):
+    """Response from remove_steps_from_flow."""
+
+    success: bool
+    message: str
+    flow_sys_id: str | None = None
+    steps_removed: int = 0
+
+
 class DeleteArtifactParams(BaseModel):
     """Common delete parameter — sys_id of the artifact to delete."""
 
@@ -2687,4 +2713,140 @@ def get_flow_execution_history(
         executions=executions,
         count=len(executions),
         message=f"Found {len(executions)} execution(s) for flow {params.flow_sys_id}.",
+    )
+
+
+def remove_steps_from_flow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: RemoveStepsFromFlowParams,
+) -> RemoveStepsFromFlowResponse:
+    """
+    Remove one or more action or logic steps from an existing flow.
+
+    Uses the GET→mark deleted→PUT→create_version pattern. Steps are marked
+    with deleted=True in their respective instance arrays (actionInstances or
+    flowLogicInstances). Both action steps and logic steps (If/Else/For Each)
+    can be removed by id.
+
+    Args:
+        config: Server configuration.
+        auth_manager: Authentication manager.
+        params: flow_sys_id and list of step id values to remove.
+
+    Returns:
+        RemoveStepsFromFlowResponse with success flag, message, and count of
+        steps removed.
+    """
+    if not params.step_ids:
+        return RemoveStepsFromFlowResponse(
+            success=False,
+            message="step_ids must be a non-empty list.",
+        )
+
+    processflow_base = f"{config.api_url}/processflow"
+    headers = auth_manager.get_headers()
+
+    # Step 1: GET current flow payload
+    try:
+        get_response = requests.get(
+            f"{processflow_base}/flow/{params.flow_sys_id}",
+            headers=headers,
+            timeout=config.timeout,
+        )
+        get_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "remove_steps_from_flow | GET failed | flow_sys_id=%s | error=%s%s",
+            params.flow_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return RemoveStepsFromFlowResponse(
+            success=False,
+            message=f"Failed to fetch flow: {e}" + (f" | response: {_body}" if _body else ""),
+        )
+
+    flow_data = get_response.json().get("result", {}).get("data", {})
+
+    # Step 2: Mark specified steps as deleted across both arrays
+    ids_to_remove = set(params.step_ids)
+    found_ids: set[str] = set()
+
+    action_instances = flow_data.get("actionInstances", [])
+    for step in action_instances:
+        if step.get("id") in ids_to_remove:
+            step["deleted"] = True
+            found_ids.add(step["id"])
+
+    logic_instances = flow_data.get("flowLogicInstances", [])
+    for step in logic_instances:
+        if step.get("id") in ids_to_remove:
+            step["deleted"] = True
+            found_ids.add(step["id"])
+
+    not_found = ids_to_remove - found_ids
+    if not_found:
+        return RemoveStepsFromFlowResponse(
+            success=False,
+            message=(
+                f"Step id(s) not found in flow: {sorted(not_found)}. "
+                "Use get_flow_actions or get_flow_version to list current step ids."
+            ),
+        )
+
+    # Step 3: PUT modified payload back
+    put_body = {k: v for k, v in flow_data.items()}
+    put_body["actionInstances"] = action_instances
+    put_body["flowLogicInstances"] = logic_instances
+
+    try:
+        put_response = requests.put(
+            f"{processflow_base}/flow",
+            params={"sysparm_transaction_scope": "global"},
+            json=put_body,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        put_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "remove_steps_from_flow | PUT failed | flow_sys_id=%s | error=%s%s",
+            params.flow_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return RemoveStepsFromFlowResponse(
+            success=False,
+            flow_sys_id=params.flow_sys_id,
+            message=f"Failed to update flow: {e}" + (f" | response: {_body}" if _body else ""),
+        )
+
+    # Step 4: Create version to persist the change
+    try:
+        requests.post(
+            f"{processflow_base}/versioning/create_version",
+            params={"sysparm_transaction_scope": "global"},
+            json={
+                "item_sys_id": params.flow_sys_id,
+                "type": "Save",
+                "annotation": f"Removed {len(found_ids)} step(s) via MCP",
+                "favorite": False,
+            },
+            headers=headers,
+            timeout=config.timeout,
+        ).raise_for_status()
+    except requests.RequestException as e:
+        logger.warning(
+            "remove_steps_from_flow | create_version failed | flow_sys_id=%s | error=%s",
+            params.flow_sys_id, e,
+        )
+
+    logger.info(
+        "remove_steps_from_flow | removed %d step(s) | flow_sys_id=%s",
+        len(found_ids), params.flow_sys_id,
+    )
+    return RemoveStepsFromFlowResponse(
+        success=True,
+        message=f"Successfully removed {len(found_ids)} step(s) from flow.",
+        flow_sys_id=params.flow_sys_id,
+        steps_removed=len(found_ids),
     )
