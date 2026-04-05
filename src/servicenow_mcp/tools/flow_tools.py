@@ -430,6 +430,17 @@ _TRIGGER_TYPE_NAME_MAP = {
     "record_create_or_update": "Created or Updated",
     "record_update": "Updated",
     "recurrence": "Recurrence",
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "monthly": "Monthly",
+    "repeat": "Repeat",
+    "run_once": "Run Once",
+    "email": "Inbound Email",
+    "rest": "Trigger Rest",
+    "service_catalog": "Service Catalog",
+    "knowledge_management": "Knowledge Management",
+    "sla_task": "SLA Task",
+    "analytics": "Proactive Analytics",
 }
 
 _TRUNCATE_BODY_AT = 2000
