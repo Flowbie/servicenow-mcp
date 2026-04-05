@@ -487,6 +487,31 @@ class ListFlowLogicTypesResult(BaseModel):
     message: str
 
 
+class AddStepsToFlowParams(BaseModel):
+    """Parameters for add_steps_to_flow."""
+
+    flow_sys_id: str = Field(
+        ...,
+        description="sys_id of the existing flow to modify (sys_hub_flow). Flow must be in draft state or will be set to draft on edit.",
+    )
+    actions: list[ActionInstanceParam] = Field(
+        default_factory=list,
+        description=(
+            "Action steps to append. Order values must not conflict with existing steps — "
+            "use get_flow_actions to inspect current orders before calling this tool."
+        ),
+    )
+
+
+class AddStepsToFlowResponse(BaseModel):
+    """Response from add_steps_to_flow."""
+
+    success: bool
+    message: str
+    flow_sys_id: str | None = None
+    steps_added: int = 0
+
+
 class ArtifactSummary(BaseModel):
     """Compact artifact summary used by list_* tools."""
 
@@ -1736,6 +1761,100 @@ def list_flow_logic_types(
     return ListFlowLogicTypesResult(
         logic_types=logic_types,
         message=f"Found {len(logic_types)} flow logic type(s).",
+    )
+
+
+def add_steps_to_flow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: AddStepsToFlowParams,
+) -> AddStepsToFlowResponse:
+    """
+    Add action steps to an existing flow using the GET→mutate→PUT pattern.
+
+    Sequence:
+      1. GET /processflow/flow/{sys_id}       — fetch current payload
+      2. Append new action instances           — built via _build_action_instances
+      3. PUT /processflow/flow                 — write back modified payload
+      4. POST /processflow/versioning/create_version — save a new version
+
+    The flow must exist. Order values in params.actions must not clash with
+    existing steps — use get_flow_actions first to see current orders.
+    """
+    processflow_base = f"{config.api_url}/processflow"
+    headers = auth_manager.get_headers()
+
+    # Step 1: GET current flow payload
+    try:
+        get_response = requests.get(
+            f"{processflow_base}/flow/{params.flow_sys_id}",
+            headers=headers,
+            timeout=config.timeout,
+        )
+        get_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("add_steps_to_flow | GET failed | flow_sys_id=%s | error=%s%s", params.flow_sys_id, e, f" | body={_body}" if _body else "")
+        return AddStepsToFlowResponse(
+            success=False,
+            message=f"Failed to fetch flow {params.flow_sys_id}: {e}" + (f" | body: {_body}" if _body else ""),
+        )
+
+    flow_data = get_response.json().get("result", {}).get("data", {})
+    if not flow_data:
+        return AddStepsToFlowResponse(
+            success=False,
+            message=f"GET /processflow/flow/{params.flow_sys_id} returned no data.",
+            flow_sys_id=params.flow_sys_id,
+        )
+
+    # Step 2: Append new action instances to existing ones
+    new_instances = _build_action_instances(params.flow_sys_id, params.actions)
+    flow_data["actionInstances"] = (flow_data.get("actionInstances") or []) + new_instances
+
+    # Step 3: PUT modified payload back
+    try:
+        put_response = requests.put(
+            f"{processflow_base}/flow",
+            params={"sysparm_transaction_scope": "global"},
+            json=flow_data,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        put_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("add_steps_to_flow | PUT failed | flow_sys_id=%s | error=%s%s", params.flow_sys_id, e, f" | body={_body}" if _body else "")
+        return AddStepsToFlowResponse(
+            success=False,
+            message=f"Failed to update flow {params.flow_sys_id}: {e}" + (f" | body: {_body}" if _body else ""),
+            flow_sys_id=params.flow_sys_id,
+        )
+
+    # Step 4: Save version (non-fatal if it fails)
+    try:
+        requests.post(
+            f"{processflow_base}/versioning/create_version",
+            params={"sysparm_transaction_scope": "global"},
+            json={
+                "item_sys_id": params.flow_sys_id,
+                "type": "Save",
+                "annotation": "",
+                "favorite": False,
+            },
+            headers=headers,
+            timeout=config.timeout,
+        ).raise_for_status()
+        logger.info("add_steps_to_flow | version saved | flow_sys_id=%s", params.flow_sys_id)
+    except requests.RequestException as e:
+        logger.warning("add_steps_to_flow | create_version failed (non-fatal) | flow_sys_id=%s | error=%s", params.flow_sys_id, e)
+
+    logger.info("add_steps_to_flow | success | flow_sys_id=%s | steps_added=%d", params.flow_sys_id, len(params.actions))
+    return AddStepsToFlowResponse(
+        success=True,
+        message=f"Added {len(params.actions)} step(s) to flow {params.flow_sys_id}.",
+        flow_sys_id=params.flow_sys_id,
+        steps_added=len(params.actions),
     )
 
 

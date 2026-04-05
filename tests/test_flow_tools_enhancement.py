@@ -207,3 +207,121 @@ class TestListFlowLogicTypes(unittest.TestCase):
         ]
         result = list_flow_logic_types(_make_config(), _make_auth(), ListFlowLogicTypesParams())
         self.assertEqual(len(result.logic_types), 1)
+
+
+class TestAddStepsToFlow(unittest.TestCase):
+
+    def _mock_get_flow_response(self, flow_sys_id="flow123"):
+        m = MagicMock()
+        m.raise_for_status = MagicMock()
+        m.json.return_value = {
+            "result": {
+                "data": {
+                    "id": flow_sys_id,
+                    "name": "Test Flow",
+                    "actionInstances": [],
+                    "triggerInstances": [],
+                }
+            }
+        }
+        return m
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.post")
+    @patch("servicenow_mcp.tools.flow_tools.requests.put")
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_success_adds_steps_and_returns_count(self, mock_get, mock_put, mock_post):
+        from servicenow_mcp.tools.flow_tools import (
+            ActionInputParam, ActionInstanceParam, AddStepsToFlowParams, add_steps_to_flow
+        )
+        mock_get.return_value = self._mock_get_flow_response()
+        mock_put.return_value.raise_for_status = MagicMock()
+        mock_put.return_value.json.return_value = {"result": {"data": {"id": "flow123"}}}
+        mock_post.return_value.raise_for_status = MagicMock()
+
+        params = AddStepsToFlowParams(
+            flow_sys_id="flow123",
+            actions=[
+                ActionInstanceParam(
+                    action_type_sys_id="delete_record_sys_id",
+                    name="Delete Record",
+                    order=1,
+                )
+            ],
+        )
+        result = add_steps_to_flow(_make_config(), _make_auth(), params)
+        self.assertTrue(result.success)
+        self.assertEqual(result.steps_added, 1)
+        self.assertEqual(result.flow_sys_id, "flow123")
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_failure_returns_error(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import AddStepsToFlowParams, add_steps_to_flow
+        mock_get.return_value.raise_for_status.side_effect = requests.HTTPError("404")
+        mock_get.return_value.text = "Not Found"
+        params = AddStepsToFlowParams(flow_sys_id="bad_id", actions=[])
+        result = add_steps_to_flow(_make_config(), _make_auth(), params)
+        self.assertFalse(result.success)
+        self.assertIn("Failed to fetch flow", result.message)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.post")
+    @patch("servicenow_mcp.tools.flow_tools.requests.put")
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_put_failure_returns_error(self, mock_get, mock_put, mock_post):
+        from servicenow_mcp.tools.flow_tools import AddStepsToFlowParams, add_steps_to_flow
+        mock_get.return_value = self._mock_get_flow_response()
+        mock_put.return_value.raise_for_status.side_effect = requests.HTTPError("500")
+        mock_put.return_value.text = "Server Error"
+        params = AddStepsToFlowParams(flow_sys_id="flow123", actions=[])
+        result = add_steps_to_flow(_make_config(), _make_auth(), params)
+        self.assertFalse(result.success)
+        self.assertIn("Failed to update flow", result.message)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.post")
+    @patch("servicenow_mcp.tools.flow_tools.requests.put")
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_existing_action_instances_preserved(self, mock_get, mock_put, mock_post):
+        """Existing action instances are not clobbered."""
+        from servicenow_mcp.tools.flow_tools import ActionInstanceParam, AddStepsToFlowParams, add_steps_to_flow
+        existing_instance = {"id": "existing_action", "order": 1}
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = {
+            "result": {"data": {"id": "flow123", "actionInstances": [existing_instance], "triggerInstances": []}}
+        }
+        mock_put.return_value.raise_for_status = MagicMock()
+        mock_put.return_value.json.return_value = {"result": {"data": {"id": "flow123"}}}
+        mock_post.return_value.raise_for_status = MagicMock()
+
+        params = AddStepsToFlowParams(
+            flow_sys_id="flow123",
+            actions=[ActionInstanceParam(action_type_sys_id="x", name="New Step", order=2)],
+        )
+        add_steps_to_flow(_make_config(), _make_auth(), params)
+
+        put_body = mock_put.call_args[1]["json"]
+        self.assertEqual(len(put_body["actionInstances"]), 2)
+        self.assertEqual(put_body["actionInstances"][0], existing_instance)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.post")
+    @patch("servicenow_mcp.tools.flow_tools.requests.put")
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_version_created_after_put(self, mock_get, mock_put, mock_post):
+        from servicenow_mcp.tools.flow_tools import AddStepsToFlowParams, add_steps_to_flow
+        mock_get.return_value = self._mock_get_flow_response()
+        mock_put.return_value.raise_for_status = MagicMock()
+        mock_put.return_value.json.return_value = {"result": {"data": {"id": "flow123"}}}
+        mock_post.return_value.raise_for_status = MagicMock()
+        add_steps_to_flow(_make_config(), _make_auth(), AddStepsToFlowParams(flow_sys_id="flow123", actions=[]))
+        post_url = mock_post.call_args[0][0]
+        self.assertIn("create_version", post_url)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.post")
+    @patch("servicenow_mcp.tools.flow_tools.requests.put")
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_version_failure_is_non_fatal(self, mock_get, mock_put, mock_post):
+        from servicenow_mcp.tools.flow_tools import AddStepsToFlowParams, add_steps_to_flow
+        mock_get.return_value = self._mock_get_flow_response()
+        mock_put.return_value.raise_for_status = MagicMock()
+        mock_put.return_value.json.return_value = {"result": {"data": {"id": "flow123"}}}
+        mock_post.return_value.raise_for_status.side_effect = requests.HTTPError("500")
+        result = add_steps_to_flow(_make_config(), _make_auth(), AddStepsToFlowParams(flow_sys_id="flow123", actions=[]))
+        self.assertTrue(result.success)
