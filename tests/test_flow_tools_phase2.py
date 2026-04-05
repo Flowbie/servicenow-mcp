@@ -619,6 +619,10 @@ MOCK_SCRIPT_SUCCESS = {
     }
 }
 
+MOCK_PROCESSFLOW_TEST_SUCCESS = {
+    "result": {"executionId": "ctx_from_rest_aaaaaaaaaaaaaaaaaa"},
+}
+
 MOCK_SCRIPT_FAILURE = {
     "result": {
         "status": "error",
@@ -628,28 +632,24 @@ MOCK_SCRIPT_FAILURE = {
 
 
 def test_execute_flow_success(config, auth):
-    """Calls scripted API and returns execution id."""
-    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, patch(
-        "servicenow_mcp.tools.flow_tools.requests.post"
-    ) as mock_post:
-        mock_get.return_value = _make_response(200, MOCK_FLOW_META_ROW)
-        mock_post.return_value = _make_response(200, MOCK_SCRIPT_SUCCESS)
+    """POST processflow/flow/{id}/test returns execution id (REST primary)."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_post.return_value = _make_response(200, MOCK_PROCESSFLOW_TEST_SUCCESS)
 
         params = ExecuteFlowParams(flow_sys_id=FLOW_ID)
         result = execute_flow(config, auth, params)
 
     assert result.success is True
-    assert result.execution_id == "ctx123456789"
-    assert result.execution_id is not None
+    assert result.execution_id == "ctx_from_rest_aaaaaaaaaaaaaaaaaa"
+    assert result.execution_source == "processflow_test"
+    url = mock_post.call_args[0][0]
+    assert "/processflow/flow/" in url and url.endswith("/test")
 
 
 def test_execute_flow_with_inputs(config, auth):
-    """Flow inputs are passed to the background script."""
-    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, patch(
-        "servicenow_mcp.tools.flow_tools.requests.post"
-    ) as mock_post:
-        mock_get.return_value = _make_response(200, MOCK_FLOW_META_ROW)
-        mock_post.return_value = _make_response(200, MOCK_SCRIPT_SUCCESS)
+    """Inputs are JSON body for processflow test POST."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_post.return_value = _make_response(200, MOCK_PROCESSFLOW_TEST_SUCCESS)
 
         params = ExecuteFlowParams(
             flow_sys_id=FLOW_ID,
@@ -659,18 +659,19 @@ def test_execute_flow_with_inputs(config, auth):
 
     assert result.success is True
     post_body = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json", {})
-    script_body = post_body.get("script", "")
-    assert "record_sys_id" in script_body
-    assert "abc123" in script_body
+    assert post_body.get("inputs", {}).get("record_sys_id") == "abc123"
 
 
 def test_execute_flow_script_error(config, auth):
-    """Returns success=False when background script returns error status."""
+    """REST returns no id; fallback script returns error status."""
     with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, patch(
         "servicenow_mcp.tools.flow_tools.requests.post"
     ) as mock_post:
         mock_get.return_value = _make_response(200, MOCK_FLOW_META_ROW)
-        mock_post.return_value = _make_response(200, MOCK_SCRIPT_FAILURE)
+        mock_post.side_effect = [
+            _make_response(200, {"result": {}}),
+            _make_response(200, MOCK_SCRIPT_FAILURE),
+        ]
 
         params = ExecuteFlowParams(flow_sys_id=FLOW_ID)
         result = execute_flow(config, auth, params)
@@ -680,20 +681,43 @@ def test_execute_flow_script_error(config, auth):
 
 
 def test_execute_flow_request_failure(config, auth):
-    """Returns success=False on HTTP error."""
+    """Returns success=False when REST and script POST both fail."""
     import requests as req_lib
 
     with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, patch(
         "servicenow_mcp.tools.flow_tools.requests.post"
     ) as mock_post:
         mock_get.return_value = _make_response(200, MOCK_FLOW_META_ROW)
-        mock_post.side_effect = req_lib.RequestException("connection refused")
+        mock_post.side_effect = [
+            req_lib.RequestException("rest failed"),
+            req_lib.RequestException("connection refused"),
+        ]
 
         params = ExecuteFlowParams(flow_sys_id=FLOW_ID)
         result = execute_flow(config, auth, params)
 
     assert result.success is False
     assert "connection refused" in result.message
+
+
+def test_execute_flow_fallback_to_script(config, auth):
+    """When test endpoint returns 200 without execution id, uses GlideFlowAPI script."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, patch(
+        "servicenow_mcp.tools.flow_tools.requests.post"
+    ) as mock_post:
+        mock_get.return_value = _make_response(200, MOCK_FLOW_META_ROW)
+        mock_post.side_effect = [
+            _make_response(200, {"result": {}}),
+            _make_response(200, MOCK_SCRIPT_SUCCESS),
+        ]
+
+        params = ExecuteFlowParams(flow_sys_id=FLOW_ID)
+        result = execute_flow(config, auth, params)
+
+    assert result.success is True
+    assert result.execution_id == "ctx123456789"
+    assert result.execution_source == "script"
+    assert mock_post.call_count == 2
 
 
 # ---------------------------------------------------------------------------
@@ -1063,6 +1087,56 @@ def test_add_subflow_step_rejects_missing_subflow(config, auth):
             ),
         )
     assert result.success is False
+
+
+def test_update_flow_trigger_success(config, auth):
+    """GET processflow, replace triggerInstances, PUT, Save."""
+    from servicenow_mcp.tools.flow_tools import (
+        TriggerInstanceParam,
+        UpdateFlowTriggerParams,
+        update_flow_trigger,
+    )
+
+    payload = {
+        "result": {
+            "data": {
+                "id": FLOW_ID,
+                "name": "F",
+                "triggerInstances": [{"id": "old"}],
+                "actionInstances": [],
+            }
+        }
+    }
+    with patch("servicenow_mcp.tools.flow_tools._get_artifact") as mock_ga, \
+            patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, \
+            patch("servicenow_mcp.tools.flow_tools.requests.put") as mock_put, \
+            patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post, \
+            patch("servicenow_mcp.tools.flow_tools._patch_flow_version_trigger_type", return_value=None), \
+            patch("servicenow_mcp.tools.flow_tools._release_flow_edit_lock", return_value=None), \
+            patch(
+                "servicenow_mcp.tools.flow_tools._resolve_trigger_definition_id",
+                return_value=("defid", None),
+            ), \
+            patch("servicenow_mcp.tools.flow_tools._build_trigger_instances") as mock_build:
+        mock_ga.return_value = MagicMock(artifact={"sys_id": FLOW_ID, "type": "flow"}, message="ok")
+        mock_get.return_value = _make_response(200, payload)
+        mock_put.return_value = _make_response(200, {})
+        mock_post.return_value = _make_response(200, {})
+        mock_build.return_value = [{"id": "newtrig", "flowSysId": FLOW_ID}]
+
+        result = update_flow_trigger(
+            config,
+            auth,
+            UpdateFlowTriggerParams(
+                flow_sys_id=FLOW_ID,
+                trigger=TriggerInstanceParam(type="record_create", table="incident"),
+            ),
+        )
+
+    assert result.success is True
+    assert result.flow_sys_id == FLOW_ID
+    put_body = mock_put.call_args.kwargs.get("json") or mock_put.call_args[1].get("json")
+    assert put_body["triggerInstances"][0]["id"] == "newtrig"
 
 
 def test_remove_steps_marks_subflow_deleted(config, auth):

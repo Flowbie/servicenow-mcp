@@ -137,6 +137,7 @@ platform_developer:
   - list_trigger_types
   - create_flow
   - clone_flow
+  - update_flow_trigger
   - list_flows
   - get_flow
   - get_flow_triggers
@@ -338,6 +339,7 @@ full:
   - list_trigger_types
   - create_flow
   - clone_flow
+  - update_flow_trigger
   - list_flows
   - get_flow
   - get_flow_triggers

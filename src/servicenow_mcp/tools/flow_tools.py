@@ -775,6 +775,28 @@ class ExecuteFlowResponse(BaseModel):
     success: bool
     message: str
     execution_id: str | None = None
+    execution_source: str | None = Field(
+        None,
+        description="How execution was started: 'processflow_test' (REST) or 'script' (GlideFlowAPI fallback).",
+    )
+
+
+class UpdateFlowTriggerParams(BaseModel):
+    """Parameters for update_flow_trigger — replace the flow's trigger with a new configuration."""
+
+    flow_sys_id: str = Field(..., description="sys_id of the flow (sys_hub_flow, type=flow)")
+    trigger: TriggerInstanceParam = Field(
+        ...,
+        description="New trigger configuration (same shape as create_flow). Replaces all entries in triggerInstances.",
+    )
+
+
+class UpdateFlowTriggerResponse(BaseModel):
+    """Response from update_flow_trigger."""
+
+    success: bool
+    message: str
+    flow_sys_id: str | None = None
 
 
 class FlowExecutionStepDetail(BaseModel):
@@ -2409,6 +2431,118 @@ def add_subflow_step_to_flow(
         message=f"Added subflow step '{params.name}' to flow {params.flow_sys_id}.",
         flow_sys_id=params.flow_sys_id,
         subflow_step_id=step_id,
+    )
+
+
+def update_flow_trigger(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: UpdateFlowTriggerParams,
+) -> UpdateFlowTriggerResponse:
+    """
+    Replace the trigger configuration on an existing flow.
+
+    Fetches the processflow payload, replaces ``triggerInstances`` with a new
+    instance built from ``params.trigger`` (same semantics as ``create_flow``),
+    then PUT, Save version, optional record-trigger version payload patch, and
+    safe-edit lock release.
+    """
+    parent_check = _get_artifact(config, auth_manager, "flow", params.flow_sys_id)
+    if not parent_check.artifact:
+        return UpdateFlowTriggerResponse(
+            success=False,
+            message=parent_check.message or "Flow not found.",
+        )
+    ptype = parent_check.artifact.get("type")
+    ptype_s = str(ptype.get("value") if isinstance(ptype, dict) else ptype or "").lower()
+    if ptype_s and ptype_s != "flow":
+        return UpdateFlowTriggerResponse(
+            success=False,
+            message=f"flow_sys_id must reference type=flow; got type={ptype_s}.",
+        )
+
+    processflow_base = f"{config.api_url}/processflow"
+    headers = auth_manager.get_headers()
+    version_query_params = {"sysparm_transaction_scope": "global"}
+
+    try:
+        get_response = requests.get(
+            f"{processflow_base}/flow/{params.flow_sys_id}",
+            headers=headers,
+            timeout=config.timeout,
+        )
+        get_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        return UpdateFlowTriggerResponse(
+            success=False,
+            message=f"GET processflow failed: {e}" + (f" | {_body}" if _body else ""),
+        )
+
+    flow_data = get_response.json().get("result", {}).get("data", {})
+    if not flow_data:
+        return UpdateFlowTriggerResponse(success=False, message="GET processflow returned no data.")
+
+    trigger_definition_id: str | None = params.trigger.trigger_definition_id
+    if not trigger_definition_id:
+        resolved_id, resolve_err = _resolve_trigger_definition_id(
+            config, auth_manager, params.trigger.type
+        )
+        if resolve_err:
+            return UpdateFlowTriggerResponse(success=False, message=resolve_err)
+        trigger_definition_id = resolved_id
+
+    trigger_instances = _build_trigger_instances(
+        config, auth_manager, params.trigger, params.flow_sys_id, trigger_definition_id
+    )
+    flow_data["triggerInstances"] = trigger_instances
+
+    try:
+        requests.put(
+            f"{processflow_base}/flow",
+            params={"sysparm_transaction_scope": "global"},
+            json=flow_data,
+            headers=headers,
+            timeout=config.timeout,
+        ).raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("update_flow_trigger | PUT failed | error=%s%s", e, f" | body={_body}" if _body else "")
+        return UpdateFlowTriggerResponse(
+            success=False,
+            message=f"PUT processflow failed: {e}" + (f" | {_body}" if _body else ""),
+        )
+
+    try:
+        requests.post(
+            f"{processflow_base}/versioning/create_version",
+            params=version_query_params,
+            json={
+                "item_sys_id": params.flow_sys_id,
+                "type": "Save",
+                "annotation": "Updated trigger via MCP",
+                "favorite": False,
+            },
+            headers=headers,
+            timeout=config.timeout,
+        ).raise_for_status()
+    except requests.RequestException as e:
+        logger.warning("update_flow_trigger | create_version failed (non-fatal) | error=%s", e)
+
+    if params.trigger.type in _RECORD_TRIGGER_TYPES:
+        patch_err = _patch_flow_version_trigger_type(config, auth_manager, params.flow_sys_id)
+        if patch_err:
+            logger.warning("update_flow_trigger | fTriggerType patch failed (non-fatal) | %s", patch_err)
+
+    lock_err = _release_flow_edit_lock(config, auth_manager, params.flow_sys_id)
+    if lock_err:
+        logger.warning("update_flow_trigger | lock release failed (non-fatal) | %s", lock_err)
+
+    logger.info("update_flow_trigger | success | flow_sys_id=%s", params.flow_sys_id)
+    return UpdateFlowTriggerResponse(
+        success=True,
+        message=f"Updated trigger on flow {params.flow_sys_id}.",
+        flow_sys_id=params.flow_sys_id,
     )
 
 
@@ -4092,35 +4226,105 @@ def list_flow_io(
     )
 
 
+def _extract_execution_id_from_test_response(data: Any) -> str | None:
+    """Parse execution sys_id from POST /processflow/flow/{id}/test JSON (shape varies by release)."""
+    if not isinstance(data, dict):
+        return None
+    cand = data.get("result", data)
+    if not isinstance(cand, dict):
+        return None
+    for key in ("executionId", "execution_id", "sys_id", "contextId", "context_id"):
+        v = cand.get(key)
+        if v:
+            return str(v)
+    inner = cand.get("data")
+    if isinstance(inner, dict):
+        for key in ("executionId", "execution_id", "sys_id"):
+            v = inner.get(key)
+            if v:
+                return str(v)
+    return None
+
+
+def _try_execute_flow_via_rest(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    flow_sys_id: str,
+    inputs_obj: dict[str, str],
+) -> tuple[bool, str | None, str | None]:
+    """POST /processflow/flow/{id}/test. Returns (ok, execution_id, error_message)."""
+    url = f"{config.api_url}/processflow/flow/{flow_sys_id}/test"
+    try:
+        resp = requests.post(
+            url,
+            params={"sysparm_transaction_scope": "global"},
+            json={"inputs": inputs_obj},
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        if resp.status_code != 200:
+            return False, None, f"HTTP {resp.status_code}"
+        body = resp.json()
+        eid = _extract_execution_id_from_test_response(body)
+        if eid:
+            return True, eid, None
+        return False, None, "test endpoint returned 200 but no execution id in response"
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        return False, None, str(e) + (f" | {_body}" if _body else "")
+
+
 def execute_flow(
     config: ServerConfig,
     auth_manager: AuthManager,
     params: ExecuteFlowParams,
 ) -> ExecuteFlowResponse:
     """
-    Manually execute a flow for testing via server-side GlideFlowAPI.
+    Manually execute a flow for testing.
 
-    Uses the configured scripted background-script endpoint to call
-    sn_fd.FlowAPI.startFlowAsync. The flow runs asynchronously; this returns an
-    execution context id when available, which can be correlated with
-    get_flow_execution_history.
+    **Primary:** ``POST /api/now/processflow/flow/{sys_id}/test`` with JSON body
+    ``{"inputs": {...}}`` (same ``inputs`` dict as ``list_flow_io`` element names).
 
-    Requires script_execution_api_resource_path on ServerConfig (same as run_background_script).
+    **Fallback:** server-side ``sn_fd.FlowAPI.startFlowAsync`` via the configured
+    scripted background-script endpoint (requires ``script_execution_api_resource_path``).
 
-    Args:
-        config: Server configuration.
-        auth_manager: Authentication manager.
-        params: flow_sys_id and optional input values.
-
-    Returns:
-        ExecuteFlowResponse with success flag, execution_id, and message.
+    The flow runs asynchronously; returns an execution context id when the platform
+    includes one in the response, correlatable with ``get_flow_execution_history``.
     """
+    inputs_obj = dict(params.inputs) if params.inputs else {}
+
+    rest_ok, rest_eid, rest_err = _try_execute_flow_via_rest(
+        config, auth_manager, params.flow_sys_id.strip(), inputs_obj
+    )
+    if rest_ok and rest_eid:
+        logger.info(
+            "execute_flow | processflow test | flow_sys_id=%s | execution_id=%s",
+            params.flow_sys_id, rest_eid,
+        )
+        return ExecuteFlowResponse(
+            success=True,
+            message=(
+                f"Flow execution started (processflow test). execution_id={rest_eid}. "
+                "Use get_flow_execution_history to check status."
+            ),
+            execution_id=rest_eid,
+            execution_source="processflow_test",
+        )
+
+    if rest_err:
+        logger.info(
+            "execute_flow | REST test path did not yield execution id | flow_sys_id=%s | detail=%s",
+            params.flow_sys_id, rest_err,
+        )
+
     if not config.script_execution_api_resource_path:
         return ExecuteFlowResponse(
             success=False,
             message=(
-                "Script execution API is not configured (script_execution_api_resource_path). "
-                "Configure the scripted execution endpoint to run flows from MCP."
+                "Could not start execution via processflow test endpoint"
+                + (f" ({rest_err})." if rest_err else ".")
+                + " Script execution API is not configured (script_execution_api_resource_path), "
+                "so GlideFlowAPI fallback is unavailable."
             ),
         )
 
@@ -4174,7 +4378,6 @@ def execute_flow(
             message=f"Failed to fetch flow metadata: {e}" + (f" | response: {_body}" if _body else ""),
         )
 
-    inputs_obj = params.inputs or {}
     inputs_js = json.dumps(inputs_obj)
     scoped_name = f"{scope}.{internal_name}" if scope and scope != "global" else internal_name
     flow_name_js = json.dumps(scoped_name)
@@ -4206,16 +4409,17 @@ try {{
 
     execution_id = output_data.get("executionId")
     logger.info(
-        "execute_flow | started | flow_sys_id=%s | execution_id=%s",
+        "execute_flow | script fallback | flow_sys_id=%s | execution_id=%s",
         params.flow_sys_id, execution_id,
     )
     return ExecuteFlowResponse(
         success=True,
         message=(
-            f"Flow execution started. execution_id={execution_id}. "
+            f"Flow execution started (script). execution_id={execution_id}. "
             "Use get_flow_execution_history to check status."
         ),
         execution_id=execution_id if isinstance(execution_id, str) else None,
+        execution_source="script",
     )
 
 
@@ -4237,7 +4441,8 @@ def _build_get_flow_execution_detail_script(execution_sys_id: str) -> str:
         "  var steps = [];\n"
         "  var probe = new GlideRecord('sys_hub_flow_stage_context');\n"
         "  if (!probe.isValid()) return steps;\n"
-        "  var qFields = ['flow_context', 'context', 'parent'];\n"
+        "  var qFields = ['flow_context', 'context', 'parent', 'execution_context'];\n"
+        "  var seen = {};\n"
         "  for (var i = 0; i < qFields.length; i++) {\n"
         "    var qf = qFields[i];\n"
         "    if (!probe.isValidField(qf)) continue;\n"
@@ -4245,9 +4450,11 @@ def _build_get_flow_execution_detail_script(execution_sys_id: str) -> str:
         "    g2.addQuery(qf, contextSysId);\n"
         "    g2.orderBy('sys_created_on');\n"
         "    g2.query();\n"
-        "    if (g2.hasNext()) {\n"
-        "      while (g2.next()) steps.push(rowToStep(g2));\n"
-        "      return steps;\n"
+        "    while (g2.next()) {\n"
+        "      var sid = g2.getUniqueValue();\n"
+        "      if (seen[sid]) continue;\n"
+        "      seen[sid] = true;\n"
+        "      steps.push(rowToStep(g2));\n"
         "    }\n"
         "  }\n"
         "  return steps;\n"
@@ -4284,8 +4491,9 @@ def get_flow_execution_detail(
     Uses the scripted background-script endpoint (same as execute_flow) because
     ``sys_hub_flow_context`` may be blocked for REST Table API on some service accounts.
 
-    Step rows are read from ``sys_hub_flow_stage_context`` when that table exists and
-    links to the execution via ``flow_context``, ``context``, or ``parent``.
+    Step rows are read from ``sys_hub_flow_stage_context`` when that table exists.
+    The server script queries candidate reference fields (``flow_context``, ``context``,
+    ``parent``, ``execution_context``) and merges results, deduplicating by step ``sys_id``.
 
     Args:
         config: Server configuration.

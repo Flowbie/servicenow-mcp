@@ -296,16 +296,17 @@ The default `config/tool_packages.yaml` includes the following role-based packag
 
 #### Flow Designer Tools
 
-These complement other Flow Designer tools exposed in the `platform_developer` and `full` tool packages (for example `create_flow`, `clone_flow`, `add_steps_to_flow`, `add_subflow_step_to_flow`, `list_flows`, `publish_flow`).
+These complement other Flow Designer tools exposed in the `platform_developer` and `full` tool packages (for example `create_flow`, `clone_flow`, `update_flow_trigger`, `add_steps_to_flow`, `add_subflow_step_to_flow`, `list_flows`, `publish_flow`).
 
 1. **clone_flow** - Duplicate an existing flow to a new draft flow (new sys_id) via processflow GET/POST/PUT
-2. **add_subflow_step_to_flow** - Append a subflow invocation step to a parent flow (`subFlowInstances`)
-3. **remove_steps_from_flow** - Remove action, logic, or subflow steps from a flow by step id
-4. **add_logic_to_flow** - Add If/Else/For Each/Do Until logic blocks to a flow
-5. **list_action_type_outputs** - List output data pill definitions for an action type
-6. **list_flow_io** - List input and output variable definitions for a flow or subflow
-7. **execute_flow** - Manually execute a flow for testing via GlideFlowAPI (requires `script_execution_api_resource_path` in server config)
-8. **get_flow_execution_detail** - Load one execution (`sys_hub_flow_context`) and step rows via scripted API when REST cannot read those tables
+2. **update_flow_trigger** - Replace the trigger on an existing flow (same `TriggerInstanceParam` shape as `create_flow`)
+3. **add_subflow_step_to_flow** - Append a subflow invocation step to a parent flow (`subFlowInstances`)
+4. **remove_steps_from_flow** - Remove action, logic, or subflow steps from a flow by step id
+5. **add_logic_to_flow** - Add If/Else/For Each/Do Until logic blocks to a flow
+6. **list_action_type_outputs** - List output data pill definitions for an action type
+7. **list_flow_io** - List input and output variable definitions for a flow or subflow
+8. **execute_flow** - Run a flow for testing: tries `POST /processflow/flow/{id}/test` with `inputs` first, then GlideFlowAPI script if no execution id (script path optional for fallback only)
+9. **get_flow_execution_detail** - Load one execution (`sys_hub_flow_context`) and step rows (merged across candidate FK fields) via scripted API when REST cannot read those tables
 
 #### Script Include Management Tools
 

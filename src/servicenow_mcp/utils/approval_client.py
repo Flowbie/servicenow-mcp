@@ -46,6 +46,7 @@ WRITE_TOOLS = {
     "create_flow",
     "clone_flow",
     "add_subflow_step_to_flow",
+    "update_flow_trigger",
     "update_flow",
     "publish_flow",
     "create_subflow",

@@ -179,6 +179,8 @@ from servicenow_mcp.tools.flow_tools import (
     RemoveStepsFromFlowResponse,
     CloneFlowParams,
     CloneFlowResponse,
+    UpdateFlowTriggerParams,
+    UpdateFlowTriggerResponse,
     UpdateActionParams,
     UpdateFlowParams,
     UpdateSubflowParams,
@@ -190,6 +192,7 @@ from servicenow_mcp.tools.flow_tools import (
     create_action as create_action_tool,
     create_flow as create_flow_tool,
     clone_flow as clone_flow_tool,
+    update_flow_trigger as update_flow_trigger_tool,
     create_subflow as create_subflow_tool,
     delete_action as delete_action_tool,
     delete_flow as delete_flow_tool,
@@ -481,6 +484,17 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
+        "update_flow_trigger": (
+            update_flow_trigger_tool,
+            UpdateFlowTriggerParams,
+            UpdateFlowTriggerResponse,
+            (
+                "Replace the trigger on an existing flow (processflow GET, replace triggerInstances, PUT, Save). "
+                "Uses the same TriggerInstanceParam shape as create_flow. "
+                "Does not add action or subflow steps."
+            ),
+            "json",
+        ),
         "get_flow_triggers": (
             get_flow_triggers_tool,
             GetFlowTriggersParams,
@@ -717,9 +731,10 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ExecuteFlowParams,
             ExecuteFlowResponse,
             (
-                "Manually execute a flow for testing using GlideFlowAPI via the scripted background-script endpoint. "
-                "Returns an execution_id when the instance returns one; use get_flow_execution_history to track. "
-                "Use list_flow_io for required input names. Requires script_execution_api_resource_path in server config."
+                "Manually execute a flow for testing. Tries POST /processflow/flow/{sys_id}/test with JSON body "
+                "{\"inputs\": {...}} first; falls back to GlideFlowAPI via the scripted background-script endpoint "
+                "when the test response does not include an execution id (requires script_execution_api_resource_path). "
+                "Use list_flow_io for input element names. execution_source in the response indicates rest vs script."
             ),
             "json",
         ),
@@ -729,7 +744,8 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             GetFlowExecutionDetailResult,
             (
                 "Load one Flow Designer execution (sys_hub_flow_context) with step rows from sys_hub_flow_stage_context "
-                "via the scripted background-script endpoint. Use when Table API cannot read execution tables. "
+                "via the scripted background-script endpoint. Step rows merge matches on flow_context, context, parent, "
+                "and execution_context reference fields (deduped by sys_id). Use when Table API cannot read execution tables. "
                 "Pass execution sys_id from get_flow_execution_history. Requires script_execution_api_resource_path."
             ),
             "json",
