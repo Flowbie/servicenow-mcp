@@ -213,3 +213,182 @@ def test_remove_steps_empty_list(config, auth):
     result = remove_steps_from_flow(config, auth, params)
     assert result.success is False
     assert "step_ids" in result.message.lower() or "empty" in result.message.lower()
+
+
+from servicenow_mcp.tools.flow_tools import (
+    AddLogicToFlowParams,
+    LogicInputParam,
+    AddLogicToFlowResponse,
+    add_logic_to_flow,
+)
+
+IF_DEFINITION_ID = "af4e1945c3e232002841b63b12d3ae3e"
+
+MOCK_FLOW_FOR_LOGIC = {
+    "result": {
+        "data": {
+            "id": FLOW_ID,
+            "masterSnapshotId": "snap002",
+            "name": "Test Flow",
+            "triggerInstances": [],
+            "actionInstances": [],
+            "flowLogicInstances": [],
+            "subFlowInstances": [],
+        }
+    }
+}
+
+MOCK_PUT_LOGIC_RESPONSE = {"result": {"data": {"id": FLOW_ID}}}
+
+
+def test_add_logic_success(config, auth):
+    """Adds a flowLogicInstance to the flow and PUTs back."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, \
+         patch("servicenow_mcp.tools.flow_tools.requests.put") as mock_put, \
+         patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_get.return_value = _make_response(200, MOCK_FLOW_FOR_LOGIC)
+        mock_put.return_value = _make_response(200, MOCK_PUT_LOGIC_RESPONSE)
+        mock_post.return_value = _make_response(200, MOCK_VERSION_RESPONSE)
+
+        params = AddLogicToFlowParams(
+            flow_sys_id=FLOW_ID,
+            logic_type_sys_id=IF_DEFINITION_ID,
+            name="If: incident is high priority",
+            order=1,
+        )
+        result = add_logic_to_flow(config, auth, params)
+
+    assert result.success is True
+    assert result.flow_sys_id == FLOW_ID
+    assert result.logic_step_id is not None
+
+    put_body = mock_put.call_args.kwargs.get("json") or mock_put.call_args[1].get("json")
+    logic_list = put_body["flowLogicInstances"]
+    assert len(logic_list) == 1
+    step = logic_list[0]
+    assert step["definitionId"] == IF_DEFINITION_ID
+    assert step["name"] == "If: incident is high priority"
+    assert step["order"] == "1"
+    assert step["type"] == "flowlogic"
+    assert step["deleted"] is False
+    assert "uiUniqueIdentifier" in step
+    assert "id" in step
+
+
+def test_add_logic_with_inputs(config, auth):
+    """Logic inputs are included in the flowLogicInstance."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, \
+         patch("servicenow_mcp.tools.flow_tools.requests.put") as mock_put, \
+         patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_get.return_value = _make_response(200, MOCK_FLOW_FOR_LOGIC)
+        mock_put.return_value = _make_response(200, MOCK_PUT_LOGIC_RESPONSE)
+        mock_post.return_value = _make_response(200, MOCK_VERSION_RESPONSE)
+
+        params = AddLogicToFlowParams(
+            flow_sys_id=FLOW_ID,
+            logic_type_sys_id=IF_DEFINITION_ID,
+            name="If: check priority",
+            order=2,
+            inputs=[LogicInputParam(name="condition_name", value="priority=1")],
+        )
+        result = add_logic_to_flow(config, auth, params)
+
+    assert result.success is True
+    put_body = mock_put.call_args.kwargs.get("json") or mock_put.call_args[1].get("json")
+    step = put_body["flowLogicInstances"][0]
+    assert any(i["name"] == "condition_name" and i["value"] == "priority=1" for i in step["inputs"])
+
+
+def test_add_logic_with_parent(config, auth):
+    """Parent uiUniqueIdentifier is set on nested logic blocks (e.g. Else inside If)."""
+    parent_uid = "parent-uid-abc123"
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, \
+         patch("servicenow_mcp.tools.flow_tools.requests.put") as mock_put, \
+         patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_get.return_value = _make_response(200, MOCK_FLOW_FOR_LOGIC)
+        mock_put.return_value = _make_response(200, MOCK_PUT_LOGIC_RESPONSE)
+        mock_post.return_value = _make_response(200, MOCK_VERSION_RESPONSE)
+
+        params = AddLogicToFlowParams(
+            flow_sys_id=FLOW_ID,
+            logic_type_sys_id="1f781bf3c32232002841b63b12d3aee6",  # Else
+            name="Else:",
+            order=3,
+            parent_ui_id=parent_uid,
+        )
+        result = add_logic_to_flow(config, auth, params)
+
+    assert result.success is True
+    put_body = mock_put.call_args.kwargs.get("json") or mock_put.call_args[1].get("json")
+    step = put_body["flowLogicInstances"][0]
+    assert step["parent"] == parent_uid
+
+
+def test_add_logic_appends_to_existing(config, auth):
+    """New logic block is appended, not replacing existing blocks."""
+    existing_logic_payload = {
+        "result": {
+            "data": {
+                "id": FLOW_ID,
+                "masterSnapshotId": "snap003",
+                "name": "Test Flow",
+                "triggerInstances": [],
+                "actionInstances": [],
+                "flowLogicInstances": [
+                    {"id": "existing-logic-id", "order": "1", "deleted": False,
+                     "uiUniqueIdentifier": "uid-existing", "type": "flowlogic",
+                     "definitionId": IF_DEFINITION_ID},
+                ],
+                "subFlowInstances": [],
+            }
+        }
+    }
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, \
+         patch("servicenow_mcp.tools.flow_tools.requests.put") as mock_put, \
+         patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_get.return_value = _make_response(200, existing_logic_payload)
+        mock_put.return_value = _make_response(200, MOCK_PUT_LOGIC_RESPONSE)
+        mock_post.return_value = _make_response(200, MOCK_VERSION_RESPONSE)
+
+        params = AddLogicToFlowParams(
+            flow_sys_id=FLOW_ID,
+            logic_type_sys_id=IF_DEFINITION_ID,
+            name="If: second condition",
+            order=2,
+        )
+        result = add_logic_to_flow(config, auth, params)
+
+    assert result.success is True
+    put_body = mock_put.call_args.kwargs.get("json") or mock_put.call_args[1].get("json")
+    assert len(put_body["flowLogicInstances"]) == 2
+    assert put_body["flowLogicInstances"][0]["id"] == "existing-logic-id"
+
+
+def test_add_logic_get_failure(config, auth):
+    import requests as req_lib
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get:
+        mock_get.side_effect = req_lib.RequestException("timeout")
+        params = AddLogicToFlowParams(
+            flow_sys_id=FLOW_ID, logic_type_sys_id=IF_DEFINITION_ID, name="If:", order=1
+        )
+        result = add_logic_to_flow(config, auth, params)
+    assert result.success is False
+    assert "timeout" in result.message
+
+
+def test_add_logic_creates_version(config, auth):
+    """create_version is called after PUT."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, \
+         patch("servicenow_mcp.tools.flow_tools.requests.put") as mock_put, \
+         patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_get.return_value = _make_response(200, MOCK_FLOW_FOR_LOGIC)
+        mock_put.return_value = _make_response(200, MOCK_PUT_LOGIC_RESPONSE)
+        mock_post.return_value = _make_response(200, MOCK_VERSION_RESPONSE)
+
+        params = AddLogicToFlowParams(
+            flow_sys_id=FLOW_ID, logic_type_sys_id=IF_DEFINITION_ID, name="If:", order=1
+        )
+        add_logic_to_flow(config, auth, params)
+
+    post_url = mock_post.call_args.args[0]
+    assert "create_version" in post_url

@@ -16,6 +16,7 @@ API sequence for create_flow:
   8. DELETE /api/now/table/sys_hub_flow_safe_edit           — release Flow Designer edit lock
 """
 
+import copy
 import json
 import logging
 import time
@@ -536,6 +537,72 @@ class RemoveStepsFromFlowResponse(BaseModel):
     message: str
     flow_sys_id: str | None = None
     steps_removed: int = 0
+
+
+class LogicInputParam(BaseModel):
+    """A single input for a logic step (e.g. condition expression)."""
+
+    name: str = Field(..., description="Input parameter name (e.g. 'condition_name')")
+    value: str = Field(..., description="Input value")
+
+
+class AddLogicToFlowParams(BaseModel):
+    """Parameters for add_logic_to_flow."""
+
+    flow_sys_id: str = Field(
+        ...,
+        description="sys_id of the existing flow to modify (sys_hub_flow).",
+    )
+    logic_type_sys_id: str = Field(
+        ...,
+        description=(
+            "sys_id of the logic type definition. Get this from list_flow_logic_types. "
+            "The sys_id returned by that tool IS the definitionId for the flowLogicInstance. "
+            "Common values on most instances: "
+            "If=af4e1945c3e232002841b63b12d3ae3e, "
+            "Else=1f781bf3c32232002841b63b12d3aee6, "
+            "End=d176605ea76103004f27b0d2187901c7."
+        ),
+    )
+    name: str = Field(
+        ...,
+        description=(
+            "Display name for the logic step as shown in Flow Designer "
+            "(e.g. 'If: incident is high priority', 'For Each: record in list')."
+        ),
+    )
+    order: int = Field(
+        ...,
+        ge=1,
+        description=(
+            "Execution order (1-based). Must not conflict with existing steps. "
+            "Use get_flow_version to inspect current orders."
+        ),
+    )
+    parent_ui_id: str | None = Field(
+        None,
+        description=(
+            "uiUniqueIdentifier of the parent logic block. Required for nested blocks "
+            "(Else, End must reference their parent If's uiUniqueIdentifier). "
+            "Leave None for top-level logic blocks."
+        ),
+    )
+    inputs: list[LogicInputParam] = Field(
+        default_factory=list,
+        description=(
+            "Logic step inputs, e.g. condition expressions. "
+            "For If blocks: use name='condition_name', value='<encoded_query>'."
+        ),
+    )
+
+
+class AddLogicToFlowResponse(BaseModel):
+    """Response from add_logic_to_flow."""
+
+    success: bool
+    message: str
+    flow_sys_id: str | None = None
+    logic_step_id: str | None = None
 
 
 class DeleteArtifactParams(BaseModel):
@@ -2855,4 +2922,169 @@ def remove_steps_from_flow(
         message=f"Successfully removed {len(found_ids)} step(s) from flow.",
         flow_sys_id=params.flow_sys_id,
         steps_removed=len(found_ids),
+    )
+
+
+def add_logic_to_flow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: AddLogicToFlowParams,
+) -> AddLogicToFlowResponse:
+    """
+    Add a logic step (If, Else, For Each, Do Until, Set Flow Variables) to a flow.
+
+    Uses the GET→append→PUT→create_version pattern. The logic block is added
+    to the flow's flowLogicInstances array. Use list_flow_logic_types to
+    discover available logic types and their definitionIds.
+
+    For If/Else/End patterns:
+      1. add_logic_to_flow with logic_type_sys_id=<If_id>, record uiUniqueIdentifier
+         from logic_step_id → uiUniqueIdentifier (the returned logic_step_id IS the
+         step's sys_id; the uiUniqueIdentifier is set to a new UUID by this function)
+      2. add_logic_to_flow with logic_type_sys_id=<Else_id>, parent_ui_id=<If_uuid>
+      3. add_logic_to_flow with logic_type_sys_id=<End_id>, parent_ui_id=<If_uuid>
+
+    Args:
+        config: Server configuration.
+        auth_manager: Authentication manager.
+        params: Logic step configuration.
+
+    Returns:
+        AddLogicToFlowResponse with success flag, message, and logic step id.
+    """
+    processflow_base = f"{config.api_url}/processflow"
+    headers = auth_manager.get_headers()
+
+    # Step 1: GET current flow payload
+    try:
+        get_response = requests.get(
+            f"{processflow_base}/flow/{params.flow_sys_id}",
+            headers=headers,
+            timeout=config.timeout,
+        )
+        get_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "add_logic_to_flow | GET failed | flow_sys_id=%s | error=%s%s",
+            params.flow_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return AddLogicToFlowResponse(
+            success=False,
+            message=f"Failed to fetch flow: {e}" + (f" | response: {_body}" if _body else ""),
+        )
+
+    flow_data = copy.deepcopy(get_response.json().get("result", {}).get("data", {}))
+    if not flow_data:
+        return AddLogicToFlowResponse(
+            success=False,
+            message=f"GET /processflow/flow/{params.flow_sys_id} returned no data.",
+            flow_sys_id=params.flow_sys_id,
+        )
+
+    # Step 2: Build new flowLogicInstance
+    new_step_id = str(uuid.uuid4()).replace("-", "")[:32]
+    new_ui_id = str(uuid.uuid4())
+
+    new_logic = {
+        "id": new_step_id,
+        "flowSysId": params.flow_sys_id,
+        "order": str(params.order),
+        "displayText": "",
+        "uiUniqueIdentifier": new_ui_id,
+        "deleted": False,
+        "metadata": {},
+        "parent": params.parent_ui_id or "",
+        "comment": "",
+        "generationSource": "",
+        "uiComponentIndex": 0,
+        "outputsToAssign": [],
+        "inputs": [
+            {"id": inp.name, "name": inp.name, "value": inp.value, "displayValue": ""}
+            for inp in params.inputs
+        ],
+        "variables": [],
+        "errors": [],
+        "flowBlockId": "",
+        "connectedTo": "",
+        "quiescence": "",
+        "definitionId": params.logic_type_sys_id,
+        "workflowReference": "",
+        "workflowInputs": [],
+        "workflowInformation": {},
+        "decisionTableReference": "",
+        "decisionTableInputs": [],
+        "dynamicInputs": [],
+        "dynamicOutputs": [],
+        "decisionTableInformation": {},
+        "flowLogicDefinition": {},
+        "flowVariables": [],
+        "continue": False,
+        "afterTopLevelCatch": False,
+        "goBackTo": "",
+        "appendToFlowVariables": [],
+        "break": False,
+        "updateFlowTemplate": {},
+        "name": params.name,
+        "type": "flowlogic",
+        "internalName": "",
+        "snapshot": {},
+    }
+
+    # Step 3: Append to flowLogicInstances and PUT back
+    logic_instances = list(flow_data.get("flowLogicInstances", []))
+    logic_instances.append(new_logic)
+    flow_data["flowLogicInstances"] = logic_instances
+
+    # Step 4: PUT modified payload back
+    try:
+        put_response = requests.put(
+            f"{processflow_base}/flow",
+            params={"sysparm_transaction_scope": "global"},
+            json=flow_data,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        put_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "add_logic_to_flow | PUT failed | flow_sys_id=%s | error=%s%s",
+            params.flow_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return AddLogicToFlowResponse(
+            success=False,
+            flow_sys_id=params.flow_sys_id,
+            message=f"Failed to update flow: {e}" + (f" | response: {_body}" if _body else ""),
+        )
+
+    # Step 5: Create version
+    try:
+        requests.post(
+            f"{processflow_base}/versioning/create_version",
+            params={"sysparm_transaction_scope": "global"},
+            json={
+                "item_sys_id": params.flow_sys_id,
+                "type": "Save",
+                "annotation": f"Added logic step '{params.name}' via MCP",
+                "favorite": False,
+            },
+            headers=headers,
+            timeout=config.timeout,
+        ).raise_for_status()
+    except requests.RequestException as e:
+        logger.warning(
+            "add_logic_to_flow | create_version failed | flow_sys_id=%s | error=%s",
+            params.flow_sys_id, e,
+        )
+
+    logger.info(
+        "add_logic_to_flow | added logic step | flow_sys_id=%s | step_id=%s | name=%s",
+        params.flow_sys_id, new_step_id, params.name,
+    )
+    return AddLogicToFlowResponse(
+        success=True,
+        message=f"Successfully added logic step '{params.name}' to flow.",
+        flow_sys_id=params.flow_sys_id,
+        logic_step_id=new_step_id,
     )
