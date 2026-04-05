@@ -604,6 +604,74 @@ class AddLogicToFlowResponse(BaseModel):
     logic_step_id: str | None = None
 
 
+class ListActionTypeOutputsParams(BaseModel):
+    """Parameters for list_action_type_outputs."""
+
+    action_type_sys_id: str = Field(
+        ...,
+        description=(
+            "sys_id of the action type definition (sys_hub_action_type_definition). "
+            "Use definition_sys_id from list_action_types. "
+            "This is the same sys_id used for list_action_type_inputs."
+        ),
+    )
+
+
+class ActionTypeOutput(BaseModel):
+    """One output variable definition on an action type."""
+
+    sys_id: str
+    element: str = Field(..., description="Logical output variable name (data pill identifier)")
+    label: str = Field(..., description="Display label shown in Flow Designer")
+    internal_type: str = Field(..., description="Field type (e.g. 'GlideRecord', 'boolean', 'string')")
+    mandatory: bool = False
+    default_value: str | None = None
+    order: int = 0
+
+
+class ListActionTypeOutputsResult(BaseModel):
+    """Result from list_action_type_outputs."""
+
+    action_type_sys_id: str
+    outputs: list[ActionTypeOutput]
+    message: str
+
+
+class FlowIOVariable(BaseModel):
+    """One input or output variable on a flow/subflow."""
+
+    sys_id: str
+    element: str = Field(..., description="Logical variable name (data pill identifier)")
+    label: str = Field(..., description="Display label shown in Flow Designer")
+    internal_type: str = Field(..., description="Field type (e.g. 'string', 'GlideRecord', 'boolean')")
+    mandatory: bool = False
+    default_value: str | None = None
+    order: int = 0
+
+
+class ListFlowIOParams(BaseModel):
+    """Parameters for list_flow_io."""
+
+    flow_sys_id: str = Field(
+        ...,
+        description=(
+            "sys_id of the flow or subflow (sys_hub_flow). "
+            "For flows: returns output variables produced by the flow. "
+            "For subflows: returns both input variables the caller must provide "
+            "and output variables the subflow produces."
+        ),
+    )
+
+
+class ListFlowIOResult(BaseModel):
+    """Result from list_flow_io."""
+
+    flow_sys_id: str
+    inputs: list[FlowIOVariable]
+    outputs: list[FlowIOVariable]
+    message: str
+
+
 class DeleteArtifactParams(BaseModel):
     """Common delete parameter — sys_id of the artifact to delete."""
 
@@ -3086,4 +3154,173 @@ def add_logic_to_flow(
         message=f"Successfully added logic step '{params.name}' to flow.",
         flow_sys_id=params.flow_sys_id,
         logic_step_id=new_step_id,
+    )
+
+
+def list_action_type_outputs(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: ListActionTypeOutputsParams,
+) -> ListActionTypeOutputsResult:
+    """
+    List output variable definitions for an action type.
+
+    Returns the output data pills that an action type produces. These element
+    names and sys_ids are needed to wire action outputs into subsequent step
+    inputs using data pill references.
+
+    Queries sys_hub_action_output filtered by model={definition_sys_id}.
+
+    Args:
+        config: Server configuration.
+        auth_manager: Authentication manager.
+        params: action_type_sys_id — the definition sys_id from list_action_types.
+
+    Returns:
+        ListActionTypeOutputsResult with list of output variable definitions.
+    """
+    try:
+        response = requests.get(
+            f"{config.api_url}/table/sys_hub_action_output",
+            params={
+                "sysparm_query": f"model={params.action_type_sys_id}",
+                "sysparm_fields": "sys_id,element,label,column_label,internal_type,mandatory,default_value,order",
+                "sysparm_display_value": "true",
+                "sysparm_limit": 100,
+                "sysparm_orderby": "order",
+            },
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "list_action_type_outputs | request failed | action_type_sys_id=%s | error=%s%s",
+            params.action_type_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return ListActionTypeOutputsResult(
+            action_type_sys_id=params.action_type_sys_id,
+            outputs=[],
+            message=f"Failed to fetch action outputs: {e}" + (f" | response: {_body}" if _body else ""),
+        )
+
+    records = response.json().get("result", [])
+    outputs = []
+    for r in records:
+        def _val(field: Any) -> str:
+            """Extract string value from display_value dict or raw string."""
+            if isinstance(field, dict):
+                return field.get("value") or field.get("display_value") or ""
+            return str(field) if field else ""
+
+        outputs.append(ActionTypeOutput(
+            sys_id=r.get("sys_id", ""),
+            element=_val(r.get("element")) or r.get("element", ""),
+            label=_val(r.get("label")) or _val(r.get("column_label")) or "",
+            internal_type=_val(r.get("internal_type")) or "",
+            mandatory=_val(r.get("mandatory")) == "true",
+            default_value=_val(r.get("default_value")) or None,
+            order=int(_val(r.get("order")) or 0),
+        ))
+
+    logger.info(
+        "list_action_type_outputs | found %d output(s) | action_type_sys_id=%s",
+        len(outputs), params.action_type_sys_id,
+    )
+    return ListActionTypeOutputsResult(
+        action_type_sys_id=params.action_type_sys_id,
+        outputs=outputs,
+        message=f"Found {len(outputs)} output variable(s) for action type.",
+    )
+
+
+def list_flow_io(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: ListFlowIOParams,
+) -> ListFlowIOResult:
+    """
+    List input and output variable definitions for a flow or subflow.
+
+    Queries sys_hub_flow_input and sys_hub_flow_output filtered by the flow
+    sys_id. Inputs define what the caller must provide (relevant for subflows).
+    Outputs define what data the flow/subflow makes available downstream.
+
+    Args:
+        config: Server configuration.
+        auth_manager: Authentication manager.
+        params: flow_sys_id.
+
+    Returns:
+        ListFlowIOResult with separate inputs and outputs lists.
+    """
+    headers = auth_manager.get_headers()
+    common_query_params = {
+        "sysparm_fields": "sys_id,element,label,column_label,internal_type,mandatory,default_value,order",
+        "sysparm_display_value": "true",
+        "sysparm_limit": 100,
+        "sysparm_orderby": "order",
+    }
+
+    def _parse_var(r: dict) -> FlowIOVariable:
+        def _val(field: Any) -> str:
+            if isinstance(field, dict):
+                return field.get("value") or field.get("display_value") or ""
+            return str(field) if field else ""
+        return FlowIOVariable(
+            sys_id=r.get("sys_id", ""),
+            element=_val(r.get("element")) or r.get("element", ""),
+            label=_val(r.get("label")) or _val(r.get("column_label")) or "",
+            internal_type=_val(r.get("internal_type")) or "",
+            mandatory=_val(r.get("mandatory")) == "true",
+            default_value=_val(r.get("default_value")) or None,
+            order=int(_val(r.get("order")) or 0),
+        )
+
+    def _fetch(table: str) -> list[FlowIOVariable] | str:
+        try:
+            resp = requests.get(
+                f"{config.api_url}/table/{table}",
+                params={
+                    **common_query_params,
+                    "sysparm_query": f"model={params.flow_sys_id}^model_table=sys_hub_flow",
+                },
+                headers=headers,
+                timeout=config.timeout,
+            )
+            resp.raise_for_status()
+            return [_parse_var(r) for r in resp.json().get("result", [])]
+        except requests.RequestException as e:
+            return str(e)
+
+    inputs = _fetch("sys_hub_flow_input")
+    if isinstance(inputs, str):
+        logger.error("list_flow_io | inputs fetch failed | flow_sys_id=%s | error=%s", params.flow_sys_id, inputs)
+        return ListFlowIOResult(
+            flow_sys_id=params.flow_sys_id,
+            inputs=[],
+            outputs=[],
+            message=f"Failed to fetch flow I/O: {inputs}",
+        )
+
+    outputs = _fetch("sys_hub_flow_output")
+    if isinstance(outputs, str):
+        logger.error("list_flow_io | outputs fetch failed | flow_sys_id=%s | error=%s", params.flow_sys_id, outputs)
+        return ListFlowIOResult(
+            flow_sys_id=params.flow_sys_id,
+            inputs=[],
+            outputs=[],
+            message=f"Failed to fetch flow I/O: {outputs}",
+        )
+
+    logger.info(
+        "list_flow_io | flow_sys_id=%s | inputs=%d | outputs=%d",
+        params.flow_sys_id, len(inputs), len(outputs),
+    )
+    return ListFlowIOResult(
+        flow_sys_id=params.flow_sys_id,
+        inputs=inputs,
+        outputs=outputs,
+        message=f"Found {len(inputs)} input(s) and {len(outputs)} output(s) for flow.",
     )

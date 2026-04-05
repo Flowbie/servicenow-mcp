@@ -392,3 +392,201 @@ def test_add_logic_creates_version(config, auth):
 
     post_url = mock_post.call_args.args[0]
     assert "create_version" in post_url
+
+
+# ---------------------------------------------------------------------------
+# Task 3: list_action_type_outputs
+# ---------------------------------------------------------------------------
+
+from servicenow_mcp.tools.flow_tools import (
+    ListActionTypeOutputsParams,
+    ListActionTypeOutputsResult,
+    list_action_type_outputs,
+)
+
+ACTION_DEF_ID = "b93f42810b30030085c083eb37673a63"  # Look Up Record definition
+
+MOCK_ACTION_OUTPUTS = {
+    "result": [
+        {
+            "sys_id": "out111111111111111111111111111a",
+            "element": "record",
+            "label": {"value": "Record", "display_value": "Record"},
+            "column_label": {"value": "Record", "display_value": "Record"},
+            "internal_type": {"value": "GlideRecord", "display_value": "GlideRecord"},
+            "mandatory": {"value": "false"},
+            "default_value": {"value": ""},
+            "order": {"value": "100"},
+        },
+        {
+            "sys_id": "out222222222222222222222222222b",
+            "element": "found",
+            "label": {"value": "Found", "display_value": "Found"},
+            "column_label": {"value": "Found", "display_value": "Found"},
+            "internal_type": {"value": "boolean", "display_value": "True/False"},
+            "mandatory": {"value": "false"},
+            "default_value": {"value": ""},
+            "order": {"value": "200"},
+        },
+    ]
+}
+
+
+def test_list_action_type_outputs_success(config, auth):
+    """Returns list of output variable definitions for an action type."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get:
+        mock_get.return_value = _make_response(200, MOCK_ACTION_OUTPUTS)
+
+        params = ListActionTypeOutputsParams(action_type_sys_id=ACTION_DEF_ID)
+        result = list_action_type_outputs(config, auth, params)
+
+    assert result.action_type_sys_id == ACTION_DEF_ID
+    assert len(result.outputs) == 2
+    assert result.outputs[0].element == "record"
+    assert result.outputs[0].label == "Record"
+    assert result.outputs[0].internal_type == "GlideRecord"
+    assert result.outputs[1].element == "found"
+
+    # Verify correct Table API query
+    call_url = mock_get.call_args[0][0]
+    assert "sys_hub_action_output" in call_url
+    call_params = mock_get.call_args.kwargs.get("params") or mock_get.call_args[1].get("params", {})
+    query = call_params.get("sysparm_query", "")
+    assert ACTION_DEF_ID in query
+
+
+def test_list_action_type_outputs_empty(config, auth):
+    """Returns empty list when action type has no outputs."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get:
+        mock_get.return_value = _make_response(200, {"result": []})
+
+        params = ListActionTypeOutputsParams(action_type_sys_id=ACTION_DEF_ID)
+        result = list_action_type_outputs(config, auth, params)
+
+    assert result.outputs == []
+    assert "0" in result.message
+
+
+def test_list_action_type_outputs_request_failure(config, auth):
+    """Returns empty list with error message on request failure."""
+    import requests as req_lib
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get:
+        mock_get.side_effect = req_lib.RequestException("timeout")
+
+        params = ListActionTypeOutputsParams(action_type_sys_id=ACTION_DEF_ID)
+        result = list_action_type_outputs(config, auth, params)
+
+    assert result.outputs == []
+    assert "timeout" in result.message
+
+
+# ---------------------------------------------------------------------------
+# Task 4: list_flow_io
+# ---------------------------------------------------------------------------
+
+from servicenow_mcp.tools.flow_tools import (
+    ListFlowIOParams,
+    ListFlowIOResult,
+    list_flow_io,
+)
+
+MOCK_FLOW_INPUTS = {
+    "result": [
+        {
+            "sys_id": "inp001",
+            "element": "record_sys_id",
+            "label": {"value": "Record Sys ID", "display_value": "Record Sys ID"},
+            "column_label": {"value": "Record Sys ID", "display_value": "Record Sys ID"},
+            "internal_type": {"value": "string", "display_value": "String"},
+            "mandatory": {"value": "true"},
+            "default_value": {"value": ""},
+            "order": {"value": "100"},
+        }
+    ]
+}
+
+MOCK_FLOW_OUTPUTS = {
+    "result": [
+        {
+            "sys_id": "out001",
+            "element": "result_record",
+            "label": {"value": "Result Record", "display_value": "Result Record"},
+            "column_label": {"value": "Result Record", "display_value": "Result Record"},
+            "internal_type": {"value": "GlideRecord", "display_value": "GlideRecord"},
+            "mandatory": {"value": "false"},
+            "default_value": {"value": ""},
+            "order": {"value": "100"},
+        }
+    ]
+}
+
+
+def test_list_flow_io_success(config, auth):
+    """Returns inputs and outputs for the flow in one call."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get:
+        mock_get.side_effect = [
+            _make_response(200, MOCK_FLOW_INPUTS),
+            _make_response(200, MOCK_FLOW_OUTPUTS),
+        ]
+
+        params = ListFlowIOParams(flow_sys_id=FLOW_ID)
+        result = list_flow_io(config, auth, params)
+
+    assert result.flow_sys_id == FLOW_ID
+    assert len(result.inputs) == 1
+    assert result.inputs[0].element == "record_sys_id"
+    assert result.inputs[0].mandatory is True
+    assert len(result.outputs) == 1
+    assert result.outputs[0].element == "result_record"
+    assert result.outputs[0].internal_type == "GlideRecord"
+
+
+def test_list_flow_io_queries_correct_tables(config, auth):
+    """Queries sys_hub_flow_input and sys_hub_flow_output with correct filter."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get:
+        mock_get.side_effect = [
+            _make_response(200, MOCK_FLOW_INPUTS),
+            _make_response(200, MOCK_FLOW_OUTPUTS),
+        ]
+
+        params = ListFlowIOParams(flow_sys_id=FLOW_ID)
+        list_flow_io(config, auth, params)
+
+    calls = mock_get.call_args_list
+    assert len(calls) == 2
+    input_url, output_url = calls[0][0][0], calls[1][0][0]
+    assert "sys_hub_flow_input" in input_url
+    assert "sys_hub_flow_output" in output_url
+    # Both queries must include the flow sys_id
+    for call in calls:
+        p = call.kwargs.get("params") or call[1].get("params", {})
+        assert FLOW_ID in p.get("sysparm_query", "")
+
+
+def test_list_flow_io_empty(config, auth):
+    """Returns empty lists when flow has no I/O defined."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get:
+        mock_get.side_effect = [
+            _make_response(200, {"result": []}),
+            _make_response(200, {"result": []}),
+        ]
+
+        params = ListFlowIOParams(flow_sys_id=FLOW_ID)
+        result = list_flow_io(config, auth, params)
+
+    assert result.inputs == []
+    assert result.outputs == []
+
+
+def test_list_flow_io_request_failure(config, auth):
+    """Returns empty lists with error when request fails."""
+    import requests as req_lib
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get:
+        mock_get.side_effect = req_lib.RequestException("network error")
+
+        params = ListFlowIOParams(flow_sys_id=FLOW_ID)
+        result = list_flow_io(config, auth, params)
+
+    assert result.inputs == []
+    assert result.outputs == []
+    assert "network error" in result.message
