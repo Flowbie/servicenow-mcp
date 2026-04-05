@@ -253,15 +253,35 @@ class TestFlowExtensionTools(unittest.TestCase):
 
     @patch("servicenow_mcp.tools.flow_tools.requests.get")
     def test_get_flow_version_not_found(self, mock_get):
-        """Test that no version found returns failure."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"result": []}
-        mock_response.raise_for_status = MagicMock()
-        mock_get.return_value = mock_response
+        """No sys_hub_flow_version and no snapshot returns failure."""
+        empty = MagicMock()
+        empty.json.return_value = {"result": []}
+        empty.raise_for_status = MagicMock()
+        mock_get.side_effect = [empty, empty]
 
         result = get_flow_version(self.config, self.auth_manager, GetFlowVersionParams(flow_sys_id="flow1"))
         self.assertFalse(result["success"])
         self.assertIn("No", result["message"])
+        self.assertEqual(mock_get.call_count, 2)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_flow_version_snapshot_fallback(self, mock_get):
+        """When version table is empty, use sys_hub_flow_snapshot if present."""
+        ver_empty = MagicMock()
+        ver_empty.json.return_value = {"result": []}
+        ver_empty.raise_for_status = MagicMock()
+        snap_row = MagicMock()
+        snap_row.json.return_value = {
+            "result": [{"sys_id": "snap1", "flow": "flow1", "annotation": "pkg"}]
+        }
+        snap_row.raise_for_status = MagicMock()
+        mock_get.side_effect = [ver_empty, snap_row]
+
+        result = get_flow_version(self.config, self.auth_manager, GetFlowVersionParams(flow_sys_id="flow1"))
+        self.assertTrue(result["success"])
+        self.assertTrue(result.get("snapshot_fallback"))
+        self.assertEqual(result["version"]["sys_id"], "snap1")
+        self.assertEqual(mock_get.call_count, 2)
 
     @patch("servicenow_mcp.tools.flow_tools.requests.get")
     def test_get_flow_version_http_error(self, mock_get):

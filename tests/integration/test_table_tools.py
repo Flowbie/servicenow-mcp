@@ -84,8 +84,8 @@ class TestTableToolsIntegration:
         print(json.dumps(result, indent=2, default=str))
 
         assert result["success"] is False
-        # get_record returns "error" key (not "message") on 404
-        assert "error" in result or "message" in result
+        assert "message" in result, f"get_record must return 'message' on failure, got keys: {list(result.keys())}"
+        assert "error" not in result
 
     def test_query_records_limit_respected(self, live_config, live_auth):
         """Verify limit param is respected."""

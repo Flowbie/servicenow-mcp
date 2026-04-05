@@ -317,10 +317,6 @@ class ListArtifactsParams(BaseModel):
     )
 
 
-class ListFlowsParams(ListArtifactsParams):
-    """Parameters for list_flows."""
-
-
 class ListSubflowsParams(ListArtifactsParams):
     """Parameters for list_subflows."""
 
@@ -333,10 +329,6 @@ class GetArtifactParams(BaseModel):
     """Common lookup parameter for flow artifacts."""
 
     sys_id: str = Field(..., description="sys_id of the artifact")
-
-
-class GetFlowParams(GetArtifactParams):
-    """Parameters for get_flow."""
 
 
 class GetSubflowParams(GetArtifactParams):
@@ -3483,6 +3475,34 @@ def get_flow_version(
         response.raise_for_status()
         records = response.json().get("result", [])
         if not records:
+            # Packaged / OOB flows may have no sys_hub_flow_version rows; try read-only snapshot.
+            try:
+                snap_url = f"{config.instance_url}/api/now/table/sys_hub_flow_snapshot"
+                snap_resp = requests.get(
+                    snap_url,
+                    headers=headers,
+                    params={
+                        "sysparm_query": f"flow={params.flow_sys_id}^ORDERBYDESCsys_created_on",
+                        "sysparm_limit": 1,
+                        "sysparm_display_value": "true",
+                    },
+                    timeout=config.timeout,
+                )
+                snap_resp.raise_for_status()
+                snap_rows = snap_resp.json().get("result", [])
+                if snap_rows:
+                    return {
+                        "success": True,
+                        "flow_sys_id": params.flow_sys_id,
+                        "version": snap_rows[0],
+                        "snapshot_fallback": True,
+                    }
+            except requests.RequestException as snap_e:
+                logger.warning(
+                    "get_flow_version | no sys_hub_flow_version row; snapshot fallback failed | flow=%s | %s",
+                    params.flow_sys_id,
+                    snap_e,
+                )
             label = "published" if params.published_only else "latest"
             return {
                 "success": False,

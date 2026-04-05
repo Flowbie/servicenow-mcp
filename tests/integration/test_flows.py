@@ -143,9 +143,11 @@ class TestFlowIntegration:
         print(f"\n--- get_flow_version({sys_id}) response ---")
         print(json.dumps(result, indent=2, default=str))
 
-        # Both outcomes are acceptable: version found or no version exists
+        # Success: version row and/or packaged-flow snapshot fallback
         if result["success"] is True:
             assert "version" in result
+            if result.get("snapshot_fallback"):
+                assert isinstance(result["version"], dict)
         else:
             assert "message" in result
             # Accept the known no-version message pattern

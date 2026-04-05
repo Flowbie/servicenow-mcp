@@ -7,9 +7,11 @@ from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.table_tools import (
     CreateRecordParams,
     DeleteRecordParams,
+    GetRecordParams,
     UpdateRecordParams,
     create_record,
     delete_record,
+    get_record,
     update_record,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
@@ -235,3 +237,38 @@ def test_update_record_does_not_run_mandatory_field_check(mock_patch, mock_get_u
 
     assert result["success"] is True
     mock_patch.assert_called_once()
+
+
+@patch("servicenow_mcp.tools.table_tools.requests.get")
+def test_get_record_not_found_returns_message_key(mock_get):
+    """get_record must return 'message' on error, not 'error' (platform contract)."""
+    resp = MagicMock()
+    resp.raise_for_status.side_effect = requests_lib.HTTPError("404 Not Found")
+    resp.text = "Not Found"
+    mock_get.return_value = resp
+
+    result = get_record(
+        _server_config(),
+        _auth_manager(),
+        GetRecordParams(table="incident", sys_id="nonexistent000"),
+    )
+
+    assert result["success"] is False
+    assert "message" in result, f"Expected 'message' key, got keys: {list(result.keys())}"
+    assert "error" not in result
+
+
+@patch("servicenow_mcp.tools.table_tools.requests.get")
+def test_get_record_success(mock_get):
+    mock_get.return_value = _dict_response(
+        {"result": {"sys_id": "abc123", "short_description": "Test"}}
+    )
+
+    result = get_record(
+        _server_config(),
+        _auth_manager(),
+        GetRecordParams(table="incident", sys_id="abc123"),
+    )
+
+    assert result["success"] is True
+    assert result["record"]["sys_id"] == "abc123"

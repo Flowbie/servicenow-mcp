@@ -61,8 +61,9 @@ class TestFlowLifecycleTools(unittest.TestCase):
         mock_get.return_value = mock_response
 
         result = list_flows(self.server_config, self.auth_manager, ListFlowsParams())
-        self.assertEqual(result.count, 1)
-        self.assertEqual(result.artifacts[0].artifact_type, "flow")
+        self.assertTrue(result["success"])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["flows"][0]["sys_id"], "f1")
 
     @patch("servicenow_mcp.tools.flow_tools.requests.get")
     def test_get_flow(self, mock_get):
@@ -71,8 +72,9 @@ class TestFlowLifecycleTools(unittest.TestCase):
         mock_response.raise_for_status = MagicMock()
         mock_get.return_value = mock_response
 
-        result = get_flow(self.server_config, self.auth_manager, GetFlowParams(sys_id="f1"))
-        self.assertEqual(result.artifact["sys_id"], "f1")
+        result = get_flow(self.server_config, self.auth_manager, GetFlowParams(flow_sys_id="f1"))
+        self.assertTrue(result["success"])
+        self.assertEqual(result["flow"]["sys_id"], "f1")
 
     @patch("servicenow_mcp.tools.flow_tools.requests.patch")
     def test_update_flow(self, mock_patch):
@@ -96,15 +98,18 @@ class TestFlowLifecycleTools(unittest.TestCase):
         mock_post.return_value = post_response
         patch_response = MagicMock()
         patch_response.raise_for_status = MagicMock()
+        patch_response.json.return_value = {
+            "result": {"sys_id": "f1", "active": "true", "status": "published"}
+        }
         mock_patch.return_value = patch_response
 
         result = publish_flow(
             self.server_config,
             self.auth_manager,
-            PublishFlowParams(sys_id="f1"),
+            PublishFlowParams(flow_sys_id="f1"),
         )
-        self.assertTrue(result.success)
-        self.assertEqual(result.sys_id, "f1")
+        self.assertTrue(result["success"])
+        self.assertEqual(result["flow"]["sys_id"], "f1")
 
     @patch("servicenow_mcp.tools.flow_tools.requests.post")
     def test_create_subflow(self, mock_post):

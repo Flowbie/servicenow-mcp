@@ -273,7 +273,7 @@ def get_record(
             "success": False,
             "table": params.table,
             "sys_id": params.sys_id,
-            "error": str(e) + (f" | response: {body_text}" if body_text else ""),
+            "message": str(e) + (f" | response: {body_text}" if body_text else ""),
         }
 
 
