@@ -138,6 +138,8 @@ from servicenow_mcp.tools.flow_tools import (
     DeleteSubflowParams,
     ExecuteFlowParams,
     ExecuteFlowResponse,
+    GetFlowExecutionDetailParams,
+    GetFlowExecutionDetailResult,
     FlowExecution,
     FlowLogicType,
     GetActionParams,
@@ -187,6 +189,7 @@ from servicenow_mcp.tools.flow_tools import (
     delete_flow as delete_flow_tool,
     delete_subflow as delete_subflow_tool,
     execute_flow as execute_flow_tool,
+    get_flow_execution_detail as get_flow_execution_detail_tool,
     get_action as get_action_tool,
     get_flow as get_flow_tool,
     get_flow_actions as get_flow_actions_tool,
@@ -688,6 +691,17 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
                 "Manually execute a flow for testing using GlideFlowAPI via the scripted background-script endpoint. "
                 "Returns an execution_id when the instance returns one; use get_flow_execution_history to track. "
                 "Use list_flow_io for required input names. Requires script_execution_api_resource_path in server config."
+            ),
+            "json",
+        ),
+        "get_flow_execution_detail": (
+            get_flow_execution_detail_tool,
+            GetFlowExecutionDetailParams,
+            GetFlowExecutionDetailResult,
+            (
+                "Load one Flow Designer execution (sys_hub_flow_context) with step rows from sys_hub_flow_stage_context "
+                "via the scripted background-script endpoint. Use when Table API cannot read execution tables. "
+                "Pass execution sys_id from get_flow_execution_history. Requires script_execution_api_resource_path."
             ),
             "json",
         ),

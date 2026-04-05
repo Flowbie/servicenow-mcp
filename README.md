@@ -303,6 +303,7 @@ These complement other Flow Designer tools exposed in the `platform_developer` a
 3. **list_action_type_outputs** - List output data pill definitions for an action type
 4. **list_flow_io** - List input and output variable definitions for a flow or subflow
 5. **execute_flow** - Manually execute a flow for testing via GlideFlowAPI (requires `script_execution_api_resource_path` in server config)
+6. **get_flow_execution_detail** - Load one execution (`sys_hub_flow_context`) and step rows via scripted API when REST cannot read those tables
 
 #### Script Include Management Tools
 
@@ -517,6 +518,7 @@ Below are some example natural language queries you can use with Claude to inter
 #### Flow Designer Examples
 - "List input and output variables for subflow sys_id X using list_flow_io"
 - "Run flow sys_id Y for testing with execute_flow and optional input key/value pairs"
+- "Show step-level rows for execution sys_id Z using get_flow_execution_detail"
 
 #### Workflow Management Examples
 - "Show me all active workflows in ServiceNow"

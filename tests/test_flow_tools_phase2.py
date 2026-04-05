@@ -1,4 +1,5 @@
 """Tests for flow_tools phase 2 additions."""
+import json
 from unittest.mock import MagicMock, patch
 import pytest
 from servicenow_mcp.tools.flow_tools import (
@@ -693,3 +694,193 @@ def test_execute_flow_request_failure(config, auth):
 
     assert result.success is False
     assert "connection refused" in result.message
+
+
+# ---------------------------------------------------------------------------
+# get_flow_execution_detail (scripted sys_hub_flow_context + stage context)
+# ---------------------------------------------------------------------------
+
+from servicenow_mcp.tools.flow_tools import (
+    GetFlowExecutionDetailParams,
+    get_flow_execution_detail,
+)
+
+EXEC_CTX_ID = "exec1111111111111111111111111111"
+
+MOCK_DETAIL_BODY = {
+    "context": {
+        "sys_id": EXEC_CTX_ID,
+        "name": "Flow run",
+        "state": "complete",
+        "started": "2026-01-01 10:00:00",
+        "ended": "2026-01-01 10:00:05",
+        "error": "",
+        "flow": "flow2222222222222222222222222222",
+    },
+    "steps": [
+        {
+            "sys_id": "stepaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "name": "Look Up Record",
+            "state": "complete",
+            "started": "2026-01-01 10:00:01",
+            "ended": "2026-01-01 10:00:02",
+            "output": "",
+            "error": "",
+        },
+    ],
+}
+
+MOCK_DETAIL_SUCCESS = {
+    "result": {
+        "status": "success",
+        "output": json.dumps(MOCK_DETAIL_BODY),
+    }
+}
+
+
+def test_get_flow_execution_detail_success(config, auth):
+    """Parses context and steps from scripted API JSON output."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_post.return_value = _make_response(200, MOCK_DETAIL_SUCCESS)
+
+        params = GetFlowExecutionDetailParams(execution_sys_id=EXEC_CTX_ID)
+        result = get_flow_execution_detail(config, auth, params)
+
+    assert result.success is True
+    assert result.execution_sys_id == EXEC_CTX_ID
+    assert result.state == "complete"
+    assert len(result.steps) == 1
+    assert result.steps[0].sys_id == "stepaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    assert result.steps[0].name == "Look Up Record"
+    script = mock_post.call_args.kwargs.get("json", {}).get("script", "")
+    assert EXEC_CTX_ID in script
+    assert "sys_hub_flow_context" in script
+
+
+def test_get_flow_execution_detail_empty_steps(config, auth):
+    """Allows zero step rows."""
+    body = {"context": MOCK_DETAIL_BODY["context"], "steps": []}
+    with patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_post.return_value = _make_response(
+            200,
+            {"result": {"status": "success", "output": json.dumps(body)}},
+        )
+        result = get_flow_execution_detail(
+            config, auth, GetFlowExecutionDetailParams(execution_sys_id=EXEC_CTX_ID)
+        )
+    assert result.success is True
+    assert result.steps == []
+
+
+def test_get_flow_execution_detail_not_found(config, auth):
+    """Maps script not_found to success=False."""
+    out = json.dumps({"error": "not_found", "execution_sys_id": EXEC_CTX_ID})
+    with patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_post.return_value = _make_response(
+            200, {"result": {"status": "success", "output": out}}
+        )
+        result = get_flow_execution_detail(
+            config, auth, GetFlowExecutionDetailParams(execution_sys_id=EXEC_CTX_ID)
+        )
+    assert result.success is False
+    assert "not found" in result.message.lower()
+
+
+def test_get_flow_execution_detail_script_status_error(config, auth):
+    """Propagates scripted API error status."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_post.return_value = _make_response(
+            200,
+            {"result": {"status": "error", "output": "ACL failure"}},
+        )
+        result = get_flow_execution_detail(
+            config, auth, GetFlowExecutionDetailParams(execution_sys_id=EXEC_CTX_ID)
+        )
+    assert result.success is False
+    assert "ACL failure" in result.message
+
+
+def test_get_flow_execution_detail_request_failure(config, auth):
+    """Handles HTTP failure."""
+    import requests as req_lib
+
+    with patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_post.side_effect = req_lib.RequestException("timeout")
+        result = get_flow_execution_detail(
+            config, auth, GetFlowExecutionDetailParams(execution_sys_id=EXEC_CTX_ID)
+        )
+    assert result.success is False
+    assert "timeout" in result.message
+
+
+def test_get_flow_execution_detail_no_script_path(config, auth):
+    """Fails fast when scripted endpoint is not configured."""
+    c = config.model_copy(update={"script_execution_api_resource_path": None})
+    result = get_flow_execution_detail(
+        c, auth, GetFlowExecutionDetailParams(execution_sys_id=EXEC_CTX_ID)
+    )
+    assert result.success is False
+    assert "script_execution_api_resource_path" in result.message
+
+
+def test_get_flow_execution_detail_invalid_json_output(config, auth):
+    """Rejects non-JSON script output."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_post.return_value = _make_response(
+            200,
+            {"result": {"status": "success", "output": "NOT_JSON"}},
+        )
+        result = get_flow_execution_detail(
+            config, auth, GetFlowExecutionDetailParams(execution_sys_id=EXEC_CTX_ID)
+        )
+    assert result.success is False
+    assert "not valid JSON" in result.message
+
+
+def test_get_flow_execution_detail_missing_context(config, auth):
+    """Handles malformed payload without context object."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_post.return_value = _make_response(
+            200,
+            {"result": {"status": "success", "output": json.dumps({"steps": []})}},
+        )
+        result = get_flow_execution_detail(
+            config, auth, GetFlowExecutionDetailParams(execution_sys_id=EXEC_CTX_ID)
+        )
+    assert result.success is False
+    assert "unexpected payload" in result.message
+
+
+def test_get_flow_execution_detail_skips_malformed_steps(config, auth):
+    """Drops step dicts without sys_id."""
+    body = {
+        "context": MOCK_DETAIL_BODY["context"],
+        "steps": [
+            {"name": "no sys_id"},
+            {"sys_id": "goodstep", "name": "OK"},
+        ],
+    }
+    with patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_post.return_value = _make_response(
+            200,
+            {"result": {"status": "success", "output": json.dumps(body)}},
+        )
+        result = get_flow_execution_detail(
+            config, auth, GetFlowExecutionDetailParams(execution_sys_id=EXEC_CTX_ID)
+        )
+    assert result.success is True
+    assert len(result.steps) == 1
+    assert result.steps[0].sys_id == "goodstep"
+
+
+def test_get_flow_execution_detail_strips_execution_sys_id(config, auth):
+    """Trims whitespace on execution_sys_id."""
+    with patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_post.return_value = _make_response(200, MOCK_DETAIL_SUCCESS)
+        get_flow_execution_detail(
+            config,
+            auth,
+            GetFlowExecutionDetailParams(execution_sys_id=f"  {EXEC_CTX_ID}  "),
+        )
+    script = mock_post.call_args.kwargs.get("json", {}).get("script", "")
+    assert json.dumps(EXEC_CTX_ID.strip()) in script or EXEC_CTX_ID.strip() in script

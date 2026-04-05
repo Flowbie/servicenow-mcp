@@ -166,6 +166,7 @@ platform_developer:
   - delete_action
   - get_flow_execution_history
   - execute_flow
+  - get_flow_execution_detail
   # Request Fulfillment (compound only; CRUD via table_tools + architecture blueprint)
   - get_ritm_variables
   # Changesets (CRUD via table_tools + sys_update_set blueprint)
@@ -364,6 +365,7 @@ full:
   - delete_action
   - get_flow_execution_history
   - execute_flow
+  - get_flow_execution_detail
   # Changeset (CRUD via table_tools + sys_update_set blueprint)
   - get_current_scope
   - get_current_update_set

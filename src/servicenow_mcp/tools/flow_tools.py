@@ -701,6 +701,45 @@ class ExecuteFlowResponse(BaseModel):
     execution_id: str | None = None
 
 
+class FlowExecutionStepDetail(BaseModel):
+    """One step row from runtime execution (typically sys_hub_flow_stage_context)."""
+
+    sys_id: str
+    name: str | None = None
+    state: str | None = None
+    started: str | None = None
+    ended: str | None = None
+    output: str | None = None
+    error: str | None = None
+
+
+class GetFlowExecutionDetailParams(BaseModel):
+    """Parameters for get_flow_execution_detail."""
+
+    execution_sys_id: str = Field(
+        ...,
+        description=(
+            "sys_id of the flow execution record (sys_hub_flow_context). "
+            "Use get_flow_execution_history or execute_flow to obtain this value."
+        ),
+    )
+
+
+class GetFlowExecutionDetailResult(BaseModel):
+    """Result from get_flow_execution_detail."""
+
+    success: bool
+    message: str
+    execution_sys_id: str | None = None
+    name: str | None = None
+    state: str | None = None
+    started: str | None = None
+    ended: str | None = None
+    error: str | None = None
+    flow: str | None = None
+    steps: list[FlowExecutionStepDetail] = Field(default_factory=list)
+
+
 class DeleteArtifactParams(BaseModel):
     """Common delete parameter — sys_id of the artifact to delete."""
 
@@ -832,6 +871,69 @@ def _err_body(e: requests.RequestException) -> str:
     if e.response is not None:
         return _truncate_body(e.response.text)
     return ""
+
+
+def _invoke_scripted_js(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    script: str,
+    *,
+    log_prefix: str,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    """
+    POST a JavaScript block to the configured scripted execution endpoint.
+
+    Returns:
+        (success, message, parsed_json) where parsed_json is from result.output when JSON.
+    """
+    if not config.script_execution_api_resource_path:
+        return (
+            False,
+            "Script execution API is not configured (script_execution_api_resource_path).",
+            None,
+        )
+    url = f"{config.instance_url.rstrip('/')}{config.script_execution_api_resource_path}"
+    try:
+        script_response = requests.post(
+            url,
+            json={"script": script},
+            headers=auth_manager.get_headers(),
+            timeout=max(config.timeout, 120),
+        )
+        script_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "%s | script POST failed | error=%s%s",
+            log_prefix, e, f" | body={_body}" if _body else "",
+        )
+        return (
+            False,
+            f"Failed to run script: {e}" + (f" | response: {_body}" if _body else ""),
+            None,
+        )
+
+    try:
+        payload = script_response.json()
+    except Exception:
+        return False, "Script execution returned non-JSON response.", None
+
+    result = payload.get("result", payload)
+    status = result.get("status", "")
+    output_str = result.get("output", "")
+
+    if status == "error":
+        return False, f"Script reported error: {output_str}", None
+
+    try:
+        data = json.loads(output_str) if output_str else {}
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return False, f"Script output was not valid JSON: {output_str[:500]!r}", None
+
+    if not isinstance(data, dict):
+        return False, "Script output JSON was not an object.", None
+
+    return True, "", data
 
 
 # ---------------------------------------------------------------------------
@@ -3455,57 +3557,19 @@ try {{
 }}
 """
 
-    url = f"{config.instance_url.rstrip('/')}{config.script_execution_api_resource_path}"
-    try:
-        script_response = requests.post(
-            url,
-            json={"script": script},
-            headers=headers,
-            timeout=max(config.timeout, 120),
-        )
-        script_response.raise_for_status()
-    except requests.RequestException as e:
-        _body = _err_body(e)
-        logger.error(
-            "execute_flow | script POST failed | flow_sys_id=%s | error=%s%s",
-            params.flow_sys_id, e, f" | body={_body}" if _body else "",
-        )
+    ok, msg, output_data = _invoke_scripted_js(
+        config, auth_manager, script, log_prefix="execute_flow"
+    )
+    if not ok or output_data is None:
+        return ExecuteFlowResponse(success=False, message=msg)
+
+    if "error" in output_data:
         return ExecuteFlowResponse(
             success=False,
-            message=f"Failed to execute flow: {e}" + (f" | response: {_body}" if _body else ""),
+            message=f"Flow execution failed: {output_data['error']}",
         )
 
-    try:
-        payload = script_response.json()
-    except Exception:
-        return ExecuteFlowResponse(
-            success=False,
-            message="Script execution returned non-JSON response.",
-        )
-
-    result = payload.get("result", payload)
-    status = result.get("status", "")
-    output_str = result.get("output", "")
-
-    if status == "error":
-        return ExecuteFlowResponse(
-            success=False,
-            message=f"Flow execution failed: {output_str}",
-        )
-
-    execution_id: str | None = None
-    try:
-        output_data = json.loads(output_str) if output_str else {}
-        if isinstance(output_data, dict) and "error" in output_data:
-            return ExecuteFlowResponse(
-                success=False,
-                message=f"Flow execution failed: {output_data['error']}",
-            )
-        if isinstance(output_data, dict):
-            execution_id = output_data.get("executionId")
-    except (json.JSONDecodeError, TypeError, ValueError):
-        pass
-
+    execution_id = output_data.get("executionId")
     logger.info(
         "execute_flow | started | flow_sys_id=%s | execution_id=%s",
         params.flow_sys_id, execution_id,
@@ -3516,5 +3580,137 @@ try {{
             f"Flow execution started. execution_id={execution_id}. "
             "Use get_flow_execution_history to check status."
         ),
-        execution_id=execution_id,
+        execution_id=execution_id if isinstance(execution_id, str) else None,
+    )
+
+
+def _build_get_flow_execution_detail_script(execution_sys_id: str) -> str:
+    """Server-side script: load sys_hub_flow_context and sys_hub_flow_stage_context rows."""
+    exec_js = json.dumps(execution_sys_id)
+    return (
+        "function rowToStep(gr) {\n"
+        "  var o = { sys_id: gr.getUniqueValue() };\n"
+        "  if (gr.isValidField('name')) o.name = String(gr.getDisplayValue('name') || gr.getValue('name') || '');\n"
+        "  if (gr.isValidField('state')) o.state = gr.getValue('state') || '';\n"
+        "  if (gr.isValidField('started')) o.started = gr.getValue('started') || '';\n"
+        "  if (gr.isValidField('ended')) o.ended = gr.getValue('ended') || '';\n"
+        "  if (gr.isValidField('output')) o.output = gr.getValue('output');\n"
+        "  if (gr.isValidField('error')) o.error = gr.getValue('error');\n"
+        "  return o;\n"
+        "}\n"
+        "function loadSteps(contextSysId) {\n"
+        "  var steps = [];\n"
+        "  var probe = new GlideRecord('sys_hub_flow_stage_context');\n"
+        "  if (!probe.isValid()) return steps;\n"
+        "  var qFields = ['flow_context', 'context', 'parent'];\n"
+        "  for (var i = 0; i < qFields.length; i++) {\n"
+        "    var qf = qFields[i];\n"
+        "    if (!probe.isValidField(qf)) continue;\n"
+        "    var g2 = new GlideRecord('sys_hub_flow_stage_context');\n"
+        "    g2.addQuery(qf, contextSysId);\n"
+        "    g2.orderBy('sys_created_on');\n"
+        "    g2.query();\n"
+        "    if (g2.hasNext()) {\n"
+        "      while (g2.next()) steps.push(rowToStep(g2));\n"
+        "      return steps;\n"
+        "    }\n"
+        "  }\n"
+        "  return steps;\n"
+        "}\n"
+        "var execId = "
+        + exec_js
+        + ";\n"
+        "var grc = new GlideRecord('sys_hub_flow_context');\n"
+        "if (!grc.get(execId)) {\n"
+        "  gs.print(JSON.stringify({ error: 'not_found', execution_sys_id: execId }));\n"
+        "} else {\n"
+        "  var ctx = {\n"
+        "    sys_id: grc.getUniqueValue(),\n"
+        "    name: grc.isValidField('name') ? String(grc.getDisplayValue('name') || grc.getValue('name') || '') : '',\n"
+        "    state: grc.getValue('state'),\n"
+        "    started: grc.getValue('started'),\n"
+        "    ended: grc.getValue('ended'),\n"
+        "    error: grc.getValue('error'),\n"
+        "    flow: grc.getValue('flow'),\n"
+        "  };\n"
+        "  gs.print(JSON.stringify({ context: ctx, steps: loadSteps(execId) }));\n"
+        "}\n"
+    )
+
+
+def get_flow_execution_detail(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: GetFlowExecutionDetailParams,
+) -> GetFlowExecutionDetailResult:
+    """
+    Return detail for one Flow Designer execution, including step-level rows when available.
+
+    Uses the scripted background-script endpoint (same as execute_flow) because
+    ``sys_hub_flow_context`` may be blocked for REST Table API on some service accounts.
+
+    Step rows are read from ``sys_hub_flow_stage_context`` when that table exists and
+    links to the execution via ``flow_context``, ``context``, or ``parent``.
+
+    Args:
+        config: Server configuration.
+        auth_manager: Authentication manager.
+        params: execution_sys_id of ``sys_hub_flow_context``.
+
+    Returns:
+        GetFlowExecutionDetailResult with context fields and ``steps``.
+    """
+    script = _build_get_flow_execution_detail_script(params.execution_sys_id.strip())
+    ok, msg, data = _invoke_scripted_js(
+        config, auth_manager, script, log_prefix="get_flow_execution_detail"
+    )
+    if not ok or data is None:
+        return GetFlowExecutionDetailResult(success=False, message=msg)
+
+    if data.get("error") == "not_found":
+        return GetFlowExecutionDetailResult(
+            success=False,
+            message=f"Execution not found: sys_id={params.execution_sys_id}",
+        )
+
+    ctx = data.get("context")
+    steps_raw = data.get("steps")
+    if not isinstance(ctx, dict):
+        return GetFlowExecutionDetailResult(
+            success=False,
+            message="Script returned unexpected payload (missing context).",
+        )
+
+    steps: list[FlowExecutionStepDetail] = []
+    if isinstance(steps_raw, list):
+        for s in steps_raw:
+            if not isinstance(s, dict) or not s.get("sys_id"):
+                continue
+            steps.append(
+                FlowExecutionStepDetail(
+                    sys_id=str(s["sys_id"]),
+                    name=s.get("name"),
+                    state=s.get("state"),
+                    started=s.get("started"),
+                    ended=s.get("ended"),
+                    output=s.get("output"),
+                    error=s.get("error"),
+                )
+            )
+
+    logger.info(
+        "get_flow_execution_detail | execution_sys_id=%s | steps=%d",
+        ctx.get("sys_id"), len(steps),
+    )
+    return GetFlowExecutionDetailResult(
+        success=True,
+        message=f"Loaded execution detail with {len(steps)} step row(s).",
+        execution_sys_id=str(ctx.get("sys_id")) if ctx.get("sys_id") else None,
+        name=ctx.get("name") or None,
+        state=ctx.get("state") or None,
+        started=ctx.get("started") or None,
+        ended=ctx.get("ended") or None,
+        error=ctx.get("error") or None,
+        flow=ctx.get("flow") or None,
+        steps=steps,
     )
