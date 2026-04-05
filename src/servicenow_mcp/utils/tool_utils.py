@@ -127,6 +127,8 @@ from servicenow_mcp.tools.flow_tools import (
     ActionTypeSummary,
     AddStepsToFlowParams,
     AddStepsToFlowResponse,
+    AddSubflowStepToFlowParams,
+    AddSubflowStepToFlowResponse,
     CreateActionParams,
     CreateFlowParams,
     CreateFlowResponse,
@@ -184,6 +186,7 @@ from servicenow_mcp.tools.flow_tools import (
 from servicenow_mcp.tools.flow_tools import (
     add_logic_to_flow as add_logic_to_flow_tool,
     add_steps_to_flow as add_steps_to_flow_tool,
+    add_subflow_step_to_flow as add_subflow_step_to_flow_tool,
     create_action as create_action_tool,
     create_flow as create_flow_tool,
     clone_flow as clone_flow_tool,
@@ -647,13 +650,24 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
+        "add_subflow_step_to_flow": (
+            add_subflow_step_to_flow_tool,
+            AddSubflowStepToFlowParams,
+            AddSubflowStepToFlowResponse,
+            (
+                "Add a subflow invocation step to a parent flow. Appends to subFlowInstances with subFlowSysId, "
+                "using the same GET→PUT→create_version pattern as add_steps_to_flow. "
+                "Use list_flow_io on the subflow to obtain input variable sys_ids for the inputs array."
+            ),
+            "json",
+        ),
         "remove_steps_from_flow": (
             remove_steps_from_flow_tool,
             RemoveStepsFromFlowParams,
             RemoveStepsFromFlowResponse,
             (
-                "Remove one or more action or logic steps from a flow by marking them deleted (GET→mutate→PUT→create_version). "
-                "Pass step id values from get_flow_actions / processflow payload."
+                "Remove one or more action, logic, or subflow steps from a flow by marking them deleted (GET→mutate→PUT→create_version). "
+                "Pass step id values from get_flow_actions or processflow GET (actionInstances, flowLogicInstances, subFlowInstances)."
             ),
             "json",
         ),

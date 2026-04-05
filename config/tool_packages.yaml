@@ -160,6 +160,7 @@ platform_developer:
   - list_flow_io
   - list_flow_logic_types
   - add_steps_to_flow
+  - add_subflow_step_to_flow
   - remove_steps_from_flow
   - add_logic_to_flow
   - delete_flow
@@ -360,6 +361,7 @@ full:
   - list_flow_io
   - list_flow_logic_types
   - add_steps_to_flow
+  - add_subflow_step_to_flow
   - remove_steps_from_flow
   - add_logic_to_flow
   - delete_flow

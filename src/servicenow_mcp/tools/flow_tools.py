@@ -550,6 +550,44 @@ class AddStepsToFlowResponse(BaseModel):
     steps_added: int = 0
 
 
+class AddSubflowStepToFlowParams(BaseModel):
+    """Parameters for add_subflow_step_to_flow."""
+
+    flow_sys_id: str = Field(
+        ...,
+        description="sys_id of the parent flow to modify (sys_hub_flow, type=flow).",
+    )
+    subflow_sys_id: str = Field(
+        ...,
+        description="sys_id of the subflow to invoke (sys_hub_flow where type=subflow).",
+    )
+    name: str = Field(..., description="Display label for this step in the parent flow")
+    order: int = Field(
+        ...,
+        ge=1,
+        description=(
+            "Execution order (1-based). Must be unique across action, logic, and subflow steps — "
+            "inspect existing orders via processflow GET or get_flow_actions before calling."
+        ),
+    )
+    inputs: list[ActionInputParam] = Field(
+        default_factory=list,
+        description=(
+            "Values for the subflow's input variables. Each 'id' must be sys_hub_flow_input.sys_id "
+            "for the subflow (use list_flow_io on subflow_sys_id)."
+        ),
+    )
+
+
+class AddSubflowStepToFlowResponse(BaseModel):
+    """Response from add_subflow_step_to_flow."""
+
+    success: bool
+    message: str
+    flow_sys_id: str | None = None
+    subflow_step_id: str | None = Field(None, description="Generated step id in the subFlowInstances array")
+
+
 class RemoveStepsFromFlowParams(BaseModel):
     """Parameters for remove_steps_from_flow."""
 
@@ -561,8 +599,8 @@ class RemoveStepsFromFlowParams(BaseModel):
         ...,
         description=(
             "List of step id values to remove. Each id must match a step's 'id' field "
-            "in the flow's actionInstances or flowLogicInstances array. "
-            "Use get_flow_actions or get_flow_version to discover current step ids."
+            "in actionInstances, flowLogicInstances, or subFlowInstances. "
+            "Use get_flow_actions, processflow GET, or get_flow_version to discover ids."
         ),
     )
 
@@ -2243,6 +2281,137 @@ def add_steps_to_flow(
     )
 
 
+def add_subflow_step_to_flow(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: AddSubflowStepToFlowParams,
+) -> AddSubflowStepToFlowResponse:
+    """
+    Add a subflow invocation step to a parent flow.
+
+    Uses GET /processflow/flow/{flow}, appends one entry to ``subFlowInstances``,
+    PUT, and create_version (same pattern as add_steps_to_flow). The payload
+    field ``subFlowSysId`` references the subflow record; inputs use
+    ``sys_hub_flow_input.sys_id`` as ``id`` (see list_flow_io on the subflow).
+    """
+    parent_check = _get_artifact(config, auth_manager, "flow", params.flow_sys_id)
+    if not parent_check.artifact:
+        return AddSubflowStepToFlowResponse(
+            success=False,
+            message=parent_check.message or f"Flow {params.flow_sys_id} not found.",
+        )
+    ptype = parent_check.artifact.get("type")
+    ptype_s = str(ptype.get("value") if isinstance(ptype, dict) else ptype or "").lower()
+    if ptype_s and ptype_s != "flow":
+        return AddSubflowStepToFlowResponse(
+            success=False,
+            message=f"flow_sys_id must reference type=flow; got type={ptype_s}.",
+        )
+
+    sub_check = _get_artifact(config, auth_manager, "subflow", params.subflow_sys_id)
+    if not sub_check.artifact:
+        return AddSubflowStepToFlowResponse(
+            success=False,
+            message=sub_check.message or f"Subflow {params.subflow_sys_id} not found.",
+        )
+    stype = sub_check.artifact.get("type")
+    stype_s = str(stype.get("value") if isinstance(stype, dict) else stype or "").lower()
+    if stype_s and stype_s != "subflow":
+        return AddSubflowStepToFlowResponse(
+            success=False,
+            message=f"subflow_sys_id must reference type=subflow; got type={stype_s}.",
+        )
+
+    processflow_base = f"{config.api_url}/processflow"
+    headers = auth_manager.get_headers()
+
+    try:
+        get_response = requests.get(
+            f"{processflow_base}/flow/{params.flow_sys_id}",
+            headers=headers,
+            timeout=config.timeout,
+        )
+        get_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "add_subflow_step_to_flow | GET failed | flow_sys_id=%s | error=%s%s",
+            params.flow_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return AddSubflowStepToFlowResponse(
+            success=False,
+            message=f"Failed to fetch flow {params.flow_sys_id}: {e}" + (f" | body: {_body}" if _body else ""),
+        )
+
+    flow_data = get_response.json().get("result", {}).get("data", {})
+    if not flow_data:
+        return AddSubflowStepToFlowResponse(
+            success=False,
+            message=f"GET /processflow/flow/{params.flow_sys_id} returned no data.",
+        )
+
+    new_inst = _build_subflow_instance(
+        params.flow_sys_id,
+        params.subflow_sys_id,
+        params.name,
+        params.order,
+        params.inputs,
+    )
+    step_id = new_inst["id"]
+    flow_data["subFlowInstances"] = (flow_data.get("subFlowInstances") or []) + [new_inst]
+
+    try:
+        put_response = requests.put(
+            f"{processflow_base}/flow",
+            params={"sysparm_transaction_scope": "global"},
+            json=flow_data,
+            headers=headers,
+            timeout=config.timeout,
+        )
+        put_response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "add_subflow_step_to_flow | PUT failed | flow_sys_id=%s | error=%s%s",
+            params.flow_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return AddSubflowStepToFlowResponse(
+            success=False,
+            message=f"Failed to update flow: {e}" + (f" | body: {_body}" if _body else ""),
+            flow_sys_id=params.flow_sys_id,
+        )
+
+    try:
+        requests.post(
+            f"{processflow_base}/versioning/create_version",
+            params={"sysparm_transaction_scope": "global"},
+            json={
+                "item_sys_id": params.flow_sys_id,
+                "type": "Save",
+                "annotation": f"Added subflow step '{params.name}' via MCP",
+                "favorite": False,
+            },
+            headers=headers,
+            timeout=config.timeout,
+        ).raise_for_status()
+    except requests.RequestException as e:
+        logger.warning(
+            "add_subflow_step_to_flow | create_version failed (non-fatal) | flow_sys_id=%s | error=%s",
+            params.flow_sys_id, e,
+        )
+
+    logger.info(
+        "add_subflow_step_to_flow | success | flow_sys_id=%s | subflow=%s | step_id=%s",
+        params.flow_sys_id, params.subflow_sys_id, step_id,
+    )
+    return AddSubflowStepToFlowResponse(
+        success=True,
+        message=f"Added subflow step '{params.name}' to flow {params.flow_sys_id}.",
+        flow_sys_id=params.flow_sys_id,
+        subflow_step_id=step_id,
+    )
+
+
 def _deep_clone_json(obj: Any) -> Any:
     """Deep copy JSON-serialisable structures."""
     return json.loads(json.dumps(obj))
@@ -3281,6 +3450,40 @@ def _build_action_instances(flow_sys_id: str, actions: list[ActionInstanceParam]
     return result
 
 
+def _build_subflow_instance(
+    parent_flow_sys_id: str,
+    subflow_sys_id: str,
+    name: str,
+    order: int,
+    inputs: list[ActionInputParam] | None,
+) -> dict:
+    """Build one subFlowInstances entry for processflow PUT (mirrors action instance shape)."""
+    inp_list = [
+        {"id": i.id, "name": i.name, "value": i.value}
+        for i in (inputs or [])
+    ]
+    return {
+        "id": uuid.uuid4().hex,
+        "flowSysId": parent_flow_sys_id,
+        "order": str(order),
+        "uiUniqueIdentifier": uuid.uuid4().hex,
+        "deleted": False,
+        "parent": "",
+        "comment": "",
+        "generationSource": "",
+        "uiComponentIndex": 0,
+        "subFlowSysId": subflow_sys_id,
+        "inputs": inp_list,
+        "parentActionTypeId": "",
+        "compiledSnapshot": "",
+        "aliasIds": [],
+        "internalName": "",
+        "name": name,
+        "type": "subflow",
+        "snapshot": False,
+    }
+
+
 _ARTIFACT_TABLE_MAP: dict[str, str] = {
     "flow": "sys_hub_flow",
     "subflow": "sys_hub_flow",
@@ -3417,9 +3620,7 @@ def remove_steps_from_flow(
     Remove one or more action or logic steps from an existing flow.
 
     Uses the GET→mark deleted→PUT→create_version pattern. Steps are marked
-    with deleted=True in their respective instance arrays (actionInstances or
-    flowLogicInstances). Both action steps and logic steps (If/Else/For Each)
-    can be removed by id.
+    with deleted=True in actionInstances, flowLogicInstances, or subFlowInstances.
 
     Args:
         config: Server configuration.
@@ -3467,7 +3668,7 @@ def remove_steps_from_flow(
             flow_sys_id=params.flow_sys_id,
         )
 
-    # Step 2: Mark specified steps as deleted across both arrays
+    # Step 2: Mark specified steps as deleted across instance arrays
     ids_to_remove = set(params.step_ids)
     found_ids: set[str] = set()
 
@@ -3483,19 +3684,26 @@ def remove_steps_from_flow(
             step["deleted"] = True
             found_ids.add(step["id"])
 
+    subflow_instances = flow_data.get("subFlowInstances", [])
+    for step in subflow_instances:
+        if step.get("id") in ids_to_remove:
+            step["deleted"] = True
+            found_ids.add(step["id"])
+
     not_found = ids_to_remove - found_ids
     if not_found:
         return RemoveStepsFromFlowResponse(
             success=False,
             message=(
                 f"Step id(s) not found in flow: {sorted(not_found)}. "
-                "Use get_flow_actions or get_flow_version to list current step ids."
+                "Use get_flow_actions, processflow GET, or get_flow_version to list current step ids."
             ),
         )
 
     # Step 3: PUT modified payload back
     flow_data["actionInstances"] = action_instances
     flow_data["flowLogicInstances"] = logic_instances
+    flow_data["subFlowInstances"] = subflow_instances
 
     try:
         put_response = requests.put(

@@ -985,3 +985,116 @@ def test_clone_flow_rejects_subflow_type(config, auth):
         )
     assert result.success is False
     assert "type=flow" in result.message
+
+
+PARENT_FLOW = "f" * 32
+SUBFLOW_ID = "c" * 32
+
+
+def test_add_subflow_step_success(config, auth):
+    """Validates parent flow + subflow, appends subFlowInstances, PUT, create_version."""
+    from servicenow_mcp.tools.flow_tools import AddSubflowStepToFlowParams, add_subflow_step_to_flow
+
+    payload = {
+        "result": {
+            "data": {
+                "id": PARENT_FLOW,
+                "name": "Parent",
+                "triggerInstances": [],
+                "actionInstances": [],
+                "flowLogicInstances": [],
+                "subFlowInstances": [],
+            }
+        }
+    }
+
+    with patch("servicenow_mcp.tools.flow_tools._get_artifact") as mock_art, \
+            patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, \
+            patch("servicenow_mcp.tools.flow_tools.requests.put") as mock_put, \
+            patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_art.side_effect = [
+            MagicMock(artifact={"sys_id": PARENT_FLOW, "type": "flow"}, message="ok"),
+            MagicMock(artifact={"sys_id": SUBFLOW_ID, "type": "subflow"}, message="ok"),
+        ]
+        mock_get.return_value = _make_response(200, payload)
+        mock_put.return_value = _make_response(200, MOCK_PUT_RESPONSE)
+        mock_post.return_value = _make_response(200, MOCK_VERSION_RESPONSE)
+
+        result = add_subflow_step_to_flow(
+            config,
+            auth,
+            AddSubflowStepToFlowParams(
+                flow_sys_id=PARENT_FLOW,
+                subflow_sys_id=SUBFLOW_ID,
+                name="Run my subflow",
+                order=3,
+                inputs=[],
+            ),
+        )
+
+    assert result.success is True
+    assert result.flow_sys_id == PARENT_FLOW
+    assert result.subflow_step_id
+    put_body = mock_put.call_args.kwargs.get("json") or mock_put.call_args[1].get("json")
+    subs = put_body["subFlowInstances"]
+    assert len(subs) == 1
+    assert subs[0]["subFlowSysId"] == SUBFLOW_ID
+    assert subs[0]["type"] == "subflow"
+    assert subs[0]["order"] == "3"
+
+
+def test_add_subflow_step_rejects_missing_subflow(config, auth):
+    """Fails when subflow artifact not found."""
+    from servicenow_mcp.tools.flow_tools import AddSubflowStepToFlowParams, add_subflow_step_to_flow
+
+    with patch("servicenow_mcp.tools.flow_tools._get_artifact") as mock_art:
+        mock_art.side_effect = [
+            MagicMock(artifact={"sys_id": PARENT_FLOW}, message="ok"),
+            MagicMock(artifact=None, message="not found"),
+        ]
+        result = add_subflow_step_to_flow(
+            config,
+            auth,
+            AddSubflowStepToFlowParams(
+                flow_sys_id=PARENT_FLOW,
+                subflow_sys_id=SUBFLOW_ID,
+                name="X",
+                order=1,
+            ),
+        )
+    assert result.success is False
+
+
+def test_remove_steps_marks_subflow_deleted(config, auth):
+    """remove_steps_from_flow marks subFlowInstances by id."""
+    from servicenow_mcp.tools.flow_tools import RemoveStepsFromFlowParams, remove_steps_from_flow
+
+    sf_id = "subflowstep111111111111111111sf"
+    payload = {
+        "result": {
+            "data": {
+                "id": FLOW_ID,
+                "actionInstances": [],
+                "flowLogicInstances": [],
+                "subFlowInstances": [
+                    {"id": sf_id, "order": "1", "deleted": False, "type": "subflow"},
+                ],
+            }
+        }
+    }
+    with patch("servicenow_mcp.tools.flow_tools.requests.get") as mock_get, \
+            patch("servicenow_mcp.tools.flow_tools.requests.put") as mock_put, \
+            patch("servicenow_mcp.tools.flow_tools.requests.post") as mock_post:
+        mock_get.return_value = _make_response(200, payload)
+        mock_put.return_value = _make_response(200, MOCK_PUT_RESPONSE)
+        mock_post.return_value = _make_response(200, MOCK_VERSION_RESPONSE)
+
+        result = remove_steps_from_flow(
+            config,
+            auth,
+            RemoveStepsFromFlowParams(flow_sys_id=FLOW_ID, step_ids=[sf_id]),
+        )
+
+    assert result.success is True
+    put_body = mock_put.call_args.kwargs.get("json") or mock_put.call_args[1].get("json")
+    assert put_body["subFlowInstances"][0]["deleted"] is True

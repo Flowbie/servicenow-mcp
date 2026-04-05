@@ -299,12 +299,13 @@ The default `config/tool_packages.yaml` includes the following role-based packag
 These complement other Flow Designer tools exposed in the `platform_developer` and `full` tool packages (for example `create_flow`, `clone_flow`, `list_flows`, `add_steps_to_flow`, `publish_flow`).
 
 1. **clone_flow** - Duplicate an existing flow to a new draft flow (new sys_id) via processflow GET/POST/PUT
-2. **remove_steps_from_flow** - Remove action or logic steps from a flow by step id
-3. **add_logic_to_flow** - Add If/Else/For Each/Do Until logic blocks to a flow
-4. **list_action_type_outputs** - List output data pill definitions for an action type
-5. **list_flow_io** - List input and output variable definitions for a flow or subflow
-6. **execute_flow** - Manually execute a flow for testing via GlideFlowAPI (requires `script_execution_api_resource_path` in server config)
-7. **get_flow_execution_detail** - Load one execution (`sys_hub_flow_context`) and step rows via scripted API when REST cannot read those tables
+2. **add_subflow_step_to_flow** - Append a subflow invocation step to a parent flow (`subFlowInstances`)
+3. **remove_steps_from_flow** - Remove action, logic, or subflow steps from a flow by step id
+4. **add_logic_to_flow** - Add If/Else/For Each/Do Until logic blocks to a flow
+5. **list_action_type_outputs** - List output data pill definitions for an action type
+6. **list_flow_io** - List input and output variable definitions for a flow or subflow
+7. **execute_flow** - Manually execute a flow for testing via GlideFlowAPI (requires `script_execution_api_resource_path` in server config)
+8. **get_flow_execution_detail** - Load one execution (`sys_hub_flow_context`) and step rows via scripted API when REST cannot read those tables
 
 #### Script Include Management Tools
 
@@ -518,6 +519,7 @@ Below are some example natural language queries you can use with Claude to inter
 
 #### Flow Designer Examples
 - "Clone flow sys_id A to a new draft named 'Copy of A' using clone_flow"
+- "Add subflow sys_id S as a step to parent flow F with add_subflow_step_to_flow (use list_flow_io on S for input sys_ids)"
 - "List input and output variables for subflow sys_id X using list_flow_io"
 - "Run flow sys_id Y for testing with execute_flow and optional input key/value pairs"
 - "Show step-level rows for execution sys_id Z using get_flow_execution_detail"
