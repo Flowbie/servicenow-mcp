@@ -87,3 +87,75 @@ class TestListActionTypes(unittest.TestCase):
         }
         result = list_action_types(_make_config(), _make_auth(), ListActionTypesParams(query="A"))
         self.assertEqual(result.action_types[0].base_sys_id, "b1")
+
+
+class TestListActionTypeInputs(unittest.TestCase):
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_returns_inputs_for_valid_action_type(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import ListActionTypeInputsParams, list_action_type_inputs
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = {
+            "result": [
+                {"sys_id": "abc123", "element": "table", "label": "Table", "type": "table_name", "mandatory": "true", "default_value": "", "order": "100"},
+                {"sys_id": "def456", "element": "conditions", "label": "Conditions", "type": "conditions", "mandatory": "false", "default_value": "", "order": "200"},
+            ]
+        }
+        params = ListActionTypeInputsParams(action_type_sys_id="lookup_record_sys_id")
+        result = list_action_type_inputs(_make_config(), _make_auth(), params)
+        self.assertEqual(len(result.inputs), 2)
+        self.assertEqual(result.inputs[0].sys_id, "abc123")
+        self.assertEqual(result.inputs[0].name, "table")
+        self.assertTrue(result.inputs[0].mandatory)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_queries_correct_table_and_filters_by_action_type(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import ListActionTypeInputsParams, list_action_type_inputs
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = {"result": []}
+        params = ListActionTypeInputsParams(action_type_sys_id="ATID")
+        list_action_type_inputs(_make_config(), _make_auth(), params)
+        call_params = mock_get.call_args[1]["params"]
+        # Query field must be `model=` — NOT `action_type=` (does not exist on sys_hub_action_input)
+        self.assertIn("model=ATID", call_params["sysparm_query"])
+        self.assertIn("element", call_params["sysparm_fields"])
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_http_error_returns_empty_with_message(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import ListActionTypeInputsParams, list_action_type_inputs
+        mock_get.return_value.raise_for_status.side_effect = requests.HTTPError("500")
+        mock_get.return_value.text = "Server Error"
+        params = ListActionTypeInputsParams(action_type_sys_id="X")
+        result = list_action_type_inputs(_make_config(), _make_auth(), params)
+        self.assertEqual(result.inputs, [])
+        self.assertIn("Failed", result.message)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_empty_result_returns_empty_list(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import ListActionTypeInputsParams, list_action_type_inputs
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = {"result": []}
+        params = ListActionTypeInputsParams(action_type_sys_id="unknown")
+        result = list_action_type_inputs(_make_config(), _make_auth(), params)
+        self.assertEqual(result.inputs, [])
+        self.assertIn("0", result.message)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_mandatory_field_coercion_string_true(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import ListActionTypeInputsParams, list_action_type_inputs
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = {
+            "result": [{"sys_id": "x", "element": "n", "label": "L", "type": "string", "mandatory": "true", "default_value": "", "order": "1"}]
+        }
+        result = list_action_type_inputs(_make_config(), _make_auth(), ListActionTypeInputsParams(action_type_sys_id="X"))
+        self.assertTrue(result.inputs[0].mandatory)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_mandatory_field_coercion_string_false(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import ListActionTypeInputsParams, list_action_type_inputs
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = {
+            "result": [{"sys_id": "x", "element": "n", "label": "L", "type": "string", "mandatory": "false", "default_value": "", "order": "1"}]
+        }
+        result = list_action_type_inputs(_make_config(), _make_auth(), ListActionTypeInputsParams(action_type_sys_id="X"))
+        self.assertFalse(result.inputs[0].mandatory)

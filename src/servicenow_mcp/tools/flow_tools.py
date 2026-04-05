@@ -434,6 +434,38 @@ class ListActionTypesResult(BaseModel):
     message: str
 
 
+class ListActionTypeInputsParams(BaseModel):
+    """Parameters for list_action_type_inputs."""
+
+    action_type_sys_id: str = Field(
+        ...,
+        description=(
+            "sys_id of the action type definition (sys_hub_action_type_definition). "
+            "Use definition_sys_id from list_action_types to find this value."
+        ),
+    )
+
+
+class ActionTypeInput(BaseModel):
+    """One input parameter definition on an action type."""
+
+    sys_id: str = Field(..., description="sys_hub_action_input.sys_id — use as ActionInputParam.id in create_flow/add_steps_to_flow")
+    name: str = Field(..., description="Input parameter logical name from the 'element' field (e.g. 'table', 'conditions') — use as the key when setting values")
+    label: str = Field(..., description="Display label shown in Flow Designer")
+    type: str = Field(..., description="Field type (e.g. 'table_name', 'conditions', 'string')")
+    mandatory: bool = Field(False, description="Whether this input is required")
+    default_value: str | None = Field(None, description="Default value if any")
+    order: int = Field(0, description="Display order in Flow Designer")
+
+
+class ListActionTypeInputsResult(BaseModel):
+    """Result from list_action_type_inputs."""
+
+    action_type_sys_id: str
+    inputs: list[ActionTypeInput]
+    message: str
+
+
 class ArtifactSummary(BaseModel):
     """Compact artifact summary used by list_* tools."""
 
@@ -1556,6 +1588,85 @@ def list_action_types(
     return ListActionTypesResult(
         action_types=action_types,
         message=f"Found {len(action_types)} action type(s) matching '{params.query}'.",
+    )
+
+
+def list_action_type_inputs(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: ListActionTypeInputsParams,
+) -> ListActionTypeInputsResult:
+    """
+    Return all input parameter definitions for a given action type.
+
+    Queries sys_hub_action_input filtered by definition sys_id and returns
+    the sys_id, name, label, type, mandatory flag, and default value for each
+    input. The sys_id field maps directly to ActionInputParam.id in
+    create_flow and add_steps_to_flow — eliminating the need to hardcode
+    instance-specific parameter sys_ids.
+
+    NOTE: The logical name of each input is in the 'element' field (not 'name').
+    The query field is 'model=' (not 'action_type=').
+    Both verified against live sys_hub_action_input records.
+
+    Args:
+        config: Server configuration.
+        auth_manager: Authentication manager.
+        params: Contains action_type_sys_id (definition sys_id) to query against.
+
+    Returns:
+        ListActionTypeInputsResult with the inputs list and a summary message.
+    """
+    try:
+        response = requests.get(
+            f"{config.api_url}/table/sys_hub_action_input",
+            params={
+                # NOTE: The query field is `model`, NOT `action_type` — verified against live instance.
+                # `action_type` does not exist on sys_hub_action_input.
+                "sysparm_query": f"model={params.action_type_sys_id}",
+                "sysparm_fields": "sys_id,element,label,type,mandatory,default_value,order",
+                "sysparm_orderby": "order",
+                "sysparm_limit": 200,
+            },
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error(
+            "list_action_type_inputs | request failed | action_type=%s | error=%s%s",
+            params.action_type_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return ListActionTypeInputsResult(
+            action_type_sys_id=params.action_type_sys_id,
+            inputs=[],
+            message=f"Failed to fetch action type inputs: {e}" + (f" | body: {_body}" if _body else ""),
+        )
+
+    records = response.json().get("result", [])
+    inputs = [
+        ActionTypeInput(
+            sys_id=r["sys_id"],
+            # element = logical name (e.g. "table", "conditions") — NOT the `name` field.
+            # Verified against live sys_hub_action_input records.
+            name=r.get("element", ""),
+            label=r.get("label", ""),
+            type=r.get("type", ""),
+            mandatory=_coerce_bool(r.get("mandatory", False)),
+            default_value=r.get("default_value") or None,
+            order=int(r.get("order") or 0),
+        )
+        for r in records
+    ]
+    logger.info(
+        "list_action_type_inputs | action_type=%s | found %d inputs",
+        params.action_type_sys_id, len(inputs),
+    )
+    return ListActionTypeInputsResult(
+        action_type_sys_id=params.action_type_sys_id,
+        inputs=inputs,
+        message=f"Found {len(inputs)} input(s) for action type {params.action_type_sys_id}.",
     )
 
 
