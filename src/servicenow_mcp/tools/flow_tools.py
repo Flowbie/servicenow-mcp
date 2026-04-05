@@ -466,6 +466,27 @@ class ListActionTypeInputsResult(BaseModel):
     message: str
 
 
+class ListFlowLogicTypesParams(BaseModel):
+    """Parameters for list_flow_logic_types (no required inputs)."""
+    pass
+
+
+class FlowLogicType(BaseModel):
+    """One flow logic step type (e.g. If, Switch, For Each)."""
+
+    sys_id: str = Field(..., description="sys_id of this logic type — use when building flow logic steps")
+    name: str = Field(..., description="Display name (e.g. 'If', 'Switch', 'For Each')")
+    label: str | None = Field(None, description="UI label if different from name")
+    type_string: str | None = Field(None, description="Internal type string (e.g. 'if', 'switch', 'for_each')")
+
+
+class ListFlowLogicTypesResult(BaseModel):
+    """Result from list_flow_logic_types."""
+
+    logic_types: list[FlowLogicType]
+    message: str
+
+
 class ArtifactSummary(BaseModel):
     """Compact artifact summary used by list_* tools."""
 
@@ -1667,6 +1688,54 @@ def list_action_type_inputs(
         action_type_sys_id=params.action_type_sys_id,
         inputs=inputs,
         message=f"Found {len(inputs)} input(s) for action type {params.action_type_sys_id}.",
+    )
+
+
+def list_flow_logic_types(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    _params: ListFlowLogicTypesParams,
+) -> ListFlowLogicTypesResult:
+    """
+    List all available Flow Designer logic step types (If, Switch, For Each, etc.).
+
+    Calls GET /api/now/processflow/flow_logic/types. The sys_id values returned
+    are the identifiers needed to add flow logic steps to a flow payload.
+    """
+    try:
+        response = requests.get(
+            f"{config.api_url}/processflow/flow_logic/types",
+            params={"sysparm_transaction_scope": "global"},
+            headers=auth_manager.get_headers(),
+            timeout=config.timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        _body = _err_body(e)
+        logger.error("list_flow_logic_types | request failed | error=%s%s", e, f" | body={_body}" if _body else "")
+        return ListFlowLogicTypesResult(
+            logic_types=[],
+            message=f"Failed to fetch flow logic types: {e}" + (f" | body: {_body}" if _body else ""),
+        )
+
+    data = response.json()
+    # The API may return {"result": [...]} or a bare list.
+    raw = data.get("result", data) if isinstance(data, dict) else data
+    logic_types: list[FlowLogicType] = []
+    if isinstance(raw, list):
+        for t in raw:
+            if isinstance(t, dict):
+                logic_types.append(FlowLogicType(
+                    sys_id=t.get("sys_id") or t.get("id", ""),
+                    name=t.get("name") or t.get("label", ""),
+                    label=t.get("label"),
+                    type_string=t.get("type") or t.get("typeString"),
+                ))
+
+    logger.info("list_flow_logic_types | found %d logic type(s)", len(logic_types))
+    return ListFlowLogicTypesResult(
+        logic_types=logic_types,
+        message=f"Found {len(logic_types)} flow logic type(s).",
     )
 
 

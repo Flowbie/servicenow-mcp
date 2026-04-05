@@ -159,3 +159,51 @@ class TestListActionTypeInputs(unittest.TestCase):
         }
         result = list_action_type_inputs(_make_config(), _make_auth(), ListActionTypeInputsParams(action_type_sys_id="X"))
         self.assertFalse(result.inputs[0].mandatory)
+
+
+class TestListFlowLogicTypes(unittest.TestCase):
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_returns_logic_types(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import ListFlowLogicTypesParams, list_flow_logic_types
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = {
+            "result": [
+                {"sys_id": "if_id", "name": "If", "type": "if"},
+                {"sys_id": "switch_id", "name": "Switch", "type": "switch"},
+                {"sys_id": "for_each_id", "name": "For Each", "type": "for_each"},
+            ]
+        }
+        result = list_flow_logic_types(_make_config(), _make_auth(), ListFlowLogicTypesParams())
+        self.assertEqual(len(result.logic_types), 3)
+        self.assertEqual(result.logic_types[0].sys_id, "if_id")
+        self.assertEqual(result.logic_types[0].name, "If")
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_calls_processflow_flow_logic_types_endpoint(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import ListFlowLogicTypesParams, list_flow_logic_types
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = {"result": []}
+        list_flow_logic_types(_make_config(), _make_auth(), ListFlowLogicTypesParams())
+        url = mock_get.call_args[0][0]
+        self.assertIn("flow_logic/types", url)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_http_error_returns_empty(self, mock_get):
+        from servicenow_mcp.tools.flow_tools import ListFlowLogicTypesParams, list_flow_logic_types
+        mock_get.return_value.raise_for_status.side_effect = requests.HTTPError("403")
+        mock_get.return_value.text = "Forbidden"
+        result = list_flow_logic_types(_make_config(), _make_auth(), ListFlowLogicTypesParams())
+        self.assertEqual(result.logic_types, [])
+        self.assertIn("Failed", result.message)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_result_list_at_top_level(self, mock_get):
+        """Handles response where result is a list at top level (no 'result' key)."""
+        from servicenow_mcp.tools.flow_tools import ListFlowLogicTypesParams, list_flow_logic_types
+        mock_get.return_value.raise_for_status = MagicMock()
+        mock_get.return_value.json.return_value = [
+            {"sys_id": "if_id", "name": "If", "type": "if"},
+        ]
+        result = list_flow_logic_types(_make_config(), _make_auth(), ListFlowLogicTypesParams())
+        self.assertEqual(len(result.logic_types), 1)
