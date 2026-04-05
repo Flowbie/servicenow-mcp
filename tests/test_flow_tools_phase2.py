@@ -203,7 +203,7 @@ def test_remove_steps_creates_version(config, auth):
         remove_steps_from_flow(config, auth, params)
 
     # POST to versioning endpoint must have been called
-    post_url = mock_post.call_args[0][0]
+    post_url = mock_post.call_args.args[0]
     assert "create_version" in post_url
 
 

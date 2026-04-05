@@ -2768,6 +2768,13 @@ def remove_steps_from_flow(
 
     flow_data = get_response.json().get("result", {}).get("data", {})
 
+    if not flow_data:
+        return RemoveStepsFromFlowResponse(
+            success=False,
+            message=f"GET /processflow/flow/{params.flow_sys_id} returned no data.",
+            flow_sys_id=params.flow_sys_id,
+        )
+
     # Step 2: Mark specified steps as deleted across both arrays
     ids_to_remove = set(params.step_ids)
     found_ids: set[str] = set()
@@ -2795,15 +2802,14 @@ def remove_steps_from_flow(
         )
 
     # Step 3: PUT modified payload back
-    put_body = {k: v for k, v in flow_data.items()}
-    put_body["actionInstances"] = action_instances
-    put_body["flowLogicInstances"] = logic_instances
+    flow_data["actionInstances"] = action_instances
+    flow_data["flowLogicInstances"] = logic_instances
 
     try:
         put_response = requests.put(
             f"{processflow_base}/flow",
             params={"sysparm_transaction_scope": "global"},
-            json=put_body,
+            json=flow_data,
             headers=headers,
             timeout=config.timeout,
         )
