@@ -3283,9 +3283,15 @@ class GetFlowParams(BaseModel):
 
 
 class GetFlowTriggersParams(BaseModel):
-    """Parameters for getting trigger instances attached to a flow."""
+    """Parameters for getting trigger instances attached to a flow.
+
+    Queries both sys_hub_trigger_instance (V1) and sys_hub_trigger_instance_v2 (V2)
+    and merges the results.
+    """
 
     flow_sys_id: str = Field(..., description="sys_id of the flow (sys_hub_flow / sys_hub_flow_base)")
+    limit: int = Field(10, description="Maximum number of trigger records to return per table")
+    offset: int = Field(0, description="Pagination offset")
 
 
 class GetFlowActionsParams(BaseModel):
@@ -3394,30 +3400,45 @@ def get_flow_triggers(
     auth_manager: AuthManager,
     params: GetFlowTriggersParams,
 ) -> dict:
-    """Get trigger instances for a flow from sys_hub_trigger_instance.
+    """Get trigger instances for a flow from sys_hub_trigger_instance (V1) and sys_hub_trigger_instance_v2 (V2).
 
-    sys_hub_trigger_instance.flow references sys_hub_flow_base (the parent table of
-    sys_hub_flow and sys_hub_subflow), so the flow sys_id is used directly.
+    Both tables reference sys_hub_flow_base so the flow sys_id is used directly.
+    Results from both generations are merged and returned together.
     """
-    try:
-        url = f"{config.instance_url}/api/now/table/sys_hub_trigger_instance"
-        headers = auth_manager.get_headers()
-        response = requests.get(
-            url,
-            headers=headers,
-            params={
-                "sysparm_query": f"flow={params.flow_sys_id}",
-                "sysparm_display_value": "true",
-            },
-            timeout=config.timeout,
-        )
-        response.raise_for_status()
-        triggers = response.json().get("result", [])
-        return {"success": True, "flow_sys_id": params.flow_sys_id, "triggers": triggers, "count": len(triggers)}
-    except requests.RequestException as e:
-        _body = _err_body(e)
-        logger.error("get_flow_triggers | flow_sys_id=%s | error=%s%s", params.flow_sys_id, e, f" | body={_body}" if _body else "")
-        return {"success": False, "message": f"Error getting flow triggers: {e}" + (f" | {_body}" if _body else "")}
+    headers = auth_manager.get_headers()
+    trigger_fields = "sys_id,name,flow,trigger_type,trigger_definition,trigger_inputs,display_text"
+    query_params = {
+        "sysparm_query": f"flow={params.flow_sys_id}",
+        "sysparm_display_value": "true",
+        "sysparm_fields": trigger_fields,
+        "sysparm_limit": params.limit,
+        "sysparm_offset": params.offset,
+    }
+
+    all_triggers: list[dict] = []
+    for table in ("sys_hub_trigger_instance", "sys_hub_trigger_instance_v2"):
+        url = f"{config.instance_url}/api/now/table/{table}"
+        try:
+            response = requests.get(url, headers=headers, params=query_params, timeout=config.timeout)
+            response.raise_for_status()
+            all_triggers.extend(response.json().get("result", []))
+        except requests.RequestException as e:
+            _body = _err_body(e)
+            logger.error(
+                "get_flow_triggers | table=%s | flow_sys_id=%s | error=%s%s",
+                table, params.flow_sys_id, e, f" | body={_body}" if _body else "",
+            )
+            return {
+                "success": False,
+                "message": f"Error getting flow triggers: {e}" + (f" | {_body}" if _body else ""),
+            }
+
+    return {
+        "success": True,
+        "flow_sys_id": params.flow_sys_id,
+        "triggers": all_triggers,
+        "count": len(all_triggers),
+    }
 
 
 def get_flow_actions(

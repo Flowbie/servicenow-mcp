@@ -167,14 +167,15 @@ class TestFlowExtensionTools(unittest.TestCase):
     @patch("servicenow_mcp.tools.flow_tools.requests.get")
     def test_get_flow_triggers_success(self, mock_get):
         """Test getting trigger instances for a flow."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "result": [
-                {"sys_id": "trig1", "name": "Created", "flow": "flow1"},
-            ]
+        v1_response = MagicMock()
+        v1_response.json.return_value = {
+            "result": [{"sys_id": "trig1", "name": "Created", "flow": "flow1"}]
         }
-        mock_response.raise_for_status = MagicMock()
-        mock_get.return_value = mock_response
+        v1_response.raise_for_status = MagicMock()
+        v2_empty = MagicMock()
+        v2_empty.json.return_value = {"result": []}
+        v2_empty.raise_for_status = MagicMock()
+        mock_get.side_effect = [v1_response, v2_empty]
 
         params = GetFlowTriggersParams(flow_sys_id="flow1")
         result = get_flow_triggers(self.config, self.auth_manager, params)
@@ -182,16 +183,16 @@ class TestFlowExtensionTools(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["triggers"][0]["name"], "Created")
-        called_url = mock_get.call_args[0][0]
-        self.assertIn("sys_hub_trigger_instance", called_url)
+        urls = [call[0][0] for call in mock_get.call_args_list]
+        self.assertTrue(any("sys_hub_trigger_instance" in u for u in urls))
 
     @patch("servicenow_mcp.tools.flow_tools.requests.get")
     def test_get_flow_triggers_empty(self, mock_get):
         """Test getting triggers when none exist returns empty list."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"result": []}
-        mock_response.raise_for_status = MagicMock()
-        mock_get.return_value = mock_response
+        empty = MagicMock()
+        empty.json.return_value = {"result": []}
+        empty.raise_for_status = MagicMock()
+        mock_get.side_effect = [empty, empty]
 
         result = get_flow_triggers(self.config, self.auth_manager, GetFlowTriggersParams(flow_sys_id="flow1"))
         self.assertTrue(result["success"])
@@ -203,6 +204,64 @@ class TestFlowExtensionTools(unittest.TestCase):
         mock_get.side_effect = requests.HTTPError("403 Forbidden")
         result = get_flow_triggers(self.config, self.auth_manager, GetFlowTriggersParams(flow_sys_id="flow1"))
         self.assertFalse(result["success"])
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_flow_triggers_queries_both_generations(self, mock_get):
+        """get_flow_triggers must query both V1 and V2 trigger tables and merge results."""
+        v1_response = MagicMock()
+        v1_response.json.return_value = {
+            "result": [{"sys_id": "trig1", "name": "Created", "sys_class_name": "sys_hub_trigger_instance"}]
+        }
+        v1_response.raise_for_status = MagicMock()
+        v2_response = MagicMock()
+        v2_response.json.return_value = {
+            "result": [{"sys_id": "trig2", "name": "Record Created", "sys_class_name": "sys_hub_trigger_instance_v2"}]
+        }
+        v2_response.raise_for_status = MagicMock()
+        mock_get.side_effect = [v1_response, v2_response]
+
+        result = get_flow_triggers(self.config, self.auth_manager, GetFlowTriggersParams(flow_sys_id="flow1"))
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(mock_get.call_count, 2)
+        urls = [call[0][0] for call in mock_get.call_args_list]
+        self.assertTrue(any("sys_hub_trigger_instance" in u and "v2" not in u for u in urls))
+        self.assertTrue(any("sys_hub_trigger_instance_v2" in u for u in urls))
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_flow_triggers_sends_correct_fields(self, mock_get):
+        """get_flow_triggers must send sysparm_fields with correct architecture field names."""
+        empty = MagicMock()
+        empty.json.return_value = {"result": []}
+        empty.raise_for_status = MagicMock()
+        mock_get.side_effect = [empty, empty]
+
+        get_flow_triggers(self.config, self.auth_manager, GetFlowTriggersParams(flow_sys_id="flow1"))
+
+        first_params = mock_get.call_args_list[0][1]["params"]
+        self.assertIn("sysparm_fields", first_params)
+        fields = first_params["sysparm_fields"]
+        self.assertIn("trigger_inputs", fields)      # correct field name per architecture
+        self.assertIn("trigger_definition", fields)
+        self.assertNotIn("inputs", fields.split(","))  # must not use wrong field name
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_flow_triggers_pagination_params(self, mock_get):
+        """GetFlowTriggersParams limit/offset are sent as sysparm_limit/sysparm_offset."""
+        empty = MagicMock()
+        empty.json.return_value = {"result": []}
+        empty.raise_for_status = MagicMock()
+        mock_get.side_effect = [empty, empty]
+
+        get_flow_triggers(
+            self.config, self.auth_manager,
+            GetFlowTriggersParams(flow_sys_id="flow1", limit=5, offset=10)
+        )
+
+        first_params = mock_get.call_args_list[0][1]["params"]
+        self.assertEqual(first_params["sysparm_limit"], 5)
+        self.assertEqual(first_params["sysparm_offset"], 10)
 
     # --- get_flow_actions ---
 
