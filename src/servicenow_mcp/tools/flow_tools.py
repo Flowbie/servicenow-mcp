@@ -3476,6 +3476,7 @@ def get_flow_version(
                 "sysparm_query": query + "^ORDERBYDESCsys_created_on",
                 "sysparm_limit": 1,
                 "sysparm_display_value": "true",
+                "sysparm_fields": "sys_id,flow,annotation,type,favorite,sys_created_on,sys_updated_on,sys_created_by",
             },
             timeout=config.timeout,
         )

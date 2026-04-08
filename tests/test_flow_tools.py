@@ -312,6 +312,26 @@ class TestFlowExtensionTools(unittest.TestCase):
         result = get_flow_version(self.config, self.auth_manager, GetFlowVersionParams(flow_sys_id="flow1"))
         self.assertFalse(result["success"])
 
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_flow_version_excludes_payload(self, mock_get):
+        """get_flow_version must request sysparm_fields and must exclude the payload blob."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": [{"sys_id": "ver1", "flow": "flow1"}]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        get_flow_version(self.config, self.auth_manager, GetFlowVersionParams(flow_sys_id="flow1"))
+
+        # call_args_list[0] is the sys_hub_flow_version query
+        first_call_params = mock_get.call_args_list[0][1]["params"]
+        self.assertIn("sysparm_fields", first_call_params)
+        fields = first_call_params["sysparm_fields"]
+        self.assertNotIn("payload", fields)
+        self.assertIn("sys_id", fields)
+        self.assertIn("annotation", fields)
+
     # --- publish_flow ---
 
     @patch("servicenow_mcp.tools.flow_tools.requests.patch")
