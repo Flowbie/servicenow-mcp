@@ -3370,7 +3370,14 @@ def get_flow(
         response = requests.get(
             url,
             headers=headers,
-            params={"sysparm_display_value": "true"},
+            params={
+                "sysparm_display_value": "true",
+                "sysparm_fields": (
+                    "sys_id,name,internal_name,flow_type,status,active,sys_scope,"
+                    "run_as,access,natlang,flow_priority,version,"
+                    "sys_created_on,sys_updated_on,master_snapshot,latest_snapshot"
+                ),
+            },
             timeout=config.timeout,
         )
         response.raise_for_status()

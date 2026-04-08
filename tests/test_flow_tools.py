@@ -140,6 +140,28 @@ class TestFlowExtensionTools(unittest.TestCase):
         self.assertFalse(result["success"])
         self.assertIn("Error getting flow", result["message"])
 
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_flow_sends_sysparm_fields(self, mock_get):
+        """get_flow must send sysparm_fields and must not request blob fields."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": {"sys_id": "flow1"}}
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        get_flow(self.config, self.auth_manager, GetFlowParams(flow_sys_id="flow1"))
+
+        call_params = mock_get.call_args[1]["params"]
+        self.assertIn("sysparm_fields", call_params)
+        fields = call_params["sysparm_fields"]
+        self.assertIn("sys_id", fields)
+        self.assertIn("name", fields)
+        self.assertIn("master_snapshot", fields)
+        # Blob fields must be excluded
+        self.assertNotIn("outputs", fields)
+        self.assertNotIn("acls", fields)
+        self.assertNotIn("run_with_roles", fields)
+        self.assertNotIn("annotation", fields)
+
     # --- get_flow_triggers ---
 
     @patch("servicenow_mcp.tools.flow_tools.requests.get")
