@@ -3290,7 +3290,7 @@ class GetFlowTriggersParams(BaseModel):
     """
 
     flow_sys_id: str = Field(..., description="sys_id of the flow (sys_hub_flow / sys_hub_flow_base)")
-    limit: int = Field(10, description="Maximum number of trigger records to return per table")
+    limit: int = Field(10, description="Maximum number of trigger records to return per table (total may be up to 2× limit when both V1 and V2 return results)")
     offset: int = Field(0, description="Pagination offset")
 
 
@@ -3404,22 +3404,28 @@ def get_flow_triggers(
 
     Both tables reference sys_hub_flow_base so the flow sys_id is used directly.
     Results from both generations are merged and returned together.
+    The limit and offset parameters apply independently to each table query; the merged
+    result count can be up to twice the limit value.
     """
     headers = auth_manager.get_headers()
     trigger_fields = "sys_id,name,flow,trigger_type,trigger_definition,trigger_inputs,display_text"
-    query_params = {
-        "sysparm_query": f"flow={params.flow_sys_id}",
-        "sysparm_display_value": "true",
-        "sysparm_fields": trigger_fields,
-        "sysparm_limit": params.limit,
-        "sysparm_offset": params.offset,
-    }
 
     all_triggers: list[dict] = []
     for table in ("sys_hub_trigger_instance", "sys_hub_trigger_instance_v2"):
         url = f"{config.instance_url}/api/now/table/{table}"
         try:
-            response = requests.get(url, headers=headers, params=query_params, timeout=config.timeout)
+            response = requests.get(
+                url,
+                headers=headers,
+                params={
+                    "sysparm_query": f"flow={params.flow_sys_id}",
+                    "sysparm_display_value": "true",
+                    "sysparm_fields": trigger_fields,
+                    "sysparm_limit": params.limit,
+                    "sysparm_offset": params.offset,
+                },
+                timeout=config.timeout,
+            )
             response.raise_for_status()
             all_triggers.extend(response.json().get("result", []))
         except requests.RequestException as e:
