@@ -267,12 +267,12 @@ class TestFlowExtensionTools(unittest.TestCase):
 
     @patch("servicenow_mcp.tools.flow_tools.requests.get")
     def test_get_flow_actions_success(self, mock_get):
-        """Test getting action instances for a flow."""
+        """Test getting flow components in list mode."""
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "result": [
-                {"sys_id": "act1", "name": "Look Up Record", "flow": "flow1"},
-                {"sys_id": "act2", "name": "Update Record", "flow": "flow1"},
+                {"sys_id": "comp1", "display_text": "Look Up Record", "sys_class_name": "sys_hub_action_instance", "order": "100"},
+                {"sys_id": "comp2", "display_text": "Update Record", "sys_class_name": "sys_hub_action_instance_v2", "order": "200"},
             ]
         }
         mock_response.raise_for_status = MagicMock()
@@ -283,8 +283,9 @@ class TestFlowExtensionTools(unittest.TestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(result["count"], 2)
+        self.assertIn("components", result)
         called_url = mock_get.call_args[0][0]
-        self.assertIn("sys_hub_action_instance", called_url)
+        self.assertIn("sys_hub_flow_component", called_url)
 
     @patch("servicenow_mcp.tools.flow_tools.requests.get")
     def test_get_flow_actions_http_error(self, mock_get):
@@ -292,6 +293,156 @@ class TestFlowExtensionTools(unittest.TestCase):
         mock_get.side_effect = requests.HTTPError("500 error")
         result = get_flow_actions(self.config, self.auth_manager, GetFlowActionsParams(flow_sys_id="flow1"))
         self.assertFalse(result["success"])
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_flow_actions_list_mode_queries_component_table(self, mock_get):
+        """List mode must query sys_hub_flow_component (not sys_hub_action_instance)."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "result": [
+                {"sys_id": "comp1", "order": "100", "display_text": "Look Up Record", "sys_class_name": "sys_hub_action_instance"},
+                {"sys_id": "comp2", "order": "200", "display_text": "If Age > 18", "sys_class_name": "sys_hub_flow_logic"},
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        params = GetFlowActionsParams(flow_sys_id="flow1")
+        result = get_flow_actions(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["count"], 2)
+        self.assertIn("components", result)          # renamed from "actions"
+        self.assertNotIn("actions", result)
+        called_url = mock_get.call_args[0][0]
+        self.assertIn("sys_hub_flow_component", called_url)
+        self.assertNotIn("sys_hub_action_instance", called_url)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_flow_actions_list_mode_sysparm_fields(self, mock_get):
+        """List mode sysparm_fields must include sys_class_name for routing."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": []}
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        get_flow_actions(self.config, self.auth_manager, GetFlowActionsParams(flow_sys_id="flow1"))
+
+        call_params = mock_get.call_args[1]["params"]
+        self.assertIn("sysparm_fields", call_params)
+        fields = call_params["sysparm_fields"]
+        self.assertIn("sys_class_name", fields)
+        self.assertIn("order", fields)
+        self.assertIn("display_text", fields)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_flow_actions_list_mode_pagination(self, mock_get):
+        """List mode passes limit and offset as sysparm_limit/sysparm_offset."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"result": []}
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        get_flow_actions(
+            self.config, self.auth_manager,
+            GetFlowActionsParams(flow_sys_id="flow1", limit=10, offset=20)
+        )
+
+        call_params = mock_get.call_args[1]["params"]
+        self.assertEqual(call_params["sysparm_limit"], 10)
+        self.assertEqual(call_params["sysparm_offset"], 20)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_flow_actions_detail_mode_action_instance(self, mock_get):
+        """Detail mode routes sys_hub_action_instance to the correct child table."""
+        comp_response = MagicMock()
+        comp_response.json.return_value = {
+            "result": {
+                "sys_id": "comp1",
+                "sys_class_name": "sys_hub_action_instance",
+                "flow": "flow1",
+                "order": "100",
+                "display_text": "Look Up Record",
+            }
+        }
+        comp_response.raise_for_status = MagicMock()
+        detail_response = MagicMock()
+        detail_response.json.return_value = {
+            "result": {
+                "sys_id": "comp1",
+                "action_type": {"value": "atype1", "display_value": "Look Up Records"},
+                "action_inputs": {},
+            }
+        }
+        detail_response.raise_for_status = MagicMock()
+        mock_get.side_effect = [comp_response, detail_response]
+
+        params = GetFlowActionsParams(flow_sys_id="flow1", component_sys_id="comp1")
+        result = get_flow_actions(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["sys_class_name"], "sys_hub_action_instance")
+        self.assertIn("detail", result)
+        self.assertEqual(mock_get.call_count, 2)
+        detail_url = mock_get.call_args_list[1][0][0]
+        self.assertIn("sys_hub_action_instance", detail_url)
+        self.assertIn("comp1", detail_url)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_flow_actions_detail_mode_flow_logic(self, mock_get):
+        """Detail mode routes sys_hub_flow_logic to the correct child table."""
+        comp_response = MagicMock()
+        comp_response.json.return_value = {
+            "result": {
+                "sys_id": "comp2",
+                "sys_class_name": "sys_hub_flow_logic",
+                "flow": "flow1",
+                "order": "200",
+                "display_text": "If Priority = 1",
+            }
+        }
+        comp_response.raise_for_status = MagicMock()
+        detail_response = MagicMock()
+        detail_response.json.return_value = {
+            "result": {
+                "sys_id": "comp2",
+                "decision_table": {"value": "dt1", "display_value": "Priority Decision"},
+                "logic_definition": {"value": "ld1"},
+            }
+        }
+        detail_response.raise_for_status = MagicMock()
+        mock_get.side_effect = [comp_response, detail_response]
+
+        params = GetFlowActionsParams(flow_sys_id="flow1", component_sys_id="comp2")
+        result = get_flow_actions(self.config, self.auth_manager, params)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["sys_class_name"], "sys_hub_flow_logic")
+        detail_url = mock_get.call_args_list[1][0][0]
+        self.assertIn("sys_hub_flow_logic", detail_url)
+
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_flow_actions_detail_mode_unsupported_class(self, mock_get):
+        """Detail mode returns failure for unsupported sys_class_name (e.g. sys_hub_flow_stage)."""
+        comp_response = MagicMock()
+        comp_response.json.return_value = {
+            "result": {
+                "sys_id": "stage1",
+                "sys_class_name": "sys_hub_flow_stage",
+                "flow": "flow1",
+                "order": "50",
+                "display_text": "Investigation",
+            }
+        }
+        comp_response.raise_for_status = MagicMock()
+        mock_get.return_value = comp_response
+
+        params = GetFlowActionsParams(flow_sys_id="flow1", component_sys_id="stage1")
+        result = get_flow_actions(self.config, self.auth_manager, params)
+
+        self.assertFalse(result["success"])
+        self.assertIn("sys_hub_flow_stage", result["message"])
+        self.assertEqual(mock_get.call_count, 1)  # no second call attempted
 
     # --- get_flow_version ---
 

@@ -3295,9 +3295,27 @@ class GetFlowTriggersParams(BaseModel):
 
 
 class GetFlowActionsParams(BaseModel):
-    """Parameters for getting action instances in a flow."""
+    """Parameters for getting flow components (actions, logic steps, etc.).
+
+    List mode (no component_sys_id): queries sys_hub_flow_component for all in-flow elements,
+    ordered by execution order. Returns lean fields including sys_class_name for routing.
+
+    Detail mode (component_sys_id provided): fetches full fields for a single component
+    from the appropriate child table determined by sys_class_name.
+    """
 
     flow_sys_id: str = Field(..., description="sys_id of the flow (sys_hub_flow / sys_hub_flow_base)")
+    component_sys_id: str | None = Field(
+        None,
+        description=(
+            "When provided, returns full detail for a single component. "
+            "The tool reads sys_class_name from sys_hub_flow_component, then queries the matching "
+            "child table: sys_hub_action_instance, sys_hub_action_instance_v2, "
+            "sys_hub_flow_logic, or sys_hub_flow_logic_instance_v2."
+        ),
+    )
+    limit: int = Field(50, description="Maximum number of components to return in list mode")
+    offset: int = Field(0, description="Pagination offset for list mode")
 
 
 class GetFlowVersionParams(BaseModel):
@@ -3447,35 +3465,137 @@ def get_flow_triggers(
     }
 
 
+# Routing table for get_flow_actions detail mode.
+# Maps sys_class_name → sysparm_fields to request from the child table.
+_COMPONENT_DETAIL_TABLES: dict[str, str] = {
+    "sys_hub_action_instance": (
+        "sys_id,flow,order,display_text,action_type,action_type_parent,action_inputs"
+    ),
+    "sys_hub_action_instance_v2": (
+        "sys_id,flow,order,display_text,action_type,action_type_parent,values"
+    ),
+    "sys_hub_flow_logic": (
+        "sys_id,flow,order,display_text,logic_definition,decision_table,inputs"
+    ),
+    "sys_hub_flow_logic_instance_v2": (
+        "sys_id,flow,order,display_text,logic_definition,decision_table,values"
+    ),
+}
+
+
 def get_flow_actions(
     config: ServerConfig,
     auth_manager: AuthManager,
     params: GetFlowActionsParams,
 ) -> dict:
-    """Get action instances in a flow from sys_hub_action_instance.
+    """Get flow components in list or detail mode.
 
-    sys_hub_action_instance.flow references sys_hub_flow_base (the parent table of
-    sys_hub_flow and sys_hub_subflow), so the flow sys_id is used directly.
+    List mode (no component_sys_id): queries sys_hub_flow_component ordered by execution
+    order. Returns all step types — actions (V1/V2), logic (V1/V2), etc. — with lean
+    fields including sys_class_name for identification.
+
+    Detail mode (component_sys_id provided): fetches the component's sys_class_name, then
+    queries the appropriate child table for full field detail. Supported types are defined
+    in _COMPONENT_DETAIL_TABLES; unsupported types return success=False.
     """
+    headers = auth_manager.get_headers()
+
+    # --- Detail mode ---
+    if params.component_sys_id:
+        # Step 1: fetch base component to get sys_class_name
+        comp_url = f"{config.instance_url}/api/now/table/sys_hub_flow_component/{params.component_sys_id}"
+        try:
+            comp_resp = requests.get(
+                comp_url,
+                headers=headers,
+                params={"sysparm_fields": "sys_id,sys_class_name,flow,order,display_text"},
+                timeout=config.timeout,
+            )
+            comp_resp.raise_for_status()
+            component = comp_resp.json().get("result", {})
+        except requests.RequestException as e:
+            _body = _err_body(e)
+            logger.error(
+                "get_flow_actions | component fetch | sys_id=%s | error=%s%s",
+                params.component_sys_id, e, f" | body={_body}" if _body else "",
+            )
+            return {
+                "success": False,
+                "message": f"Error fetching component: {e}" + (f" | {_body}" if _body else ""),
+            }
+
+        sys_class_name = component.get("sys_class_name", "")
+        if sys_class_name not in _COMPONENT_DETAIL_TABLES:
+            return {
+                "success": False,
+                "message": f"Unsupported component type: {sys_class_name}",
+            }
+
+        # Step 2: fetch from the child table using routed fields
+        detail_url = f"{config.instance_url}/api/now/table/{sys_class_name}/{params.component_sys_id}"
+        try:
+            detail_resp = requests.get(
+                detail_url,
+                headers=headers,
+                params={
+                    "sysparm_display_value": "true",
+                    "sysparm_fields": _COMPONENT_DETAIL_TABLES[sys_class_name],
+                },
+                timeout=config.timeout,
+            )
+            detail_resp.raise_for_status()
+            detail = detail_resp.json().get("result", {})
+        except requests.RequestException as e:
+            _body = _err_body(e)
+            logger.error(
+                "get_flow_actions | detail fetch | sys_id=%s | table=%s | error=%s%s",
+                params.component_sys_id, sys_class_name, e, f" | body={_body}" if _body else "",
+            )
+            return {
+                "success": False,
+                "message": f"Error fetching component detail: {e}" + (f" | {_body}" if _body else ""),
+            }
+
+        return {
+            "success": True,
+            "component_sys_id": params.component_sys_id,
+            "sys_class_name": sys_class_name,
+            "detail": detail,
+        }
+
+    # --- List mode ---
+    url = f"{config.instance_url}/api/now/table/sys_hub_flow_component"
     try:
-        url = f"{config.instance_url}/api/now/table/sys_hub_action_instance"
-        headers = auth_manager.get_headers()
         response = requests.get(
             url,
             headers=headers,
             params={
-                "sysparm_query": f"flow={params.flow_sys_id}",
+                "sysparm_query": f"flow={params.flow_sys_id}^ORDERBYorder",
+                "sysparm_fields": "sys_id,flow,order,display_text,sys_class_name,ui_id",
                 "sysparm_display_value": "true",
+                "sysparm_limit": params.limit,
+                "sysparm_offset": params.offset,
             },
             timeout=config.timeout,
         )
         response.raise_for_status()
-        actions = response.json().get("result", [])
-        return {"success": True, "flow_sys_id": params.flow_sys_id, "actions": actions, "count": len(actions)}
+        components = response.json().get("result", [])
+        return {
+            "success": True,
+            "flow_sys_id": params.flow_sys_id,
+            "components": components,
+            "count": len(components),
+        }
     except requests.RequestException as e:
         _body = _err_body(e)
-        logger.error("get_flow_actions | flow_sys_id=%s | error=%s%s", params.flow_sys_id, e, f" | body={_body}" if _body else "")
-        return {"success": False, "message": f"Error getting flow actions: {e}" + (f" | {_body}" if _body else "")}
+        logger.error(
+            "get_flow_actions | flow_sys_id=%s | error=%s%s",
+            params.flow_sys_id, e, f" | body={_body}" if _body else "",
+        )
+        return {
+            "success": False,
+            "message": f"Error getting flow components: {e}" + (f" | {_body}" if _body else ""),
+        }
 
 
 def get_flow_version(
