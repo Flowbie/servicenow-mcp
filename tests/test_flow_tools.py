@@ -444,6 +444,29 @@ class TestFlowExtensionTools(unittest.TestCase):
         self.assertIn("sys_hub_flow_stage", result["message"])
         self.assertEqual(mock_get.call_count, 1)  # no second call attempted
 
+    @patch("servicenow_mcp.tools.flow_tools.requests.get")
+    def test_get_flow_actions_detail_mode_child_table_error(self, mock_get):
+        """Detail mode returns failure when the child table fetch raises HTTPError."""
+        comp_response = MagicMock()
+        comp_response.json.return_value = {
+            "result": {
+                "sys_id": "comp1",
+                "sys_class_name": "sys_hub_action_instance",
+                "flow": "flow1",
+                "order": "100",
+                "display_text": "Look Up Record",
+            }
+        }
+        comp_response.raise_for_status = MagicMock()
+        mock_get.side_effect = [comp_response, requests.HTTPError("500 Server Error")]
+
+        params = GetFlowActionsParams(flow_sys_id="flow1", component_sys_id="comp1")
+        result = get_flow_actions(self.config, self.auth_manager, params)
+
+        self.assertFalse(result["success"])
+        self.assertIn("Error fetching component detail", result["message"])
+        self.assertEqual(mock_get.call_count, 2)  # both calls attempted
+
     # --- get_flow_version ---
 
     @patch("servicenow_mcp.tools.flow_tools.requests.get")

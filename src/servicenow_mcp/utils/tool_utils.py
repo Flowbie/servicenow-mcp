@@ -499,14 +499,14 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             get_flow_triggers_tool,
             GetFlowTriggersParams,
             dict,
-            "Get trigger instances attached to a flow from sys_hub_trigger_instance",
+            "Get trigger instances for a flow from sys_hub_trigger_instance (V1) and sys_hub_trigger_instance_v2 (V2), merged. Supports limit/offset pagination.",
             "json",
         ),
         "get_flow_actions": (
             get_flow_actions_tool,
             GetFlowActionsParams,
             dict,
-            "Get action instances in a flow from sys_hub_action_instance",
+            "Get flow components in list mode (all step types ordered by execution from sys_hub_flow_component) or detail mode (full fields for one component via sys_class_name routing). Provide component_sys_id for detail mode.",
             "json",
         ),
         "get_flow_version": (
