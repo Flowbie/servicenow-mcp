@@ -29,6 +29,17 @@ In the current governance model:
 
 This means Workbench should not be treated as the only place where write safety lives. Even if Workbench is bypassed, MCP policy should still reject non-compliant governed writes.
 
+## Memory MCP vs this server (retrieval roles)
+
+Use the right MCP for the kind of truth you need. Do not duplicate the same retrieval through both servers.
+
+| Kind of work | Use |
+|--------------|-----|
+| Discovery, narrative recall, indexed KB and internal docs (semantic / hybrid search over the Workbench Qdrant index) | **servicenow-memory-mcp** (`memory_search`, `memory_hybrid_search`, `memory_get_article_context`, and related tools) |
+| Live ServiceNow records, current field values, metadata introspection, and any create/update/delete | **servicenow-mcp** (this server) |
+
+If content exists in the memory index, prefer memory tools for that material; use **servicenow-mcp** when you need authoritative instance state or mutations.
+
 ## Features
 
 - Connect to ServiceNow instances using various authentication methods (Basic, OAuth, API Key)
