@@ -274,6 +274,12 @@ class ServiceNowMCP:
             logger.error(f"Error executing tool '{name}': {e}", exc_info=True)
             raise RuntimeError(f"Error during execution of tool '{name}': {e}") from e
 
+        # If the tool returned an error response, raise so the SDK sets isError=True
+        if isinstance(result, dict) and result.get("success") is False:
+            serialized_error = serialize_tool_output(result, name)
+            logger.info(f"Tool '{name}' returned error response; raising for isError flag")
+            raise RuntimeError(serialized_error)
+
         # Serialize the result to a string (preferably JSON) using the helper
         serialized_string = serialize_tool_output(result, name)
         logger.debug(f"Serialized value for tool '{name}': {serialized_string[:500]}...")

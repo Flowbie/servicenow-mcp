@@ -1,4 +1,6 @@
 """Tests for default tool package behavior."""
+import asyncio
+
 import pytest
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
 
@@ -41,3 +43,47 @@ def test_empty_string_package_defaults_to_executor(monkeypatch):
     server = ServiceNowMCP(_make_config())
 
     assert server.current_package_name == "executor"
+
+
+def test_call_tool_raises_on_success_false(monkeypatch):
+    """_call_tool_impl raises RuntimeError when a tool returns success=False."""
+    from unittest.mock import MagicMock
+
+    monkeypatch.setenv("MCP_TOOL_PACKAGE", "full")
+
+    from servicenow_mcp.server import ServiceNowMCP
+    sn = ServiceNowMCP(_make_config())
+
+    # Find a tool whose required fields are all plain strings so we can pass "test" for each
+    tool_name = None
+    for name in sn.enabled_tool_names:
+        defn = sn.tool_definitions.get(name)
+        if defn is None:
+            continue
+        schema = defn[1].model_json_schema()
+        required = schema.get("required", [])
+        props = schema.get("properties", {})
+        if all(props.get(r, {}).get("type") == "string" for r in required):
+            tool_name = name
+            break
+
+    assert tool_name is not None, "Could not find a tool with all-string required fields"
+    original_def = sn.tool_definitions[tool_name]
+
+    # Replace the impl function with one that returns success=False
+    error_impl = MagicMock(return_value={"success": False, "error": "test error"})
+    sn.tool_definitions[tool_name] = (
+        error_impl,
+        original_def[1],
+        original_def[2],
+        original_def[3],
+        original_def[4],
+    )
+
+    # Build minimal valid args from the model's schema
+    schema = original_def[1].model_json_schema()
+    required = schema.get("required", [])
+    args = {k: "test" for k in required}
+
+    with pytest.raises(RuntimeError, match="test error"):
+        asyncio.run(sn._call_tool_impl(tool_name, args))
