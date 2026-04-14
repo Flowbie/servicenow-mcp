@@ -1,8 +1,6 @@
-# ServiceNow MCP Tool Packages Configuration
-# Define sets of tools to be exposed by the MCP server based on roles/workflows.
 # The MCP server loads tools based on the MCP_TOOL_PACKAGE environment variable.
-# If MCP_TOOL_PACKAGE is not set, 'full' is loaded.
-# If MCP_TOOL_PACKAGE is set to 'none', no tools are loaded (except list_tool_packages).
+# If MCP_TOOL_PACKAGE is not set, 'executor' is loaded (safe default: Table API + verification).
+# Set MCP_TOOL_PACKAGE=full to load all tools. Set to 'none' to load no tools (introspection only).
 
 # --- Package Definitions ---
 
