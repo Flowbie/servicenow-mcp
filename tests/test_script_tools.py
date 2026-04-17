@@ -11,6 +11,9 @@ Covers four behaviors:
 import unittest
 from unittest.mock import MagicMock, patch, call
 
+import pytest
+from pydantic import ValidationError
+
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.script_tools import (
     RunBackgroundScriptParams,
@@ -227,7 +230,7 @@ class TestRunBackgroundScriptAuthGuard(unittest.TestCase):
         )
         config = _make_config()
         auth_manager = _make_auth_manager()
-        params = RunBackgroundScriptParams(description="Test script.", script="gs.print('hello');")
+        params = RunBackgroundScriptParams(description="Testing authentication failure handling in the script execution path", script="gs.print('hello');", acknowledge_update_set_bypass=True)
 
         # After the fix, run_background_script must return early with success=False
         # without making any network calls when session_failure contains "session_not_authenticated"
@@ -290,7 +293,7 @@ class TestRunBackgroundScriptTokenPlacement(unittest.TestCase):
 
         config = _make_config()
         auth_manager = _make_auth_manager()
-        params = RunBackgroundScriptParams(description="Test script.", script="gs.print('hello world');")
+        params = RunBackgroundScriptParams(description="Testing X-UserToken header placement in CSRF token handling", script="gs.print('hello world');", acknowledge_update_set_bypass=True)
 
         result = run_background_script(config, auth_manager, params)
 
@@ -352,7 +355,7 @@ class TestRunBackgroundScriptTokenPlacement(unittest.TestCase):
 
         config = _make_config()
         auth_manager = _make_auth_manager()
-        params = RunBackgroundScriptParams(description="Test script.", script="gs.print('output');")
+        params = RunBackgroundScriptParams(description="Testing X-UserToken header omission when CSRF token is missing", script="gs.print('output');", acknowledge_update_set_bypass=True)
 
         run_background_script(config, auth_manager, params)
 
@@ -403,7 +406,7 @@ class TestRunBackgroundScriptDirectOutput(unittest.TestCase):
 
         config = _make_config()
         auth_manager = _make_auth_manager()
-        params = RunBackgroundScriptParams(description="Test script.", script="gs.print('hello from gs.print');")
+        params = RunBackgroundScriptParams(description="Testing gs.print output capture in script execution integration test", script="gs.print('hello from gs.print');", acknowledge_update_set_bypass=True)
 
         result = run_background_script(config, auth_manager, params)
 
@@ -442,8 +445,9 @@ class TestRunBackgroundScriptImports(unittest.TestCase):
         config = _make_config()
         auth = _make_auth_manager()
         params = RunBackgroundScriptParams(
-            description="regression test — no workbench",
+            description="regression test — no workbench configured, testing os import availability",
             script="gs.info('test');",
+            acknowledge_update_set_bypass=True,
         )
 
         # Patch the HTTP calls so no real network request is made.
@@ -482,8 +486,9 @@ class TestRunBackgroundScriptImports(unittest.TestCase):
         config = _make_config()
         auth = _make_auth_manager()
         params = RunBackgroundScriptParams(
-            description="regression test — workbench present",
+            description="regression test — workbench present, testing os import evaluation in approval gate",
             script="gs.info('test');",
+            acknowledge_update_set_bypass=True,
         )
 
         try:
@@ -501,6 +506,66 @@ class TestRunBackgroundScriptImports(unittest.TestCase):
             pass
         finally:
             os.environ.pop("WORKBENCH_URL", None)
+
+
+# ── Task 3: Guardrail tests ────────────────────────────────────────────────
+
+VALID_DESCRIPTION = (
+    "Bulk-update 500 incidents to set assignment_group because the REST PATCH endpoint "
+    "processes one record per request and would require 500 sequential calls with no "
+    "transaction guarantee. GlideRecord iteration with setWorkflow(false) is required."
+)
+
+
+def test_short_description_rejected():
+    with pytest.raises(ValidationError, match="String should have at least 50 characters"):
+        RunBackgroundScriptParams(
+            description="Too short",
+            script="gs.info('x')",
+            acknowledge_update_set_bypass=True,
+        )
+
+
+def test_automated_execution_requires_acknowledgement():
+    with pytest.raises(ValidationError, match="acknowledge_update_set_bypass"):
+        RunBackgroundScriptParams(
+            description=VALID_DESCRIPTION,
+            script="gs.info('x')",
+            execution_method="auto",
+            acknowledge_update_set_bypass=False,
+        )
+
+
+def test_fix_script_mode_does_not_require_acknowledgement():
+    params = RunBackgroundScriptParams(
+        description=VALID_DESCRIPTION,
+        script="gs.info('x')",
+        execution_method="fix_script",
+        # acknowledge_update_set_bypass left at default False — must be OK
+    )
+    assert params.execution_method == "fix_script"
+    assert params.acknowledge_update_set_bypass is False
+
+
+def test_valid_automated_params_accepted():
+    params = RunBackgroundScriptParams(
+        description=VALID_DESCRIPTION,
+        script="gs.info('hello')",
+        execution_method="auto",
+        acknowledge_update_set_bypass=True,
+    )
+    assert params.description == VALID_DESCRIPTION
+    assert params.acknowledge_update_set_bypass is True
+
+
+def test_trigger_execution_method_accepted():
+    params = RunBackgroundScriptParams(
+        description=VALID_DESCRIPTION,
+        script="gs.info('x')",
+        execution_method="trigger",
+        acknowledge_update_set_bypass=True,
+    )
+    assert params.execution_method == "trigger"
 
 
 if __name__ == "__main__":

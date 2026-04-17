@@ -22,10 +22,10 @@ import re
 import uuid
 from datetime import datetime, timezone
 from html.parser import HTMLParser
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import requests
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.config import AuthType, ServerConfig
@@ -308,36 +308,52 @@ def _run_via_scripted_api(
 
 
 class RunBackgroundScriptParams(BaseModel):
-    """Parameters for run_background_script."""
-
     description: str = Field(
         ...,
+        min_length=50,
         description=(
-            "1-3 sentence summary of what this script does, what it reads or modifies, "
-            "and why it is being run. Shown in the Claude Code tool call display and "
-            "prepended to the result so both the invocation and output are self-documenting. "
-            "Example: 'Queries sys_hub_flow_version for flow sys_id X to inspect its trigger "
-            "payload. Reads payload field only — no writes.'"
+            "Mandatory justification (50+ chars): what this script does AND why REST API cannot "
+            "accomplish this goal. List the specific REST endpoints/tools considered and explain "
+            "why each is insufficient. "
+            "IMPORTANT: background scripts bypass update set capture — changes WILL NOT be "
+            "promotable via update sets. Use execution_method='fix_script' for changes that "
+            "must be promoted between instances."
         ),
     )
-    script: str = Field(
-        ...,
+    script: str = Field(..., description="JavaScript to execute server-side via GlideRecord/GlideSystem APIs")
+    scope: str = Field(default="global", description="Application scope context for the script")
+    execution_method: Literal["auto", "trigger", "api", "ui", "fix_script"] = Field(
+        default="auto",
         description=(
-            "JavaScript server-side script to execute on the ServiceNow instance. "
-            "Runs in admin context via sys.scripts.do (same as the Background Script "
-            "module in the ServiceNow UI). "
-            "OUTPUT — always use gs.info() with the __MFCP_RUN_ID tag for reliable capture: "
-            "gs.info('MyModule | value=' + result + ' | run_id=' + __MFCP_RUN_ID). "
-            "Tagged entries are extracted from syslog and returned in direct_output. "
-            "Do NOT use gs.print() — it is only captured via the sys.scripts.do UI path "
-            "and returns no output when the Scripted REST API execution path is active. "
-            "The variable __MFCP_RUN_ID is injected at the top of every script automatically."
+            "How to execute the script. "
+            "'auto': tries api → ui in order (default). "
+            "'trigger': fire-and-forget via sys_trigger table — no output returned, use for void ops. "
+            "'api': Scripted REST API endpoint (requires script_execution_api_resource_path in config). "
+            "'ui': Authenticated UI session via sys.scripts.do (slowest, most compatible). "
+            "'fix_script': do NOT execute — return a formatted, annotated script for manual execution "
+            "in ServiceNow Script editor. Use this when changes need update set capture."
         ),
     )
-    scope: str = Field(
-        "global",
-        description="Transaction scope for script execution. Default: 'global'.",
+    acknowledge_update_set_bypass: bool = Field(
+        default=False,
+        description=(
+            "Set True to confirm you understand that changes made by this script WILL NOT appear "
+            "in the active update set and CANNOT be promoted between instances via update sets. "
+            "Required for all execution_method values except 'fix_script'. "
+            "If the change needs to be promoted, use execution_method='fix_script' instead."
+        ),
     )
+
+    @model_validator(mode="after")
+    def require_acknowledgement_for_automated_execution(self) -> "RunBackgroundScriptParams":
+        if self.execution_method != "fix_script" and not self.acknowledge_update_set_bypass:
+            raise ValueError(
+                "acknowledge_update_set_bypass must be True when using automated execution. "
+                "Background scripts bypass update set capture and cannot be promoted between "
+                "instances via update sets. If this change needs promotion, use "
+                "execution_method='fix_script' to generate a script for manual execution instead."
+            )
+        return self
 
 
 class SyslogEntry(BaseModel):
