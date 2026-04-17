@@ -570,3 +570,115 @@ def test_trigger_execution_method_accepted():
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ── Task 4: Fix script generation + tier wiring ───────────────────────────
+import uuid
+from servicenow_mcp.tools.script_tools import (
+    _run_via_trigger,
+    _generate_fix_script,
+)
+
+VALID_DESCRIPTION_T4 = (
+    "Bulk-update incidents via GlideRecord because REST PATCH requires one call per record "
+    "and there is no bulk conditional update endpoint. setWorkflow(false) is required to "
+    "suppress business rules during the data fix."
+)
+
+
+def _make_config_t4(with_api_path=False):
+    config = MagicMock()
+    config.api_url = "https://dev.service-now.com/api/now"
+    config.timeout = 30
+    config.script_execution_api_resource_path = "/api/x_test/mfcp/run" if with_api_path else None
+    config.instance_url = "https://dev.service-now.com"
+    return config
+
+
+def _make_auth_t4():
+    auth = MagicMock()
+    auth.get_headers.return_value = {"Authorization": "Basic dGVzdA=="}
+    return auth
+
+
+def test_run_via_trigger_creates_sys_trigger_record():
+    config = _make_config_t4()
+    auth = _make_auth_t4()
+    run_id = uuid.uuid4().hex
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 201
+    mock_resp.json.return_value = {"result": {"sys_id": "trigger_sys_id_here"}}
+
+    with patch("servicenow_mcp.tools.script_tools.requests.post", return_value=mock_resp) as mock_post:
+        result = _run_via_trigger(config, auth, "gs.info('test')", run_id)
+
+    assert result["success"] is True
+    assert result["execution_method"] == "trigger"
+    assert result["run_id"] == run_id
+    post_url = mock_post.call_args.args[0]
+    assert "sys_trigger" in post_url
+
+
+def test_run_via_trigger_failure_returns_success_false():
+    config = _make_config_t4()
+    auth = _make_auth_t4()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+
+    with patch("servicenow_mcp.tools.script_tools.requests.post", return_value=mock_resp):
+        result = _run_via_trigger(config, auth, "gs.info('x')", "run_id_123")
+
+    assert result["success"] is False
+    assert "403" in result["message"]
+
+
+def test_generate_fix_script_returns_formatted_script():
+    result = _generate_fix_script(
+        script="var gr = new GlideRecord('incident'); gr.query();",
+        description="Fix assignment groups on open incidents",
+        run_id="abc123",
+    )
+    assert result["success"] is True
+    assert result["execution_method"] == "fix_script"
+    assert result["manual_execution_required"] is True
+    assert "sys.scripts.do" in result["fix_script"]
+    assert "abc123" in result["fix_script"]
+    assert "GlideRecord" in result["fix_script"]
+
+
+def test_run_background_script_fix_script_mode_does_not_call_network():
+    config = _make_config_t4()
+    auth = _make_auth_t4()
+    params = RunBackgroundScriptParams(
+        description=VALID_DESCRIPTION_T4,
+        script="gs.info('x')",
+        execution_method="fix_script",
+    )
+
+    with patch("servicenow_mcp.tools.script_tools.requests.post") as mock_post:
+        result = run_background_script(config, auth, params)
+
+    mock_post.assert_not_called()
+    assert result.success is True
+    assert "sys.scripts.do" in result.direct_output
+
+
+def test_run_background_script_response_includes_update_set_warning():
+    config = _make_config_t4()
+    auth = _make_auth_t4()
+    params = RunBackgroundScriptParams(
+        description=VALID_DESCRIPTION_T4,
+        script="gs.info('x')",
+        execution_method="trigger",
+        acknowledge_update_set_bypass=True,
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 201
+    mock_resp.json.return_value = {"result": {"sys_id": "trig123"}}
+
+    with patch("servicenow_mcp.tools.script_tools.requests.post", return_value=mock_resp):
+        result = run_background_script(config, auth, params)
+
+    assert "update set" in result.message.lower()
