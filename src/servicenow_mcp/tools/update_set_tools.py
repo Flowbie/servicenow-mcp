@@ -10,13 +10,15 @@ sys_update_set architecture blueprint.
 import json
 import logging
 import re
+from collections import Counter
 from typing import Any, Dict, List, Optional, Type, TypeVar, Union
 
 import requests
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.config import ServerConfig
+from servicenow_mcp.utils.response_envelope import SnowResponse
 from servicenow_mcp.utils.update_set_policy import UpdateSetInfo, is_default_update_set
 
 logger = logging.getLogger(__name__)
@@ -271,6 +273,7 @@ if (!currentSysId) {
         RunBackgroundScriptParams(
             description="Read current update set via GlideUpdateSet.getOrCreate() — no writes.",
             script=script,
+            acknowledge_update_set_bypass=True,
         ),
     )
 
@@ -351,6 +354,7 @@ if (!appId) {
         RunBackgroundScriptParams(
             description="Read current application scope via gs.getCurrentApplicationId() — no writes.",
             script=script,
+            acknowledge_update_set_bypass=True,
         ),
     )
 
@@ -427,6 +431,7 @@ if (!found) {{
         RunBackgroundScriptParams(
             description=f"Set application scope to {app_id!r} via gs.setCurrentApplicationId().",
             script=script,
+            acknowledge_update_set_bypass=True,
         ),
     )
 
@@ -522,6 +527,7 @@ if (!us.get(targetSysId)) {{
         RunBackgroundScriptParams(
             description=f"Activate update set {changeset_id} as current via GlideUpdateSet.set() — mirrors UpdateSetAjax.changeUpdateSet().",
             script=script,
+            acknowledge_update_set_bypass=True,
         ),
     )
 
@@ -558,3 +564,272 @@ if (!us.get(targetSysId)) {{
             "is_default": normalized.is_default,
         },
     }
+
+
+# ── New Enhanced Update Set Tools (Task 6) ────────────────────────────────
+
+
+class MoveRecordsToUpdateSetParams(BaseModel):
+    target_update_set_sys_id: str = Field(
+        ..., description="sys_id of the destination update set (must be 'in progress')"
+    )
+    source_update_set_sys_id: Optional[str] = Field(
+        default=None,
+        description="Move all records currently in this source update set to the target.",
+    )
+    record_sys_ids: Optional[List[str]] = Field(
+        default=None,
+        description="Move only these specific sys_update_xml sys_ids.",
+    )
+    time_range_start: Optional[str] = Field(
+        default=None,
+        description="ISO 8601 timestamp. Move records with sys_created_on >= this value.",
+    )
+    time_range_end: Optional[str] = Field(
+        default=None,
+        description="ISO 8601 timestamp. Move records with sys_created_on <= this value.",
+    )
+
+    @model_validator(mode="after")
+    def require_at_least_one_filter(self) -> "MoveRecordsToUpdateSetParams":
+        has_filter = (
+            self.source_update_set_sys_id is not None
+            or self.record_sys_ids is not None
+            or self.time_range_start is not None
+            or self.time_range_end is not None
+        )
+        if not has_filter:
+            raise ValueError(
+                "Provide at least one filter: source_update_set_sys_id, record_sys_ids, "
+                "or time_range_start/time_range_end."
+            )
+        return self
+
+
+class InspectUpdateSetParams(BaseModel):
+    update_set_sys_id: str = Field(..., description="sys_id of the update set to inspect")
+    include_dependencies: bool = Field(
+        default=False,
+        description="Include cross-reference analysis. Slower — requires additional API calls.",
+    )
+
+
+class CloneUpdateSetParams(BaseModel):
+    source_sys_id: str = Field(..., description="sys_id of the update set to clone")
+    new_name: str = Field(..., min_length=3, description="Name for the cloned update set")
+    start_as_in_progress: bool = Field(
+        default=True,
+        description="New update set state. True = 'in progress', False = 'complete'.",
+    )
+
+
+def move_records_to_update_set(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: MoveRecordsToUpdateSetParams,
+) -> dict:
+    headers = auth_manager.get_headers()
+    base_url = f"{config.api_url}/table/sys_update_xml"
+
+    query_parts: List[str] = []
+    if params.source_update_set_sys_id:
+        query_parts.append(f"update_set={params.source_update_set_sys_id}")
+    if params.time_range_start:
+        query_parts.append(f"sys_created_on>={params.time_range_start}")
+    if params.time_range_end:
+        query_parts.append(f"sys_created_on<={params.time_range_end}")
+    if params.record_sys_ids:
+        sys_id_query = "^OR^".join(f"sys_id={sid}" for sid in params.record_sys_ids)
+        query_parts.append(f"({sys_id_query})")
+
+    encoded_query = "^".join(query_parts)
+
+    fetch_resp = requests.get(
+        base_url,
+        headers=headers,
+        params={"sysparm_query": encoded_query, "sysparm_fields": "sys_id,name,type", "sysparm_limit": 1000},
+        timeout=config.timeout,
+    )
+    fetch_resp.raise_for_status()
+    records = fetch_resp.json().get("result", [])
+
+    if not records:
+        return SnowResponse(
+            success=True,
+            data={"moved": 0, "skipped": 0, "errors": []},
+            operation="move_records_to_update_set",
+        ).to_dict()
+
+    moved, errors = 0, []
+    for rec in records:
+        patch_resp = requests.patch(
+            f"{base_url}/{rec['sys_id']}",
+            headers=headers,
+            json={"update_set": params.target_update_set_sys_id},
+            timeout=config.timeout,
+        )
+        if patch_resp.status_code in (200, 201):
+            moved += 1
+        else:
+            errors.append({"sys_id": rec["sys_id"], "name": rec.get("name"), "http_status": patch_resp.status_code})
+
+    return SnowResponse(
+        success=len(errors) == 0,
+        data={"moved": moved, "failed": len(errors), "errors": errors},
+        operation="move_records_to_update_set",
+        warnings=[f"{len(errors)} records failed to move"] if errors else [],
+    ).to_dict()
+
+
+def inspect_update_set(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: InspectUpdateSetParams,
+) -> dict:
+    headers = auth_manager.get_headers()
+    base = config.api_url
+
+    us_resp = requests.get(
+        f"{base}/table/sys_update_set",
+        headers=headers,
+        params={
+            "sysparm_query": f"sys_id={params.update_set_sys_id}",
+            "sysparm_fields": "sys_id,name,state,application,description,sys_created_on",
+            "sysparm_limit": 1,
+        },
+        timeout=config.timeout,
+    )
+    us_resp.raise_for_status()
+    us_records = us_resp.json().get("result", [])
+    if not us_records:
+        return SnowResponse(
+            success=False,
+            error=f"Update set not found: {params.update_set_sys_id}",
+            operation="inspect_update_set",
+        ).to_dict()
+    us = us_records[0]
+
+    xml_resp = requests.get(
+        f"{base}/table/sys_update_xml",
+        headers=headers,
+        params={
+            "sysparm_query": f"update_set={params.update_set_sys_id}",
+            "sysparm_fields": "sys_id,name,type,action,sys_created_on",
+            "sysparm_limit": 1000,
+        },
+        timeout=config.timeout,
+    )
+    xml_resp.raise_for_status()
+    xml_records = xml_resp.json().get("result", [])
+
+    by_type = dict(Counter(r.get("type", "Unknown") for r in xml_records))
+    by_action = dict(Counter(r.get("action", "Unknown") for r in xml_records))
+
+    data: dict = {
+        "update_set": {
+            "sys_id": us.get("sys_id"),
+            "name": us.get("name"),
+            "state": us.get("state"),
+            "application": us.get("application", {}).get("value") if isinstance(us.get("application"), dict) else us.get("application"),
+            "created_on": us.get("sys_created_on"),
+        },
+        "total_records": len(xml_records),
+        "by_type": by_type,
+        "by_action": by_action,
+        "records": xml_records[:50],
+    }
+
+    if len(xml_records) > 50:
+        data["note"] = f"Showing 50 of {len(xml_records)} records. Use query_records on sys_update_xml for the full list."
+
+    return SnowResponse(
+        success=True,
+        data=data,
+        table="sys_update_set",
+        operation="inspect_update_set",
+    ).to_dict()
+
+
+def clone_update_set(
+    config: ServerConfig,
+    auth_manager: AuthManager,
+    params: CloneUpdateSetParams,
+) -> dict:
+    headers = auth_manager.get_headers()
+    base = config.api_url
+
+    src_resp = requests.get(
+        f"{base}/table/sys_update_set",
+        headers=headers,
+        params={
+            "sysparm_query": f"sys_id={params.source_sys_id}",
+            "sysparm_fields": "sys_id,name,application,description",
+            "sysparm_limit": 1,
+        },
+        timeout=config.timeout,
+    )
+    src_resp.raise_for_status()
+    src_list = src_resp.json().get("result", [])
+    if not src_list:
+        return SnowResponse(
+            success=False,
+            error=f"Source update set not found: {params.source_sys_id}",
+            operation="clone_update_set",
+        ).to_dict()
+    source = src_list[0]
+
+    new_state = "in progress" if params.start_as_in_progress else "complete"
+    create_resp = requests.post(
+        f"{base}/table/sys_update_set",
+        headers=headers,
+        json={
+            "name": params.new_name,
+            "application": (source.get("application", {}).get("value") if isinstance(source.get("application"), dict) else source.get("application")) or "",
+            "state": new_state,
+            "description": f"Clone of '{source.get('name')}'. {source.get('description', '')}".strip(),
+        },
+        timeout=config.timeout,
+    )
+    create_resp.raise_for_status()
+    new_us = create_resp.json().get("result", {})
+    new_sys_id = new_us.get("sys_id")
+
+    xml_resp = requests.get(
+        f"{base}/table/sys_update_xml",
+        headers=headers,
+        params={
+            "sysparm_query": f"update_set={params.source_sys_id}",
+            "sysparm_fields": "sys_id",
+            "sysparm_limit": 1000,
+        },
+        timeout=config.timeout,
+    )
+    xml_resp.raise_for_status()
+    xml_records = xml_resp.json().get("result", [])
+
+    copied, errors = 0, []
+    for rec in xml_records:
+        patch_resp = requests.patch(
+            f"{base}/table/sys_update_xml/{rec['sys_id']}",
+            headers=headers,
+            json={"update_set": new_sys_id},
+            timeout=config.timeout,
+        )
+        if patch_resp.status_code in (200, 201):
+            copied += 1
+        else:
+            errors.append(rec["sys_id"])
+
+    return SnowResponse(
+        success=len(errors) == 0,
+        data={
+            "source_update_set_sys_id": params.source_sys_id,
+            "new_update_set_sys_id": new_sys_id,
+            "new_update_set_name": params.new_name,
+            "records_copied": copied,
+            "failed": len(errors),
+        },
+        table="sys_update_set",
+        operation="clone_update_set",
+        warnings=[f"{len(errors)} records failed to copy"] if errors else [],
+    ).to_dict()

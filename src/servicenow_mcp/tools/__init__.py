@@ -14,7 +14,7 @@ from servicenow_mcp.tools.change_tools import (
     reject_change,
     submit_change_for_approval,
 )
-from servicenow_mcp.tools.changeset_tools import (
+from servicenow_mcp.tools.update_set_tools import (
     get_current_scope,
     get_current_update_set,
     get_changeset_details,

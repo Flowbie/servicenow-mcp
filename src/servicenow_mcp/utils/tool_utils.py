@@ -30,12 +30,12 @@ from servicenow_mcp.tools.change_tools import (
 from servicenow_mcp.tools.change_tools import (
     submit_change_for_approval as submit_change_for_approval_tool,
 )
-from servicenow_mcp.tools.changeset_tools import (
+from servicenow_mcp.tools.update_set_tools import (
     GetCurrentScopeParams,
     GetCurrentUpdateSetParams,
     GetChangesetDetailsParams,
 )
-from servicenow_mcp.tools.changeset_tools import (
+from servicenow_mcp.tools.update_set_tools import (
     get_current_scope as get_current_scope_tool,
     get_current_update_set as get_current_update_set_tool,
     get_changeset_details as get_changeset_details_tool,
@@ -260,7 +260,7 @@ from servicenow_mcp.tools.system_tools import (
 from servicenow_mcp.tools.system_tools import (
     get_current_user as get_current_user_tool,
 )
-from servicenow_mcp.tools.changeset_tools import (
+from servicenow_mcp.tools.update_set_tools import (
     SetCurrentScopeParams,
     SetCurrentUpdateSetParams,
     set_current_scope as set_current_scope_tool,

@@ -13,7 +13,7 @@ import requests
 from pydantic import BaseModel, Field
 
 from servicenow_mcp.auth.auth_manager import AuthManager
-from servicenow_mcp.tools.changeset_tools import get_current_update_set
+from servicenow_mcp.tools.update_set_tools import get_current_update_set
 from servicenow_mcp.utils.config import ServerConfig
 from servicenow_mcp.utils.identifier_resolver import resolve_identifier
 from servicenow_mcp.utils.response_envelope import SnowResponse
