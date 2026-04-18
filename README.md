@@ -40,6 +40,30 @@ Use the right MCP for the kind of truth you need. Do not duplicate the same retr
 
 If content exists in the memory index, prefer memory tools for that material; use **servicenow-mcp** when you need authoritative instance state or mutations.
 
+## Three-Tier Development Architecture
+
+Route each ServiceNow operation to the correct tier before writing any code.
+
+| Operation | Tier 1 (NowSDK Fluent) | Tier 2 (MCP REST) | Tier 3 (Fix Script) |
+|-----------|------------------------|--------------------|--------------------|
+| Create flow with logic | YES — full Flow DSL | No — cannot create flows | No |
+| Compile / publish flow | Automatic on deploy | No | YES — manual in Flow Designer |
+| Create table + schema | YES — `Table()` typed columns | Yes — but no version control | No |
+| Business rules | YES — `BusinessRule()` | Yes — create_record on sys_script | No |
+| Catalog items + variables | YES — `CatalogItem()` | Yes — limited UI policy support | Partial |
+| UI Policy action linking | YES — deployed with app | No — REST cannot link actions | YES — `setValue()` script |
+| ACLs | YES — `Acl()` definition | Yes — create_record on sys_security_acl | No |
+| Script includes | YES — with server modules | Yes — create_record on sys_script_include | No |
+| Query live data | No | YES — `query_records` | No |
+| Update existing records | No — creates new metadata | YES — `update_record` | No |
+| Update set management | Automatic on deploy | YES — inspect, move, clone tools | No |
+| Bulk data operations | No | Partial | YES — server-side GlideRecord |
+| Complex GlideRecord ops | No | No | YES — full server-side API |
+
+**Tier 1 tools:** `sdk_scaffold`, `sdk_explain`, `sdk_run_command`
+**Tier 2 tools:** all other MCP tools in this server
+**Tier 3 fallback:** `run_background_script(execution_method='fix_script')`
+
 ## Features
 
 - Connect to ServiceNow instances using various authentication methods (Basic, OAuth, API Key)
@@ -181,9 +205,10 @@ The default `config/tool_packages.yaml` includes the following role-based packag
 -   `catalog_builder`: Table API for catalog tables plus `move_catalog_items` and `get_optimization_recommendations`.
 -   `change_coordinator`: `submit_change_for_approval` / `approve_change` / `reject_change` plus Table API for `change_request` and related rows.
 -   `knowledge_author`: Generic Table API for knowledge tables (`kb_knowledge`, `kb_knowledge_base`, `kb_category`, etc.); see `docs/knowledge_base.md`.
--   `platform_developer`: Flow Designer (`flow_tools`), `run_background_script`, update-set session tools, introspection, and Table API for scripting tables (e.g. `sys_script_include`, `sys_ui_policy`).
--   `system_administrator`: Table API for users/groups/membership rows; role grant/revoke tools; introspection and write-safety tools.
+-   `platform_developer`: Flow Designer (`flow_tools`), `run_background_script`, enhanced update set tools, update-set session tools, SDK tools, introspection, and Table API for scripting tables (e.g. `sys_script_include`, `sys_ui_policy`).
+-   `system_administrator`: Table API for users/groups/membership rows; role grant/revoke tools; enhanced update set tools; introspection and write-safety tools.
 -   `agile_management`: Tools for managing user stories, epics, scrum tasks, and projects.
+-   `sdk_developer`: All three tiers pre-configured — `sdk_scaffold`, `sdk_explain`, `sdk_run_command` (Tier 1) + core Table API + update set tools (Tier 2) + `run_background_script` (Tier 3).
 -   `full`: Includes all available tools (default).
 -   `none`: Includes no tools (except `list_tool_packages`).
 
@@ -209,7 +234,13 @@ This fork **removed** upstream-style MCP tools that were thin facades over the s
 
 `query_records`, `get_record`, `create_record`, `update_record`, `delete_record`
 
-These call `/api/now/table/{table}` and enforce **update-set policy** and **mandatory-field preflight** on writes where configured. Use them for:
+These call `/api/now/table/{table}` and enforce **update-set policy** and **mandatory-field preflight** on writes where configured.
+
+**Dual-mode identifiers:** `get_record`, `update_record`, and `delete_record` accept either a 32-character sys_id or a human-readable ticket number (e.g. `INC0012345`, `CHG0012345`). The tool resolves the ticket number to a sys_id automatically.
+
+**Debug flag:** `query_records` accepts `include_query_info=True` to echo back the exact encoded query sent to ServiceNow — useful for diagnosing empty results or unexpected matches.
+
+Use them for:
 
 - **ITSM:** `incident`, `change_request`, `problem`, `task`, `sc_task`, etc.
 - **Knowledge:** `kb_knowledge_base`, `kb_category`, `kb_knowledge` (see `docs/knowledge_base.md`)
@@ -231,6 +262,70 @@ These call `/api/now/table/{table}` and enforce **update-set policy** and **mand
 ### Flow Designer (`flow_tools`)
 
 Full authoring and test-execution surface for Flow Designer (for example `create_flow`, `clone_flow`, `list_flows`, `publish_flow`, `execute_flow`, `get_flow_execution_detail`, …). Details: `docs/flow_designer.md`.
+
+### Background Script Governance
+
+Background scripts (`run_background_script`) bypass update set capture — changes made by a script **cannot be promoted between instances via update sets**. They are a last resort.
+
+**Before using `run_background_script`, verify that:**
+1. The operation cannot be done via REST (`create_record`, `update_record`, etc.)
+2. Bulk update endpoints or encoded queries cannot accomplish the goal
+3. The change does not need to be promoted to other instances
+
+**Required parameters:**
+- `description` (50+ chars): Explain what the script does AND which REST alternatives were considered and why they are insufficient.
+- `acknowledge_update_set_bypass: true`: Confirm you understand changes won't be captured in update sets.
+
+**Execution modes (`execution_method`):**
+
+| Mode | Description | Use when |
+|------|-------------|----------|
+| `auto` (default) | Tries API → UI in order | Most cases |
+| `trigger` | Fire-and-forget via sys_trigger, no output | Void operations (cache clear, flag set) |
+| `api` | Scripted REST API (requires `script_execution_api_resource_path`) | Configured instances |
+| `ui` | Authenticated UI session | Maximum compatibility |
+| `fix_script` | Generates annotated script for manual execution — does NOT execute | When changes need update set capture |
+
+**Use `fix_script` mode when changes must be promoted:**
+```json
+{
+  "description": "...",
+  "script": "...",
+  "execution_method": "fix_script"
+}
+```
+The response contains a `fix_script` field with a ready-to-paste script for sys.scripts.do.
+
+### Enhanced Update Set Tools
+
+| Tool | Purpose |
+|------|---------|
+| `move_records_to_update_set` | Move sys_update_xml records between sets (by source set, sys_ids, or time range) |
+| `inspect_update_set` | Summary: record count, breakdown by type and action, dependency analysis |
+| `clone_update_set` | Clone a set — creates a backup before merging or promoting |
+
+These complement the existing `get_current_update_set`, `set_current_update_set`, and `get_changeset_details` tools.
+
+### Tier 1: ServiceNow SDK Tools (@servicenow/sdk)
+
+Requires Node.js 20+ and `@servicenow/sdk` v4.6.0+. Run the `now-sdk-setup` skill to verify your environment.
+
+| Tool | Purpose |
+|------|---------|
+| `sdk_scaffold` | Create a new Fluent project with `now.config.json`, `package.json`, and typed templates |
+| `sdk_explain` | Fetch SDK documentation. Always `peek=True` first to preview, then full read if relevant. |
+| `sdk_run_command` | Run `build` or `deploy` against a local project. Defaults to `dry_run=True`. |
+
+**Typical Tier 1 workflow:**
+1. `sdk_scaffold` — create project with scope + artifact templates
+2. Edit templates with your definitions
+3. `sdk_explain` — look up API signatures as you write
+4. `sdk_run_command(command='build', dry_run=True)` — validate
+5. `sdk_run_command(command='deploy', dry_run=False)` — deploy
+6. Use Tier 2 tools to verify deployment (`query_records`, `inspect_update_set`)
+7. If flows were deployed: compile manually in Flow Designer (Tier 3 fallback)
+
+**Package:** `sdk_developer` — includes all three tiers pre-configured. Set `MCP_TOOL_PACKAGE=sdk_developer`.
 
 ### CMDB relationship tools
 

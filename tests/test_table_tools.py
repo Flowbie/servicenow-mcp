@@ -8,10 +8,12 @@ from servicenow_mcp.tools.table_tools import (
     CreateRecordParams,
     DeleteRecordParams,
     GetRecordParams,
+    QueryRecordsParams,
     UpdateRecordParams,
     create_record,
     delete_record,
     get_record,
+    query_records,
     update_record,
 )
 from servicenow_mcp.utils.config import AuthConfig, AuthType, BasicAuthConfig, ServerConfig
@@ -87,8 +89,9 @@ def test_update_record_blocks_required_table_on_default_update_set(mock_get_curr
 
 
 @patch("servicenow_mcp.tools.table_tools.get_current_update_set")
+@patch("servicenow_mcp.tools.table_tools.resolve_identifier", side_effect=lambda cfg, auth, table, sid: sid)
 @patch("servicenow_mcp.tools.table_tools.requests.delete")
-def test_delete_record_allows_exempt_data_table(mock_delete, mock_get_current_update_set):
+def test_delete_record_allows_exempt_data_table(mock_delete, mock_resolve, mock_get_current_update_set):
     mock_get_current_update_set.return_value = {"success": False, "message": "not needed"}
     mock_delete.return_value = _dict_response({})
 
@@ -223,8 +226,9 @@ def test_create_record_checks_task_parent_for_task_hierarchy_table(mock_get, moc
 
 
 @patch("servicenow_mcp.tools.table_tools.get_current_update_set")
+@patch("servicenow_mcp.tools.table_tools.resolve_identifier", side_effect=lambda cfg, auth, table, sid: sid)
 @patch("servicenow_mcp.tools.table_tools.requests.patch")
-def test_update_record_does_not_run_mandatory_field_check(mock_patch, mock_get_update_set):
+def test_update_record_does_not_run_mandatory_field_check(mock_patch, mock_resolve, mock_get_update_set):
     """update_record is a partial PATCH — mandatory-field check must not run."""
     mock_get_update_set.return_value = {"success": False}
     mock_patch.return_value = _dict_response({"result": {"sys_id": "abc"}})
@@ -239,9 +243,10 @@ def test_update_record_does_not_run_mandatory_field_check(mock_patch, mock_get_u
     mock_patch.assert_called_once()
 
 
+@patch("servicenow_mcp.tools.table_tools.resolve_identifier", side_effect=lambda cfg, auth, table, sid: sid)
 @patch("servicenow_mcp.tools.table_tools.requests.get")
-def test_get_record_not_found_returns_message_key(mock_get):
-    """get_record must return 'message' on error, not 'error' (platform contract)."""
+def test_get_record_not_found_returns_error_key(mock_get, mock_resolve):
+    """get_record must return 'error' (SnowResponse envelope contract)."""
     resp = MagicMock()
     resp.raise_for_status.side_effect = requests_lib.HTTPError("404 Not Found")
     resp.text = "Not Found"
@@ -254,12 +259,12 @@ def test_get_record_not_found_returns_message_key(mock_get):
     )
 
     assert result["success"] is False
-    assert "message" in result, f"Expected 'message' key, got keys: {list(result.keys())}"
-    assert "error" not in result
+    assert "error" in result
 
 
+@patch("servicenow_mcp.tools.table_tools.resolve_identifier", side_effect=lambda cfg, auth, table, sid: sid)
 @patch("servicenow_mcp.tools.table_tools.requests.get")
-def test_get_record_success(mock_get):
+def test_get_record_success(mock_get, mock_resolve):
     mock_get.return_value = _dict_response(
         {"result": {"sys_id": "abc123", "short_description": "Test"}}
     )
@@ -271,4 +276,156 @@ def test_get_record_success(mock_get):
     )
 
     assert result["success"] is True
-    assert result["record"]["sys_id"] == "abc123"
+    assert result["data"]["sys_id"] == "abc123"
+
+
+# ── Task 5: Envelope + identifier resolver tests ──────────────────────────
+
+def _make_config_t5():
+    config = MagicMock()
+    config.api_url = "https://dev.service-now.com/api/now"
+    config.instance_url = "https://dev.service-now.com"
+    config.timeout = 30
+    return config
+
+
+def _make_auth_t5():
+    auth = MagicMock()
+    auth.get_headers.return_value = {"Authorization": "Basic dGVzdA=="}
+    return auth
+
+
+def _mock_get_response(data):
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.raise_for_status = MagicMock()
+    resp.json.return_value = data
+    return resp
+
+
+def test_get_record_resolves_ticket_number_to_sys_id():
+    config = _make_config_t5()
+    auth = _make_auth_t5()
+    resolved_sys_id = "a" * 32
+
+    record_resp = _mock_get_response({"result": {"sys_id": resolved_sys_id, "number": "INC0012345"}})
+
+    with patch("servicenow_mcp.tools.table_tools.resolve_identifier", return_value=resolved_sys_id) as mock_resolve, \
+         patch("servicenow_mcp.tools.table_tools.requests.get", return_value=record_resp):
+        result = get_record(config, auth, GetRecordParams(table="incident", sys_id="INC0012345"))
+
+    mock_resolve.assert_called_once_with(config, auth, "incident", "INC0012345")
+    assert result["success"] is True
+    assert result["table"] == "incident"
+
+
+def test_get_record_result_includes_envelope_fields():
+    config = _make_config_t5()
+    auth = _make_auth_t5()
+    sys_id = "b" * 32
+    record_resp = _mock_get_response({"result": {"sys_id": sys_id}})
+
+    with patch("servicenow_mcp.tools.table_tools.resolve_identifier", return_value=sys_id), \
+         patch("servicenow_mcp.tools.table_tools.requests.get", return_value=record_resp):
+        result = get_record(config, auth, GetRecordParams(table="incident", sys_id=sys_id))
+
+    assert "success" in result
+    assert "data" in result
+    assert result["operation"] == "get_record"
+
+
+def test_update_record_resolves_ticket_number():
+    config = _make_config_t5()
+    auth = _make_auth_t5()
+    resolved_sys_id = "c" * 32
+
+    patch_resp = MagicMock()
+    patch_resp.status_code = 200
+    patch_resp.raise_for_status = MagicMock()
+    patch_resp.json.return_value = {"result": {"sys_id": resolved_sys_id}}
+
+    with patch("servicenow_mcp.tools.table_tools.resolve_identifier", return_value=resolved_sys_id) as mock_resolve, \
+         patch("servicenow_mcp.tools.table_tools.requests.patch", return_value=patch_resp), \
+         patch("servicenow_mcp.tools.table_tools._enforce_update_set_policy", return_value=None):
+        result = update_record(
+            config, auth,
+            UpdateRecordParams(table="incident", sys_id="INC0012345", fields={"state": "6"}),
+        )
+
+    mock_resolve.assert_called_once_with(config, auth, "incident", "INC0012345")
+    assert result["success"] is True
+
+
+def test_query_records_include_query_info_echoes_encoded_query():
+    config = _make_config_t5()
+    auth = _make_auth_t5()
+    resp = _mock_get_response({"result": []})
+
+    with patch("servicenow_mcp.tools.table_tools.requests.get", return_value=resp):
+        result = query_records(
+            config, auth,
+            QueryRecordsParams(table="incident", query="active=true^state=1", include_query_info=True),
+        )
+
+    assert "query_info" in result
+    assert result["query_info"]["encoded_query"] == "active=true^state=1"
+    assert result["query_info"]["table"] == "incident"
+
+
+def test_query_records_no_query_info_by_default():
+    config = _make_config_t5()
+    auth = _make_auth_t5()
+    resp = _mock_get_response({"result": []})
+
+    with patch("servicenow_mcp.tools.table_tools.requests.get", return_value=resp):
+        result = query_records(
+            config, auth,
+            QueryRecordsParams(table="incident", query="active=true"),
+        )
+
+    assert "query_info" not in result
+
+
+def test_get_record_returns_error_when_ticket_not_found():
+    config = _make_config_t5()
+    auth = _make_auth_t5()
+
+    with patch("servicenow_mcp.tools.table_tools.resolve_identifier",
+               side_effect=ValueError("Record not found: incident/INC9999999")):
+        result = get_record(config, auth, GetRecordParams(table="incident", sys_id="INC9999999"))
+
+    assert result["success"] is False
+    assert "not found" in result["error"].lower()
+    assert result["operation"] == "get_record"
+
+
+def test_update_record_returns_error_when_ticket_not_found():
+    config = _make_config_t5()
+    auth = _make_auth_t5()
+
+    with patch("servicenow_mcp.tools.table_tools.resolve_identifier",
+               side_effect=ValueError("Record not found: incident/INC9999999")), \
+         patch("servicenow_mcp.tools.table_tools._enforce_update_set_policy", return_value=None):
+        result = update_record(
+            config, auth,
+            UpdateRecordParams(table="incident", sys_id="INC9999999", fields={"state": "6"}),
+        )
+
+    assert result["success"] is False
+    assert "not found" in result["error"].lower()
+
+
+def test_delete_record_returns_error_when_ticket_not_found():
+    config = _make_config_t5()
+    auth = _make_auth_t5()
+
+    with patch("servicenow_mcp.tools.table_tools.resolve_identifier",
+               side_effect=ValueError("Record not found: incident/INC9999999")), \
+         patch("servicenow_mcp.tools.table_tools._enforce_update_set_policy", return_value=None):
+        result = delete_record(
+            config, auth,
+            DeleteRecordParams(table="incident", sys_id="INC9999999"),
+        )
+
+    assert result["success"] is False
+    assert "not found" in result["error"].lower()

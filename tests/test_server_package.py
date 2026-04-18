@@ -87,3 +87,38 @@ def test_call_tool_raises_on_success_false(monkeypatch):
 
     with pytest.raises(RuntimeError, match="test error"):
         asyncio.run(sn._call_tool_impl(tool_name, args))
+
+
+def test_new_update_set_tools_registered():
+    from servicenow_mcp.utils.tool_utils import get_tool_definitions
+    tools = get_tool_definitions()
+    assert "move_records_to_update_set" in tools
+    assert "inspect_update_set" in tools
+    assert "clone_update_set" in tools
+
+
+def test_sdk_tools_registered():
+    from servicenow_mcp.utils.tool_utils import get_tool_definitions
+    tools = get_tool_definitions()
+    assert "sdk_scaffold" in tools
+    assert "sdk_explain" in tools
+    assert "sdk_run_command" in tools
+
+
+def test_all_registered_tool_definitions_are_5_tuples():
+    from servicenow_mcp.utils.tool_utils import get_tool_definitions
+    tools = get_tool_definitions()
+    new_tools = [
+        "move_records_to_update_set",
+        "inspect_update_set",
+        "clone_update_set",
+        "sdk_scaffold",
+        "sdk_explain",
+        "sdk_run_command",
+    ]
+    for name in new_tools:
+        defn = tools[name]
+        assert len(defn) == 5, f"{name} definition should be a 5-tuple"
+        func, params_model, return_type, description, serialization = defn
+        assert callable(func), f"{name} first element must be callable"
+        assert isinstance(description, str) and len(description) > 10, f"{name} needs a real description"

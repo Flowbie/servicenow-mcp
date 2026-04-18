@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from servicenow_mcp.auth.auth_manager import AuthManager
-from servicenow_mcp.tools.changeset_tools import (
+from servicenow_mcp.tools.update_set_tools import (
     add_file_to_changeset,
     commit_changeset,
     create_changeset,

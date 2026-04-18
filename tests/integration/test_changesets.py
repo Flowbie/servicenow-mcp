@@ -7,7 +7,7 @@ Run with: SN_INTEGRATION_TESTS=1 pytest tests/integration/test_changesets.py -v 
 import json
 import pytest
 
-from servicenow_mcp.tools.changeset_tools import (
+from servicenow_mcp.tools.update_set_tools import (
     get_changeset_details,
     GetChangesetDetailsParams,
 )

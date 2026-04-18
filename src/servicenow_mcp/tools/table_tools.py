@@ -13,8 +13,10 @@ import requests
 from pydantic import BaseModel, Field
 
 from servicenow_mcp.auth.auth_manager import AuthManager
-from servicenow_mcp.tools.changeset_tools import get_current_update_set
+from servicenow_mcp.tools.update_set_tools import get_current_update_set
 from servicenow_mcp.utils.config import ServerConfig
+from servicenow_mcp.utils.identifier_resolver import resolve_identifier
+from servicenow_mcp.utils.response_envelope import SnowResponse
 from servicenow_mcp.utils.update_set_policy import (
     UpdateSetInfo,
     assert_update_set_compliance_for_write,
@@ -167,6 +169,14 @@ class QueryRecordsParams(BaseModel):
         default="asc",
         description="Sort direction: 'asc' or 'desc'. Default 'asc'.",
     )
+    include_query_info: bool = Field(
+        default=False,
+        description=(
+            "If True, include 'query_info' in the response showing the exact encoded query "
+            "sent to ServiceNow, the table queried, and the limit applied. "
+            "Use this to debug empty results or unexpected matches."
+        ),
+    )
 
 
 def query_records(
@@ -204,12 +214,24 @@ def query_records(
         )
         response.raise_for_status()
         records: List[Dict] = response.json().get("result", [])
-        return {
+        result = {
             "success": True,
             "table": params.table,
-            "count": len(records),
-            "records": records,
+            "operation": "query_records",
+            "data": {
+                "count": len(records),
+                "records": records,
+            },
         }
+        if params.include_query_info:
+            result["query_info"] = {
+                "table": params.table,
+                "encoded_query": params.query or "",
+                "limit": params.limit,
+                "offset": params.offset,
+                "fields": params.fields,
+            }
+        return result
     except requests.RequestException as e:
         body = getattr(e, "response", None)
         body_text = (body.text[:2000] if body and hasattr(body, "text") else "") or ""
@@ -245,7 +267,17 @@ def get_record(
     """
     Retrieve a single record from any ServiceNow table by sys_id.
     """
-    url = f"{config.api_url}/table/{params.table}/{params.sys_id}"
+    try:
+        sys_id = resolve_identifier(config, auth_manager, params.table, params.sys_id)
+    except ValueError as e:
+        return SnowResponse(
+            success=False,
+            error=str(e),
+            table=params.table,
+            operation="get_record",
+        ).to_dict()
+
+    url = f"{config.api_url}/table/{params.table}/{sys_id}"
     query_params: Dict[str, Any] = {}
     if params.fields:
         query_params["sysparm_fields"] = params.fields
@@ -259,22 +291,22 @@ def get_record(
         )
         response.raise_for_status()
         record = response.json().get("result", {})
-        return {
-            "success": True,
-            "table": params.table,
-            "sys_id": params.sys_id,
-            "record": record,
-        }
+        return SnowResponse(
+            success=True,
+            data=record,
+            table=params.table,
+            operation="get_record",
+        ).to_dict()
     except requests.RequestException as e:
         body = getattr(e, "response", None)
         body_text = (body.text[:2000] if body and hasattr(body, "text") else "") or ""
-        logger.error("get_record | table=%s | sys_id=%s | error=%s", params.table, params.sys_id, e)
-        return {
-            "success": False,
-            "table": params.table,
-            "sys_id": params.sys_id,
-            "message": str(e) + (f" | response: {body_text}" if body_text else ""),
-        }
+        logger.error("get_record | table=%s | sys_id=%s | error=%s", params.table, sys_id, e)
+        return SnowResponse(
+            success=False,
+            error=str(e) + (f" | response: {body_text}" if body_text else ""),
+            table=params.table,
+            operation="get_record",
+        ).to_dict()
 
 
 # ---------------------------------------------------------------------------
@@ -386,7 +418,16 @@ def update_record(
     policy_error = _enforce_update_set_policy(config, auth_manager, params.table)
     if policy_error:
         return policy_error
-    url = f"{config.api_url}/table/{params.table}/{params.sys_id}"
+    try:
+        sys_id = resolve_identifier(config, auth_manager, params.table, params.sys_id)
+    except ValueError as e:
+        return {
+            "success": False,
+            "table": params.table,
+            "sys_id": params.sys_id,
+            "error": str(e),
+        }
+    url = f"{config.api_url}/table/{params.table}/{sys_id}"
     try:
         response = requests.patch(
             url,
@@ -399,17 +440,17 @@ def update_record(
         return {
             "success": True,
             "table": params.table,
-            "sys_id": params.sys_id,
+            "sys_id": sys_id,
             "record": record,
         }
     except requests.RequestException as e:
         body = getattr(e, "response", None)
         body_text = (body.text[:2000] if body and hasattr(body, "text") else "") or ""
-        logger.error("update_record | table=%s | sys_id=%s | error=%s", params.table, params.sys_id, e)
+        logger.error("update_record | table=%s | sys_id=%s | error=%s", params.table, sys_id, e)
         return {
             "success": False,
             "table": params.table,
-            "sys_id": params.sys_id,
+            "sys_id": sys_id,
             "error": str(e) + (f" | response: {body_text}" if body_text else ""),
         }
 
@@ -439,7 +480,16 @@ def delete_record(
     policy_error = _enforce_update_set_policy(config, auth_manager, params.table)
     if policy_error:
         return policy_error
-    url = f"{config.api_url}/table/{params.table}/{params.sys_id}"
+    try:
+        sys_id = resolve_identifier(config, auth_manager, params.table, params.sys_id)
+    except ValueError as e:
+        return {
+            "success": False,
+            "table": params.table,
+            "sys_id": params.sys_id,
+            "error": str(e),
+        }
+    url = f"{config.api_url}/table/{params.table}/{sys_id}"
     try:
         response = requests.delete(
             url,
@@ -450,16 +500,16 @@ def delete_record(
         return {
             "success": True,
             "table": params.table,
-            "sys_id": params.sys_id,
-            "message": f"Record {params.sys_id} deleted from {params.table}.",
+            "sys_id": sys_id,
+            "message": f"Record {sys_id} deleted from {params.table}.",
         }
     except requests.RequestException as e:
         body = getattr(e, "response", None)
         body_text = (body.text[:2000] if body and hasattr(body, "text") else "") or ""
-        logger.error("delete_record | table=%s | sys_id=%s | error=%s", params.table, params.sys_id, e)
+        logger.error("delete_record | table=%s | sys_id=%s | error=%s", params.table, sys_id, e)
         return {
             "success": False,
             "table": params.table,
-            "sys_id": params.sys_id,
+            "sys_id": sys_id,
             "error": str(e) + (f" | response: {body_text}" if body_text else ""),
         }

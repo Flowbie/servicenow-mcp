@@ -22,10 +22,10 @@ import re
 import uuid
 from datetime import datetime, timezone
 from html.parser import HTMLParser
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import requests
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.utils.config import AuthType, ServerConfig
@@ -308,36 +308,52 @@ def _run_via_scripted_api(
 
 
 class RunBackgroundScriptParams(BaseModel):
-    """Parameters for run_background_script."""
-
     description: str = Field(
         ...,
+        min_length=50,
         description=(
-            "1-3 sentence summary of what this script does, what it reads or modifies, "
-            "and why it is being run. Shown in the Claude Code tool call display and "
-            "prepended to the result so both the invocation and output are self-documenting. "
-            "Example: 'Queries sys_hub_flow_version for flow sys_id X to inspect its trigger "
-            "payload. Reads payload field only — no writes.'"
+            "Mandatory justification (50+ chars): what this script does AND why REST API cannot "
+            "accomplish this goal. List the specific REST endpoints/tools considered and explain "
+            "why each is insufficient. "
+            "IMPORTANT: background scripts bypass update set capture — changes WILL NOT be "
+            "promotable via update sets. Use execution_method='fix_script' for changes that "
+            "must be promoted between instances."
         ),
     )
-    script: str = Field(
-        ...,
+    script: str = Field(..., description="JavaScript to execute server-side via GlideRecord/GlideSystem APIs")
+    scope: str = Field(default="global", description="Application scope context for the script")
+    execution_method: Literal["auto", "trigger", "api", "ui", "fix_script"] = Field(
+        default="auto",
         description=(
-            "JavaScript server-side script to execute on the ServiceNow instance. "
-            "Runs in admin context via sys.scripts.do (same as the Background Script "
-            "module in the ServiceNow UI). "
-            "OUTPUT — always use gs.info() with the __MFCP_RUN_ID tag for reliable capture: "
-            "gs.info('MyModule | value=' + result + ' | run_id=' + __MFCP_RUN_ID). "
-            "Tagged entries are extracted from syslog and returned in direct_output. "
-            "Do NOT use gs.print() — it is only captured via the sys.scripts.do UI path "
-            "and returns no output when the Scripted REST API execution path is active. "
-            "The variable __MFCP_RUN_ID is injected at the top of every script automatically."
+            "How to execute the script. "
+            "'auto': tries api → ui in order (default). "
+            "'trigger': fire-and-forget via sys_trigger table — no output returned, use for void ops. "
+            "'api': Scripted REST API endpoint (requires script_execution_api_resource_path in config). "
+            "'ui': Authenticated UI session via sys.scripts.do (slowest, most compatible). "
+            "'fix_script': do NOT execute — return a formatted, annotated script for manual execution "
+            "in ServiceNow Script editor. Use this when changes need update set capture."
         ),
     )
-    scope: str = Field(
-        "global",
-        description="Transaction scope for script execution. Default: 'global'.",
+    acknowledge_update_set_bypass: bool = Field(
+        default=False,
+        description=(
+            "Set True to confirm you understand that changes made by this script WILL NOT appear "
+            "in the active update set and CANNOT be promoted between instances via update sets. "
+            "Required for all execution_method values except 'fix_script'. "
+            "If the change needs to be promoted, use execution_method='fix_script' instead."
+        ),
     )
+
+    @model_validator(mode="after")
+    def require_acknowledgement_for_automated_execution(self) -> "RunBackgroundScriptParams":
+        if self.execution_method != "fix_script" and not self.acknowledge_update_set_bypass:
+            raise ValueError(
+                "acknowledge_update_set_bypass must be True when using automated execution. "
+                "Background scripts bypass update set capture and cannot be promoted between "
+                "instances via update sets. If this change needs promotion, use "
+                "execution_method='fix_script' to generate a script for manual execution instead."
+            )
+        return self
 
 
 class SyslogEntry(BaseModel):
@@ -365,6 +381,99 @@ class RunBackgroundScriptResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _run_via_trigger(config, auth_manager, script: str, run_id: str) -> dict:
+    """
+    Execute script as a fire-and-forget sys_trigger scheduled job.
+    No output is returned — use for void operations.
+    """
+    wrapped = (
+        f"var __MFCP_RUN_ID = '{run_id}';\n"
+        f"gs.info('MFCP | TRIGGER_START | run_id=' + __MFCP_RUN_ID);\n"
+        f"try {{\n"
+        f"{script}\n"
+        f"}} catch (__err) {{\n"
+        f"  gs.error('MFCP | TRIGGER_ERROR | error=' + __err + ' | run_id=' + __MFCP_RUN_ID);\n"
+        f"}}\n"
+        f"gs.info('MFCP | TRIGGER_END | run_id=' + __MFCP_RUN_ID);\n"
+    )
+
+    url = f"{config.instance_url}/api/now/table/sys_trigger"
+    headers = auth_manager.get_headers()
+    payload = {
+        "name": f"MFCP {run_id[:8]}",
+        "script": wrapped,
+        "trigger_type": "0",
+        "active": "true",
+        "run_start": "now",
+    }
+
+    resp = requests.post(url, headers=headers, json=payload, timeout=config.timeout)
+    if resp.status_code in (200, 201):
+        trigger_sys_id = resp.json().get("result", {}).get("sys_id", "")
+        return {
+            "success": True,
+            "execution_method": "trigger",
+            "run_id": run_id,
+            "trigger_sys_id": trigger_sys_id,
+            "message": (
+                f"Script queued via sys_trigger (async — no output). "
+                f"Changes made are NOT captured in the active update set. "
+                f"Check syslog for run_id={run_id} to confirm execution."
+            ),
+        }
+    return {
+        "success": False,
+        "execution_method": "trigger",
+        "run_id": run_id,
+        "message": f"sys_trigger creation failed: HTTP {resp.status_code}. Response: {resp.text[:200]}",
+    }
+
+
+def _generate_fix_script(script: str, description: str, run_id: str) -> dict:
+    """
+    Generate an annotated fix script for manual execution. Does NOT execute anything.
+    Use when automated execution would bypass update set capture for configuration changes.
+    """
+    formatted = (
+        f"/**\n"
+        f" * MFCP Generated Fix Script\n"
+        f" * Run ID : {run_id}\n"
+        f" * Purpose: {description}\n"
+        f" *\n"
+        f" * HOW TO EXECUTE:\n"
+        f" * 1. Open ServiceNow and navigate to: sys.scripts.do\n"
+        f" *    (System Definition > Scripts - Background)\n"
+        f" * 2. Set the correct Application scope in the top-right scope selector.\n"
+        f" * 3. Paste the script below into the editor.\n"
+        f" * 4. Click 'Run script' and review the output.\n"
+        f" *\n"
+        f" * NOTE: If this change must be captured in an update set:\n"
+        f" *   - Set your active update set BEFORE running.\n"
+        f" *   - The script itself is not captured — only the records it creates/modifies.\n"
+        f" */\n\n"
+        f"var __MFCP_RUN_ID = '{run_id}';\n"
+        f"gs.info('MFCP | FIX_SCRIPT_START | run_id=' + __MFCP_RUN_ID);\n"
+        f"try {{\n"
+        f"{script}\n"
+        f"}} catch (__err) {{\n"
+        f"  gs.error('MFCP | FIX_SCRIPT_ERROR | error=' + __err + ' | run_id=' + __MFCP_RUN_ID);\n"
+        f"}}\n"
+        f"gs.info('MFCP | FIX_SCRIPT_END | run_id=' + __MFCP_RUN_ID);\n"
+    )
+    return {
+        "success": True,
+        "execution_method": "fix_script",
+        "manual_execution_required": True,
+        "run_id": run_id,
+        "fix_script": formatted,
+        "message": (
+            "Fix script generated — manual execution required. "
+            "Copy the fix_script field and paste into sys.scripts.do. "
+            "Changes made by the script CAN be captured in an update set if one is active at run time."
+        ),
+    }
+
+
 def run_background_script(
     config: ServerConfig,
     auth_manager: AuthManager,
@@ -386,6 +495,31 @@ def run_background_script(
         RunBackgroundScriptResult with direct output and syslog entries.
     """
     run_id = uuid.uuid4().hex[:12]
+
+    # ── Tier 0: Fix script generation (no network calls) ──────────────────────
+    if params.execution_method == "fix_script":
+        result = _generate_fix_script(params.script, params.description, run_id)
+        return RunBackgroundScriptResult(
+            success=True,
+            run_id=run_id,
+            http_status=0,
+            direct_output=result["fix_script"],
+            syslog_entries=[],
+            message=result["message"],
+        )
+
+    # ── Tier 1: sys_trigger (fire-and-forget, no output) ──────────────────────
+    if params.execution_method == "trigger":
+        result = _run_via_trigger(config, auth_manager, params.script, run_id)
+        return RunBackgroundScriptResult(
+            success=result["success"],
+            run_id=run_id,
+            http_status=0,
+            direct_output="",
+            syslog_entries=[],
+            message=result["message"],
+        )
+
     script_block = _format_script_code_block(params.script)
 
     # Indent user script and inject into wrapper
@@ -435,6 +569,7 @@ def run_background_script(
                 f"{len(syslog_entries)} syslog entries captured. "
                 f"Include '__MFCP_RUN_ID' in gs.info() calls to tag entries for this run.\n"
                 f"{script_block}"
+                f" NOTE: Changes made by this script are NOT captured in the active update set."
             ),
         )
 
@@ -572,6 +707,7 @@ def run_background_script(
             f"(may include concurrent instance activity). "
             f"Include '__MFCP_RUN_ID' in gs.info() calls to tag entries for this run.\n"
             f"{script_block}"
+            f" NOTE: Changes made by this script are NOT captured in the active update set."
         ),
     )
 

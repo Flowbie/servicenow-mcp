@@ -11,6 +11,9 @@ Covers four behaviors:
 import unittest
 from unittest.mock import MagicMock, patch, call
 
+import pytest
+from pydantic import ValidationError
+
 from servicenow_mcp.auth.auth_manager import AuthManager
 from servicenow_mcp.tools.script_tools import (
     RunBackgroundScriptParams,
@@ -227,7 +230,7 @@ class TestRunBackgroundScriptAuthGuard(unittest.TestCase):
         )
         config = _make_config()
         auth_manager = _make_auth_manager()
-        params = RunBackgroundScriptParams(description="Test script.", script="gs.print('hello');")
+        params = RunBackgroundScriptParams(description="Testing authentication failure handling in the script execution path", script="gs.print('hello');", acknowledge_update_set_bypass=True)
 
         # After the fix, run_background_script must return early with success=False
         # without making any network calls when session_failure contains "session_not_authenticated"
@@ -290,7 +293,7 @@ class TestRunBackgroundScriptTokenPlacement(unittest.TestCase):
 
         config = _make_config()
         auth_manager = _make_auth_manager()
-        params = RunBackgroundScriptParams(description="Test script.", script="gs.print('hello world');")
+        params = RunBackgroundScriptParams(description="Testing X-UserToken header placement in CSRF token handling", script="gs.print('hello world');", acknowledge_update_set_bypass=True)
 
         result = run_background_script(config, auth_manager, params)
 
@@ -352,7 +355,7 @@ class TestRunBackgroundScriptTokenPlacement(unittest.TestCase):
 
         config = _make_config()
         auth_manager = _make_auth_manager()
-        params = RunBackgroundScriptParams(description="Test script.", script="gs.print('output');")
+        params = RunBackgroundScriptParams(description="Testing X-UserToken header omission when CSRF token is missing", script="gs.print('output');", acknowledge_update_set_bypass=True)
 
         run_background_script(config, auth_manager, params)
 
@@ -403,7 +406,7 @@ class TestRunBackgroundScriptDirectOutput(unittest.TestCase):
 
         config = _make_config()
         auth_manager = _make_auth_manager()
-        params = RunBackgroundScriptParams(description="Test script.", script="gs.print('hello from gs.print');")
+        params = RunBackgroundScriptParams(description="Testing gs.print output capture in script execution integration test", script="gs.print('hello from gs.print');", acknowledge_update_set_bypass=True)
 
         result = run_background_script(config, auth_manager, params)
 
@@ -442,8 +445,9 @@ class TestRunBackgroundScriptImports(unittest.TestCase):
         config = _make_config()
         auth = _make_auth_manager()
         params = RunBackgroundScriptParams(
-            description="regression test — no workbench",
+            description="regression test — no workbench configured, testing os import availability",
             script="gs.info('test');",
+            acknowledge_update_set_bypass=True,
         )
 
         # Patch the HTTP calls so no real network request is made.
@@ -482,8 +486,9 @@ class TestRunBackgroundScriptImports(unittest.TestCase):
         config = _make_config()
         auth = _make_auth_manager()
         params = RunBackgroundScriptParams(
-            description="regression test — workbench present",
+            description="regression test — workbench present, testing os import evaluation in approval gate",
             script="gs.info('test');",
+            acknowledge_update_set_bypass=True,
         )
 
         try:
@@ -503,5 +508,177 @@ class TestRunBackgroundScriptImports(unittest.TestCase):
             os.environ.pop("WORKBENCH_URL", None)
 
 
+# ── Task 3: Guardrail tests ────────────────────────────────────────────────
+
+VALID_DESCRIPTION = (
+    "Bulk-update 500 incidents to set assignment_group because the REST PATCH endpoint "
+    "processes one record per request and would require 500 sequential calls with no "
+    "transaction guarantee. GlideRecord iteration with setWorkflow(false) is required."
+)
+
+
+def test_short_description_rejected():
+    with pytest.raises(ValidationError, match="String should have at least 50 characters"):
+        RunBackgroundScriptParams(
+            description="Too short",
+            script="gs.info('x')",
+            acknowledge_update_set_bypass=True,
+        )
+
+
+def test_automated_execution_requires_acknowledgement():
+    with pytest.raises(ValidationError, match="acknowledge_update_set_bypass"):
+        RunBackgroundScriptParams(
+            description=VALID_DESCRIPTION,
+            script="gs.info('x')",
+            execution_method="auto",
+            acknowledge_update_set_bypass=False,
+        )
+
+
+def test_fix_script_mode_does_not_require_acknowledgement():
+    params = RunBackgroundScriptParams(
+        description=VALID_DESCRIPTION,
+        script="gs.info('x')",
+        execution_method="fix_script",
+        # acknowledge_update_set_bypass left at default False — must be OK
+    )
+    assert params.execution_method == "fix_script"
+    assert params.acknowledge_update_set_bypass is False
+
+
+def test_valid_automated_params_accepted():
+    params = RunBackgroundScriptParams(
+        description=VALID_DESCRIPTION,
+        script="gs.info('hello')",
+        execution_method="auto",
+        acknowledge_update_set_bypass=True,
+    )
+    assert params.description == VALID_DESCRIPTION
+    assert params.acknowledge_update_set_bypass is True
+
+
+def test_trigger_execution_method_accepted():
+    params = RunBackgroundScriptParams(
+        description=VALID_DESCRIPTION,
+        script="gs.info('x')",
+        execution_method="trigger",
+        acknowledge_update_set_bypass=True,
+    )
+    assert params.execution_method == "trigger"
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+# ── Task 4: Fix script generation + tier wiring ───────────────────────────
+import uuid
+from servicenow_mcp.tools.script_tools import (
+    _run_via_trigger,
+    _generate_fix_script,
+)
+
+VALID_DESCRIPTION_T4 = (
+    "Bulk-update incidents via GlideRecord because REST PATCH requires one call per record "
+    "and there is no bulk conditional update endpoint. setWorkflow(false) is required to "
+    "suppress business rules during the data fix."
+)
+
+
+def _make_config_t4(with_api_path=False):
+    config = MagicMock()
+    config.api_url = "https://dev.service-now.com/api/now"
+    config.timeout = 30
+    config.script_execution_api_resource_path = "/api/x_test/mfcp/run" if with_api_path else None
+    config.instance_url = "https://dev.service-now.com"
+    return config
+
+
+def _make_auth_t4():
+    auth = MagicMock()
+    auth.get_headers.return_value = {"Authorization": "Basic dGVzdA=="}
+    return auth
+
+
+def test_run_via_trigger_creates_sys_trigger_record():
+    config = _make_config_t4()
+    auth = _make_auth_t4()
+    run_id = uuid.uuid4().hex
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 201
+    mock_resp.json.return_value = {"result": {"sys_id": "trigger_sys_id_here"}}
+
+    with patch("servicenow_mcp.tools.script_tools.requests.post", return_value=mock_resp) as mock_post:
+        result = _run_via_trigger(config, auth, "gs.info('test')", run_id)
+
+    assert result["success"] is True
+    assert result["execution_method"] == "trigger"
+    assert result["run_id"] == run_id
+    post_url = mock_post.call_args.args[0]
+    assert "sys_trigger" in post_url
+
+
+def test_run_via_trigger_failure_returns_success_false():
+    config = _make_config_t4()
+    auth = _make_auth_t4()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+
+    with patch("servicenow_mcp.tools.script_tools.requests.post", return_value=mock_resp):
+        result = _run_via_trigger(config, auth, "gs.info('x')", "run_id_123")
+
+    assert result["success"] is False
+    assert "403" in result["message"]
+
+
+def test_generate_fix_script_returns_formatted_script():
+    result = _generate_fix_script(
+        script="var gr = new GlideRecord('incident'); gr.query();",
+        description="Fix assignment groups on open incidents",
+        run_id="abc123",
+    )
+    assert result["success"] is True
+    assert result["execution_method"] == "fix_script"
+    assert result["manual_execution_required"] is True
+    assert "sys.scripts.do" in result["fix_script"]
+    assert "abc123" in result["fix_script"]
+    assert "GlideRecord" in result["fix_script"]
+
+
+def test_run_background_script_fix_script_mode_does_not_call_network():
+    config = _make_config_t4()
+    auth = _make_auth_t4()
+    params = RunBackgroundScriptParams(
+        description=VALID_DESCRIPTION_T4,
+        script="gs.info('x')",
+        execution_method="fix_script",
+    )
+
+    with patch("servicenow_mcp.tools.script_tools.requests.post") as mock_post:
+        result = run_background_script(config, auth, params)
+
+    mock_post.assert_not_called()
+    assert result.success is True
+    assert "sys.scripts.do" in result.direct_output
+
+
+def test_run_background_script_response_includes_update_set_warning():
+    config = _make_config_t4()
+    auth = _make_auth_t4()
+    params = RunBackgroundScriptParams(
+        description=VALID_DESCRIPTION_T4,
+        script="gs.info('x')",
+        execution_method="trigger",
+        acknowledge_update_set_bypass=True,
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 201
+    mock_resp.json.return_value = {"result": {"sys_id": "trig123"}}
+
+    with patch("servicenow_mcp.tools.script_tools.requests.post", return_value=mock_resp):
+        result = run_background_script(config, auth, params)
+
+    assert "update set" in result.message.lower()
