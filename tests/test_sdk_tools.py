@@ -123,7 +123,7 @@ def test_sdk_explain_no_peek_uses_format_raw():
 def test_sdk_explain_returns_output_on_success():
     with patch("servicenow_mcp.tools.sdk_tools.subprocess.run", return_value=_proc(stdout="Flow docs")):
         result = sdk_explain(_config(), _auth(), SdkExplainParams(topic="Flow"))
-    assert result["success"] is True and result["output"] == "Flow docs"
+    assert result["success"] is True and result["data"]["output"] == "Flow docs"
 
 
 def test_sdk_explain_returns_error_on_failure():
@@ -176,3 +176,28 @@ def test_sdk_run_command_deploy_without_dry_run_omits_flag(tmp_path):
         sdk_run_command(_config(), _auth(),
                         SdkRunCommandParams(command="deploy", project_path=str(tmp_path), dry_run=False))
     assert "--dry-run" not in mock_run.call_args.args[0]
+
+
+def test_sdk_run_command_deploy_without_dry_run_includes_flow_warning(tmp_path):
+    (tmp_path / "now.config.json").write_text("{}")
+    with patch("servicenow_mcp.tools.sdk_tools.subprocess.run", return_value=_proc()):
+        result = sdk_run_command(_config(), _auth(),
+                                 SdkRunCommandParams(command="deploy", project_path=str(tmp_path), dry_run=False))
+    assert any("Flow Designer" in w for w in result.get("warnings", []))
+
+
+def test_sdk_run_command_timeout(tmp_path):
+    (tmp_path / "now.config.json").write_text("{}")
+    with patch("servicenow_mcp.tools.sdk_tools.subprocess.run",
+               side_effect=subprocess.TimeoutExpired(cmd="npx", timeout=120)):
+        result = sdk_run_command(_config(), _auth(),
+                                 SdkRunCommandParams(command="build", project_path=str(tmp_path)))
+    assert result["success"] is False and "timed out" in result["error"].lower()
+
+
+def test_sdk_run_command_npx_not_found(tmp_path):
+    (tmp_path / "now.config.json").write_text("{}")
+    with patch("servicenow_mcp.tools.sdk_tools.subprocess.run", side_effect=FileNotFoundError):
+        result = sdk_run_command(_config(), _auth(),
+                                 SdkRunCommandParams(command="build", project_path=str(tmp_path)))
+    assert result["success"] is False and "Node.js" in result["error"]

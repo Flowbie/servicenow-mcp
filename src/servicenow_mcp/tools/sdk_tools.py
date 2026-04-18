@@ -238,52 +238,59 @@ def sdk_scaffold(
     template files for the requested artifact types.
     """
     root = Path(params.project_path)
-    root.mkdir(parents=True, exist_ok=True)
-    fluent_dir = root / "src" / "fluent"
-    fluent_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        fluent_dir = root / "src" / "fluent"
+        fluent_dir.mkdir(parents=True, exist_ok=True)
 
-    files_created: List[str] = []
+        files_created: List[str] = []
 
-    config_path = root / "now.config.json"
-    config_path.write_text(
-        json.dumps({"scope": params.scope, "scopeId": ""}, indent=2) + "\n"
-    )
-    files_created.append(str(config_path))
-
-    pkg_path = root / "package.json"
-    pkg_path.write_text(
-        json.dumps(
-            {
-                "name": params.scope.replace("_", "-"),
-                "version": "1.0.0",
-                "scripts": {"build": "now-sdk build", "deploy": "now-sdk deploy"},
-                "devDependencies": {
-                    "@servicenow/glide": "catalog:",
-                    "@servicenow/sdk": "catalog:",
-                    "typescript": "catalog:",
-                },
-            },
-            indent=2,
+        config_path = root / "now.config.json"
+        config_path.write_text(
+            json.dumps({"scope": params.scope, "scopeId": ""}, indent=2) + "\n"
         )
-        + "\n"
-    )
-    files_created.append(str(pkg_path))
+        files_created.append(str(config_path))
 
-    templates = []
-    if params.include_tables:
-        templates.append(("tables.now.ts", _tables_template(params.scope, params.app_name)))
-    if params.include_flows:
-        templates.append(("flows.now.ts", _flows_template(params.scope, params.app_name)))
-    if params.include_business_rules:
-        templates.append(("rules.now.ts", _rules_template(params.scope, params.app_name)))
-        templates.append(("validate.server.js", _validate_server_template(params.scope)))
-    if params.include_catalog:
-        templates.append(("catalog.now.ts", _catalog_template(params.scope, params.app_name)))
+        pkg_path = root / "package.json"
+        pkg_path.write_text(
+            json.dumps(
+                {
+                    "name": params.scope.replace("_", "-"),
+                    "version": "1.0.0",
+                    "scripts": {"build": "now-sdk build", "deploy": "now-sdk deploy"},
+                    "devDependencies": {
+                        "@servicenow/glide": "catalog:",
+                        "@servicenow/sdk": "catalog:",
+                        "typescript": "catalog:",
+                    },
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        files_created.append(str(pkg_path))
 
-    for filename, content in templates:
-        path = fluent_dir / filename
-        path.write_text(content)
-        files_created.append(str(path))
+        templates = []
+        if params.include_tables:
+            templates.append(("tables.now.ts", _tables_template(params.scope, params.app_name)))
+        if params.include_flows:
+            templates.append(("flows.now.ts", _flows_template(params.scope, params.app_name)))
+        if params.include_business_rules:
+            templates.append(("rules.now.ts", _rules_template(params.scope, params.app_name)))
+            templates.append(("validate.server.js", _validate_server_template(params.scope)))
+        if params.include_catalog:
+            templates.append(("catalog.now.ts", _catalog_template(params.scope, params.app_name)))
+
+        for filename, content in templates:
+            path = fluent_dir / filename
+            path.write_text(content)
+            files_created.append(str(path))
+    except OSError as e:
+        return SnowResponse(
+            success=False,
+            error=f"Failed to scaffold project at {params.project_path}: {e}",
+            operation="sdk_scaffold",
+        ).to_dict()
 
     return SnowResponse(
         success=True,
@@ -323,26 +330,38 @@ def sdk_explain(
     else:
         cmd = ["npx", "--yes", "@servicenow/sdk", "explain", "--list"]
 
+    cmd_str = " ".join(cmd)
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         if proc.returncode == 0:
-            return {"success": True, "output": proc.stdout, "command": " ".join(cmd)}
-        return {
-            "success": False,
-            "command": " ".join(cmd),
-            "error": proc.stderr or f"Exit code {proc.returncode}",
-            "output": proc.stdout,
-        }
+            return SnowResponse(
+                success=True,
+                data={"output": proc.stdout, "command": cmd_str},
+                operation="sdk_explain",
+            ).to_dict()
+        return SnowResponse(
+            success=False,
+            data={"command": cmd_str, "output": proc.stdout},
+            error=proc.stderr or f"Exit code {proc.returncode}",
+            operation="sdk_explain",
+        ).to_dict()
     except subprocess.TimeoutExpired:
-        return {"success": False, "error": "sdk explain timed out after 60 seconds. Try a more specific topic."}
+        return SnowResponse(
+            success=False,
+            data={"command": cmd_str},
+            error="sdk explain timed out after 60 seconds. Try a more specific topic.",
+            operation="sdk_explain",
+        ).to_dict()
     except FileNotFoundError:
-        return {
-            "success": False,
-            "error": (
+        return SnowResponse(
+            success=False,
+            data={"command": cmd_str},
+            error=(
                 "npx not found. Node.js 20+ is required. "
                 "Run the 'now-sdk-setup' skill to configure your environment."
             ),
-        }
+            operation="sdk_explain",
+        ).to_dict()
 
 
 def sdk_run_command(
