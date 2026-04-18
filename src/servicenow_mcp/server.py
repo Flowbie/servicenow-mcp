@@ -144,11 +144,11 @@ class ServiceNowMCP:
 
     def _determine_enabled_tools(self):
         """Determine which tool package and tools to enable based on environment variable."""
-        requested_package = os.getenv("MCP_TOOL_PACKAGE", "full").strip()
+        requested_package = os.getenv("MCP_TOOL_PACKAGE", "executor").strip()
 
         if not requested_package:
-            self.current_package_name = "full"
-            logger.info("MCP_TOOL_PACKAGE is empty, defaulting to 'full' package.")
+            self.current_package_name = "executor"
+            logger.info("MCP_TOOL_PACKAGE is empty, defaulting to 'executor' package.")
         elif requested_package in self.package_definitions:
             self.current_package_name = requested_package
             logger.info(f"MCP_TOOL_PACKAGE set to '{self.current_package_name}'.")
@@ -273,6 +273,12 @@ class ServiceNowMCP:
         except Exception as e:
             logger.error(f"Error executing tool '{name}': {e}", exc_info=True)
             raise RuntimeError(f"Error during execution of tool '{name}': {e}") from e
+
+        # If the tool returned an error response, raise so the SDK sets isError=True
+        if isinstance(result, dict) and result.get("success") is False:
+            serialized_error = serialize_tool_output(result, name)
+            logger.info(f"Tool '{name}' returned error response; raising for isError flag")
+            raise RuntimeError(serialized_error)
 
         # Serialize the result to a string (preferably JSON) using the helper
         serialized_string = serialize_tool_output(result, name)
