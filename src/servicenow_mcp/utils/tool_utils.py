@@ -34,11 +34,25 @@ from servicenow_mcp.tools.update_set_tools import (
     GetCurrentScopeParams,
     GetCurrentUpdateSetParams,
     GetChangesetDetailsParams,
+    MoveRecordsToUpdateSetParams,
+    InspectUpdateSetParams,
+    CloneUpdateSetParams,
 )
 from servicenow_mcp.tools.update_set_tools import (
     get_current_scope as get_current_scope_tool,
     get_current_update_set as get_current_update_set_tool,
     get_changeset_details as get_changeset_details_tool,
+    move_records_to_update_set as move_records_to_update_set_tool,
+    inspect_update_set as inspect_update_set_tool,
+    clone_update_set as clone_update_set_tool,
+)
+from servicenow_mcp.tools.sdk_tools import (
+    SdkScaffoldParams,
+    SdkExplainParams,
+    SdkRunCommandParams,
+    sdk_scaffold as sdk_scaffold_tool,
+    sdk_explain as sdk_explain_tool,
+    sdk_run_command as sdk_run_command_tool,
 )
 from servicenow_mcp.tools.write_safety_tools import (
     FieldMetadataParams,
@@ -1215,6 +1229,85 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             dict,
             "Get a Scripted REST API with all its resources/operations (sys_ws_definition + sys_ws_operation). "
             "Provide api_name or api_sys_id. http_method on operations is UPPERCASE.",
+            "json",
+        ),
+        # Enhanced Update Set Tools
+        "move_records_to_update_set": (
+            move_records_to_update_set_tool,
+            MoveRecordsToUpdateSetParams,
+            dict,
+            (
+                "Move sys_update_xml records from one update set to another. "
+                "Accepts filters: source_update_set_sys_id (move all from a set), "
+                "record_sys_ids (move specific records), or time_range_start/end (move by creation time). "
+                "At least one filter required. Use when records landed in the wrong update set."
+            ),
+            "json",
+        ),
+        "inspect_update_set": (
+            inspect_update_set_tool,
+            InspectUpdateSetParams,
+            dict,
+            (
+                "Return a detailed summary of an update set: name, state, total record count, "
+                "breakdown by artifact type (Script Include, Business Rule, etc.) and action "
+                "(INSERT_OR_UPDATE, DELETE). Optionally include dependency analysis. "
+                "Use before promoting to understand what will be deployed."
+            ),
+            "json",
+        ),
+        "clone_update_set": (
+            clone_update_set_tool,
+            CloneUpdateSetParams,
+            dict,
+            (
+                "Clone an update set by creating a new update set and copying all its "
+                "sys_update_xml records to the new set. "
+                "Use to create a backup before merging, promoting, or destructive operations."
+            ),
+            "json",
+        ),
+        # ServiceNow SDK Tools (Tier 1 — NowSDK Fluent metadata-as-code)
+        "sdk_scaffold": (
+            sdk_scaffold_tool,
+            SdkScaffoldParams,
+            dict,
+            (
+                "Scaffold a new @servicenow/sdk Fluent project (Tier 1 development). "
+                "Creates now.config.json, package.json, src/fluent/ directory, and typed template files. "
+                "Use this as the starting point for any new scoped application, table, flow, "
+                "business rule, or catalog item. "
+                "Specify include_tables, include_flows, include_business_rules, include_catalog "
+                "to control which template files are generated. "
+                "After scaffolding: run 'npm install', 'now-sdk auth', edit templates, then use "
+                "sdk_run_command to build and deploy."
+            ),
+            "json",
+        ),
+        "sdk_explain": (
+            sdk_explain_tool,
+            SdkExplainParams,
+            dict,
+            (
+                "Fetch @servicenow/sdk Fluent documentation (Tier 1 reference). "
+                "Use list_topics=True to discover topics, peek=True to preview before full read. "
+                "Topics: BusinessRule, Flow, Table, Acl, CatalogItem, ScriptInclude, naming, structure. "
+                "ALWAYS call with peek=True first — full content can be large. "
+                "Requires Node.js 20+ and @servicenow/sdk v4.6.0+."
+            ),
+            "json",
+        ),
+        "sdk_run_command": (
+            sdk_run_command_tool,
+            SdkRunCommandParams,
+            dict,
+            (
+                "Run 'now-sdk build' or 'now-sdk deploy' against a local Fluent project (Tier 1 execution). "
+                "Validates now.config.json exists before running. Default dry_run=True. "
+                "After deploy: if the project includes Flows, compile them manually in Flow Designer "
+                "(Tier 3 fallback — flow compilation cannot be automated via REST or SDK). "
+                "Requires Node.js 20+ and a valid @servicenow/sdk project with now.config.json."
+            ),
             "json",
         ),
         # Update Set activation

@@ -176,6 +176,14 @@ platform_developer:
   - get_changeset_details
   - set_current_scope
   - set_current_update_set
+  # Enhanced Update Set Tools
+  - move_records_to_update_set
+  - inspect_update_set
+  - clone_update_set
+  # SDK Tools (Tier 1 — NowSDK Fluent)
+  - sdk_scaffold
+  - sdk_explain
+  - sdk_run_command
 
 agile_management:
   # Write Verification and Metadata Discovery
@@ -302,6 +310,10 @@ system_administrator:
   - revoke_role_from_group
   # User/group CRUD — use table_tools (query_records / create_record / etc.) with architecture blueprint
   # removed: list_syslog_entries, get_syslog_entry — no implementation, none planned
+  # Enhanced Update Set Tools
+  - move_records_to_update_set
+  - inspect_update_set
+  - clone_update_set
 
 full:
   # Write Verification and Metadata Discovery
@@ -431,3 +443,34 @@ full:
   - validate_story_testing
   # Scrum Task Management (compound only; CRUD via table_tools)
   - close_scrum_task
+  # Enhanced Update Set Tools
+  - move_records_to_update_set
+  - inspect_update_set
+  - clone_update_set
+  # SDK Tools (Tier 1 — NowSDK Fluent)
+  - sdk_scaffold
+  - sdk_explain
+  - sdk_run_command
+
+sdk_developer:
+  # Tier 1 — NowSDK Fluent tooling
+  - sdk_scaffold
+  - sdk_explain
+  - sdk_run_command
+  # Tier 2 — MCP REST for verification and update set management
+  - query_records
+  - get_record
+  - create_record
+  - update_record
+  - list_table_fields
+  - get_field_metadata
+  - verify_fields
+  - get_current_update_set
+  - set_current_update_set
+  - get_current_scope
+  - set_current_scope
+  - inspect_update_set
+  - clone_update_set
+  - move_records_to_update_set
+  # Tier 3 — fix script fallback
+  - run_background_script
