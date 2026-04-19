@@ -106,6 +106,15 @@ executor:
   - get_current_update_set
   - set_current_scope
   - set_current_update_set
+  # Workbench UI tools — only activate when WORKBENCH_MCP_URL is set (distinct
+  # from the legacy WORKBENCH_URL used by approval_client.py). Raise a
+  # structured RuntimeError otherwise. Safe to include in CLI packages.
+  # See ADR-0002 in servicenow-workbench/docs/architecture/.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_plan
+  - workbench_request_approval
+  - workbench_log_execution
 
 platform_developer:
   # Write Verification and Metadata Discovery
@@ -451,6 +460,14 @@ full:
   - sdk_scaffold
   - sdk_explain
   - sdk_run_command
+  # Workbench UI tools — only activate when WORKBENCH_URL is set; otherwise
+  # they return a structured "WORKBENCH_URL not set" error. See ADR-0002 in
+  # servicenow-workbench/docs/architecture/.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_plan
+  - workbench_request_approval
+  - workbench_log_execution
 
 sdk_developer:
   # Tier 1 — NowSDK Fluent tooling
