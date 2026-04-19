@@ -294,6 +294,18 @@ from servicenow_mcp.tools.integration_tools import (
     get_rest_message as get_rest_message_tool,
     get_scripted_rest_api as get_scripted_rest_api_tool,
 )
+from servicenow_mcp.tools.workbench_tools import (
+    GetAnswersParams,
+    LogExecutionParams,
+    PresentPlanParams,
+    PresentQuestionnaireParams,
+    RequestApprovalParams,
+    get_answers as workbench_get_answers_tool,
+    log_execution as workbench_log_execution_tool,
+    present_plan as workbench_present_plan_tool,
+    present_questionnaire as workbench_present_questionnaire_tool,
+    request_approval as workbench_request_approval_tool,
+)
 
 # Define a type alias for the Pydantic models or dataclasses used for params
 ParamsModel = Type[Any]  # Use Type[Any] for broader compatibility initially
@@ -1331,6 +1343,81 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             (
                 "Set the currently active Next Experience application scope for the authenticated UI session "
                 "using the platform application picker endpoint. Requires the target app_id."
+            ),
+            "json",
+        ),
+        # Workbench tools (only usable when WORKBENCH_URL is set; gated by
+        # the `workbench` tool package in config/tool_packages.yaml). These
+        # do NOT call ServiceNow — they proxy to the Workbench FastAPI
+        # backend to drive UI state (questionnaires, plans, approvals, logs).
+        "workbench_present_questionnaire": (
+            workbench_present_questionnaire_tool,
+            PresentQuestionnaireParams,
+            dict,
+            (
+                "Present a structured questionnaire to the user in Workbench. "
+                "Use when multiple intake answers are needed up-front — prefer this over "
+                "asking several chat questions. On success returns {questionnaire_id}; "
+                "pass that id to workbench_get_answers to retrieve the user's answers. "
+                "On failure returns only {status: 'error', error} — check status before "
+                "indexing into questionnaire_id."
+            ),
+            "json",
+        ),
+        "workbench_get_answers": (
+            workbench_get_answers_tool,
+            GetAnswersParams,
+            dict,
+            (
+                "Block until the user submits answers to a questionnaire presented via "
+                "workbench_present_questionnaire, or until timeout_seconds elapses. Returns "
+                "{status: 'submitted'|'timeout'|'error', answers, compiled_answer}. "
+                "answers is null when status is not 'submitted'. Call immediately after "
+                "workbench_present_questionnaire so the Workbench UI can drive the next phase."
+            ),
+            "json",
+        ),
+        "workbench_present_plan": (
+            workbench_present_plan_tool,
+            PresentPlanParams,
+            dict,
+            (
+                "Persist the implementation plan for the current story as PLAN.md and "
+                "surface it in the Workbench Plan tab. Pass the full markdown content plus "
+                "the story number and story name. On success returns {plan_id}; pass that "
+                "to workbench_request_approval when the plan is ready for user sign-off. "
+                "On failure returns only {status: 'error', error}. Calling this tool "
+                "replaces the previous plan content for the project; every call is also "
+                "audit-logged in workbench_plan_revisions."
+            ),
+            "json",
+        ),
+        "workbench_request_approval": (
+            workbench_request_approval_tool,
+            RequestApprovalParams,
+            dict,
+            (
+                "Block until the user approves or rejects the referenced plan via the "
+                "Workbench approval banner, or until timeout_seconds elapses. Returns "
+                "{status: 'approved'|'rejected'|'timeout'|'error', decided_at}. "
+                "decided_at is null on timeout or error. On approval the session "
+                "plan_approved flag is flipped so subsequent ServiceNow write tools pass "
+                "the plan-approval gate."
+            ),
+            "json",
+        ),
+        "workbench_log_execution": (
+            workbench_log_execution_tool,
+            LogExecutionParams,
+            dict,
+            (
+                "Append a structured entry to the Workbench execution log (EXECUTION_LOG.md "
+                "on disk plus a DB row for telemetry). Call this after every successful "
+                "ServiceNow write and after bulk DRY_RUN executions. Set phase='write' for "
+                "single writes, 'bulk_execution' for DRY_RUN batch runs, 'validation' for "
+                "post-execution checks. Pass record for single writes, records for batches. "
+                "Set verified=true only after verify_fields + sys_mod_count confirm the write. "
+                "On success returns {entry_id, logged_at}; on failure {status: 'error', error}."
             ),
             "json",
         ),
