@@ -1357,9 +1357,10 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             (
                 "Present a structured questionnaire to the user in Workbench. "
                 "Use when multiple intake answers are needed up-front — prefer this over "
-                "asking several chat questions. Returns {questionnaire_id}, which must be "
-                "passed to workbench_get_answers to retrieve the user's answers once they "
-                "submit the form."
+                "asking several chat questions. On success returns {questionnaire_id}; "
+                "pass that id to workbench_get_answers to retrieve the user's answers. "
+                "On failure returns only {status: 'error', error} — check status before "
+                "indexing into questionnaire_id."
             ),
             "json",
         ),
@@ -1370,9 +1371,9 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             (
                 "Block until the user submits answers to a questionnaire presented via "
                 "workbench_present_questionnaire, or until timeout_seconds elapses. Returns "
-                "{status: 'submitted'|'timeout'|'error', answers, compiled_answer}. Call "
-                "immediately after workbench_present_questionnaire so the Workbench UI "
-                "can drive the next phase."
+                "{status: 'submitted'|'timeout'|'error', answers, compiled_answer}. "
+                "answers is null when status is not 'submitted'. Call immediately after "
+                "workbench_present_questionnaire so the Workbench UI can drive the next phase."
             ),
             "json",
         ),
@@ -1383,10 +1384,11 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             (
                 "Persist the implementation plan for the current story as PLAN.md and "
                 "surface it in the Workbench Plan tab. Pass the full markdown content plus "
-                "the story number and story name. Returns {plan_id}, which must be passed "
+                "the story number and story name. On success returns {plan_id}; pass that "
                 "to workbench_request_approval when the plan is ready for user sign-off. "
-                "Calling this tool replaces the previous plan content for the project; "
-                "every call is also audit-logged in workbench_plan_revisions."
+                "On failure returns only {status: 'error', error}. Calling this tool "
+                "replaces the previous plan content for the project; every call is also "
+                "audit-logged in workbench_plan_revisions."
             ),
             "json",
         ),
@@ -1396,10 +1398,11 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             dict,
             (
                 "Block until the user approves or rejects the referenced plan via the "
-                "Workbench approval banner, or until timeout_seconds elapses. On approval, "
-                "the session plan_approved flag is flipped so subsequent ServiceNow write "
-                "tools pass the plan-approval gate. Returns {status: 'approved'|'rejected'|"
-                "'timeout'|'error', decided_at}."
+                "Workbench approval banner, or until timeout_seconds elapses. Returns "
+                "{status: 'approved'|'rejected'|'timeout'|'error', decided_at}. "
+                "decided_at is null on timeout or error. On approval the session "
+                "plan_approved flag is flipped so subsequent ServiceNow write tools pass "
+                "the plan-approval gate."
             ),
             "json",
         ),
@@ -1413,7 +1416,8 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
                 "ServiceNow write and after bulk DRY_RUN executions. Set phase='write' for "
                 "single writes, 'bulk_execution' for DRY_RUN batch runs, 'validation' for "
                 "post-execution checks. Pass record for single writes, records for batches. "
-                "Set verified=true only after verify_fields + sys_mod_count confirm the write."
+                "Set verified=true only after verify_fields + sys_mod_count confirm the write. "
+                "On success returns {entry_id, logged_at}; on failure {status: 'error', error}."
             ),
             "json",
         ),

@@ -460,9 +460,7 @@ full:
   - sdk_scaffold
   - sdk_explain
   - sdk_run_command
-  # Workbench UI tools — only activate when WORKBENCH_URL is set; otherwise
-  # they return a structured "WORKBENCH_URL not set" error. See ADR-0002 in
-  # servicenow-workbench/docs/architecture/.
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
   - workbench_present_questionnaire
   - workbench_get_answers
   - workbench_present_plan
