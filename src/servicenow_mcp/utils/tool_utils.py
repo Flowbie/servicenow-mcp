@@ -306,6 +306,11 @@ from servicenow_mcp.tools.workbench_tools import (
     present_questionnaire as workbench_present_questionnaire_tool,
     request_approval as workbench_request_approval_tool,
 )
+from servicenow_mcp.tools.module_detection_tools import (
+    DetectActiveModulesParams,
+    DetectActiveModulesResult,
+    detect_active_modules as detect_active_modules_tool,
+)
 
 # Define a type alias for the Pydantic models or dataclasses used for params
 ParamsModel = Type[Any]  # Use Type[Any] for broader compatibility initially
@@ -385,6 +390,20 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             (
                 "Derive outbound reference relationships for a table from sys_dictionary. "
                 "Returns from_field and to_table for each reference. Use for relationship graphs. Read-only."
+            ),
+            "json",
+        ),
+        "detect_active_modules": (
+            detect_active_modules_tool,
+            DetectActiveModulesParams,
+            DetectActiveModulesResult,
+            (
+                "Classify ServiceNow modules as active_populated, active_dormant, declared_only, "
+                "or ignored based on sys_plugins state and primary-table activity within the "
+                "configured window. Reads config/module_registry.yaml for the plugin->tables "
+                "mapping. Supports greenfield mode (license list authoritative), per-module "
+                "activity_days_override, and license_override / planned lists for user-driven "
+                "bucket placement. Used by /bootstrap-architecture. Read-only."
             ),
             "json",
         ),
