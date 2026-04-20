@@ -1,0 +1,250 @@
+# Plugin -> primary-tables mapping for detect_active_modules.
+# Read by servicenow_mcp.tools.module_detection_tools at tool invocation.
+# Keys are module identifiers matching architecture blueprint filenames (without _architecture.md suffix).
+
+modules:
+  # --- With templates (existing blueprints in architecture/templates/) ---
+
+  incident_service_desk:
+    plugins: [com.snc.incident, com.snc.iam]
+    primary_tables: [incident]
+    related_tables: [task, sys_user, sys_user_group]
+    license_marker: com.snc.incident
+    activity_days_override: null
+    has_template: true
+
+  change_management:
+    plugins: [com.snc.change_management]
+    primary_tables: [change_request]
+    related_tables: [task, change_task, cab_meeting]
+    license_marker: com.snc.change_management
+    activity_days_override: null
+    has_template: true
+
+  catalog:
+    plugins: [com.snc.service_catalog]
+    primary_tables: [sc_catalog, sc_category, sc_cat_item]
+    related_tables: [item_option_new]
+    license_marker: com.snc.service_catalog
+    activity_days_override: null
+    has_template: true
+
+  catalog_item_types:
+    plugins: [com.snc.service_catalog]
+    primary_tables: [sc_cat_item, sc_cat_item_producer, sc_cat_item_guide]
+    related_tables: []
+    license_marker: com.snc.service_catalog
+    activity_days_override: null
+    has_template: true
+
+  cmdb_workflow:
+    plugins: [com.snc.cmdb]
+    primary_tables: [cmdb_ci]
+    related_tables: [cmdb_ci_service, cmdb_rel_ci]
+    license_marker: com.snc.cmdb
+    activity_days_override: null
+    has_template: true
+
+  agile:
+    plugins: [com.snc.sdlc.agile.2.0]
+    primary_tables: [rm_story, rm_epic, rm_sprint_2, rm_release, rm_scrum_task]
+    related_tables: []
+    license_marker: com.snc.sdlc.agile.2.0
+    activity_days_override: null
+    has_template: true
+
+  automation:
+    plugins: [com.glide.platform]
+    primary_tables: [sys_trigger, sysauto_script, scheduled_import_set, scheduled_data_export, scheduled_data_import]
+    related_tables: []
+    license_marker: com.glide.platform
+    activity_days_override: null
+    has_template: true
+
+  fsm:
+    plugins: [com.snc.work_management]
+    primary_tables: [wm_order, wm_task]
+    related_tables: [task]
+    license_marker: com.snc.work_management
+    activity_days_override: null
+    has_template: true
+
+  grc_risk_management:
+    plugins: [com.sn_risk_advanced, com.sn_grc]
+    primary_tables: [sn_risk_risk, sn_risk_risk_statement]
+    related_tables: []
+    license_marker: com.sn_risk_advanced
+    activity_days_override: null
+    has_template: true
+
+  integration:
+    plugins: [com.glide.hub.integration]
+    primary_tables: [sys_rest_message, sys_soap_message_function]
+    related_tables: []
+    license_marker: com.glide.hub.integration
+    activity_days_override: null
+    has_template: true
+
+  knowledge:
+    plugins: [com.glideapp.knowledge2]
+    primary_tables: [kb_knowledge, kb_knowledge_base]
+    related_tables: [kb_category]
+    license_marker: com.glideapp.knowledge2
+    activity_days_override: null
+    has_template: true
+
+  platform_scripting:
+    plugins: [com.glide.platform]
+    primary_tables: [sys_script, sys_script_client, sys_script_include]
+    related_tables: []
+    license_marker: com.glide.platform
+    activity_days_override: null
+    has_template: true
+
+  spm:
+    plugins: [com.snc.project, com.snc.sdlc]
+    primary_tables: [pm_project, pm_project_task]
+    related_tables: [task]
+    license_marker: com.snc.project
+    activity_days_override: null
+    has_template: true
+
+  sys_hub_flow:
+    plugins: [com.glide.hub.flow_designer]
+    primary_tables: [sys_hub_flow]
+    related_tables: [sys_hub_sub_flow]
+    license_marker: com.glide.hub.flow_designer
+    activity_days_override: null
+    has_template: true
+
+  user_group_identity:
+    plugins: [com.glide.platform]
+    primary_tables: [sys_user, sys_user_group, sys_user_role]
+    related_tables: [sys_user_grmember, sys_user_has_role]
+    license_marker: com.glide.platform
+    activity_days_override: null
+    has_template: true
+
+  dmn_demand:
+    plugins: [com.snc.demand_management]
+    primary_tables: [dmn_demand]
+    related_tables: [task]
+    license_marker: com.snc.demand_management
+    activity_days_override: null
+    has_template: true
+
+  # --- Notification sub-domains ---
+
+  notification_email:
+    plugins: [com.glide.notifications]
+    primary_tables: [sysevent_email_action, sys_email]
+    related_tables: [sys_notification]
+    license_marker: com.glide.notifications
+    activity_days_override: null
+    has_template: true
+
+  notification_push:
+    plugins: [com.glide.notifications]
+    primary_tables: [sys_push_notif_msg]
+    related_tables: []
+    license_marker: com.glide.notifications
+    activity_days_override: null
+    has_template: true
+
+  notification_ui:
+    plugins: [com.glide.notifications]
+    primary_tables: [sys_ui_notification]
+    related_tables: []
+    license_marker: com.glide.notifications
+    activity_days_override: null
+    has_template: true
+
+  # --- Pre-seeded long-tail (no templates yet; Phase 3 investigates) ---
+
+  itom_visibility:
+    plugins: [com.snc.itom.license, com.snc.discovery]
+    primary_tables: [cmdb_ci_discovered_service]
+    related_tables: [cmdb_ci, cmdb_ci_service]
+    license_marker: com.snc.itom.license
+    activity_days_override: null
+    has_template: false
+
+  discovery:
+    plugins: [com.snc.discovery]
+    primary_tables: [discovery_status, discovery_device_history]
+    related_tables: [cmdb_ci]
+    license_marker: com.snc.discovery
+    activity_days_override: null
+    has_template: false
+
+  virtual_agent:
+    plugins: [com.glide.cs.chatbot]
+    primary_tables: [sys_cs_conversation, sys_cs_topic]
+    related_tables: [sys_user, sys_cs_message]
+    license_marker: com.glide.cs.chatbot
+    activity_days_override: null
+    has_template: false
+
+  predictive_intelligence:
+    plugins: [com.glide.platform_ml]
+    primary_tables: [ml_solution, ml_capability_definition_base]
+    related_tables: []
+    license_marker: com.glide.platform_ml
+    activity_days_override: null
+    has_template: false
+
+  performance_analytics:
+    plugins: [com.snc.pa.premium]
+    primary_tables: [pa_indicators, pa_scorecards]
+    related_tables: [pa_breakdowns, pa_dashboards]
+    license_marker: com.snc.pa.premium
+    activity_days_override: null
+    has_template: false
+
+  hr_service_delivery:
+    plugins: [com.sn_hr_core]
+    primary_tables: [sn_hr_core_case]
+    related_tables: [task, sn_hr_core_profile]
+    license_marker: com.sn_hr_core
+    activity_days_override: null
+    has_template: false
+
+  csm_customer_service:
+    plugins: [com.sn_customerservice]
+    primary_tables: [sn_customerservice_case]
+    related_tables: [task, customer_account, customer_contact]
+    license_marker: com.sn_customerservice
+    activity_days_override: null
+    has_template: false
+
+  field_service:
+    plugins: [com.snc.work_management]
+    primary_tables: [wm_order, wm_task]
+    related_tables: [task]
+    license_marker: com.snc.work_management
+    activity_days_override: null
+    has_template: false
+
+  audit_management:
+    plugins: [com.sn_audit]
+    primary_tables: [sn_audit_engagement, sn_audit_finding]
+    related_tables: [task, sys_user]
+    license_marker: com.sn_audit
+    activity_days_override: 365
+    has_template: false
+
+  vendor_risk:
+    plugins: [com.sn_vdr_risk_asmt]
+    primary_tables: [sn_vdr_risk_asmt_assessment]
+    related_tables: [sn_vdr_risk_asmt_vendor]
+    license_marker: com.sn_vdr_risk_asmt
+    activity_days_override: 365
+    has_template: false
+
+  app_engine_studio:
+    plugins: [com.snc.app_engine_studio]
+    primary_tables: [sys_app, sys_story]
+    related_tables: []
+    license_marker: com.snc.app_engine_studio
+    activity_days_override: null
+    has_template: false

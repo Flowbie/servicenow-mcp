@@ -324,6 +324,17 @@ system_administrator:
   - inspect_update_set
   - clone_update_set
 
+architecture:
+  # Architecture blueprint authoring and module detection.
+  # Use this package when running module-investigator or /bootstrap-architecture.
+  - query_records
+  - get_record
+  - list_table_fields
+  - list_table_relationships
+  - get_field_metadata
+  - verify_fields
+  - detect_active_modules
+
 full:
   # Write Verification and Metadata Discovery
   # Diagnostic queries now use query_records directly:
@@ -338,6 +349,7 @@ full:
   # Table metadata / child tables: use query_records on sys_db_object
   - list_table_fields
   - list_table_relationships
+  - detect_active_modules
   # Catalog (CRUD via table_tools + architecture blueprint)
   # Request Fulfillment — compound only (CRUD via table_tools + architecture blueprint)
   - get_ritm_variables
