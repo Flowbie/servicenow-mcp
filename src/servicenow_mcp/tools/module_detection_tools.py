@@ -35,30 +35,78 @@ class ModuleClassification(BaseModel):
 
     domain: str = Field(..., description="Module identifier from the registry.")
     plugin: str = Field(default="", description="License-marker plugin name.")
-    primary_tables: list[str] = Field(default_factory=list)
-    record_count: int = Field(default=0)
-    last_update: str = Field(default="")
-    has_template: bool = Field(default=False)
-    reason: str = Field(default="")
-    missing_plugins: list[str] = Field(default_factory=list)
+    primary_tables: list[str] = Field(
+        default_factory=list,
+        description="Primary tables owned by this module (from the registry).",
+    )
+    record_count: int = Field(
+        default=0,
+        description="Has-activity flag for the primary table: 0 (no recent rows) or 1 (recent rows found within activity window).",
+    )
+    last_update: str = Field(
+        default="",
+        description="sys_updated_on of the most recent row returned by the activity query. Empty if none.",
+    )
+    has_template: bool = Field(
+        default=False,
+        description="True if an OOB template blueprint exists for this module in architecture/templates/.",
+    )
+    reason: str = Field(
+        default="",
+        description="Human-readable explanation of why this module landed in its current bucket.",
+    )
+    missing_plugins: list[str] = Field(
+        default_factory=list,
+        description="Plugins the registry expects for this module that are not active on the instance.",
+    )
 
 
 class DetectActiveModulesParams(BaseModel):
     """Params for detect_active_modules."""
 
-    activity_days: int = Field(default=90)
-    license_override: list[str] | None = Field(default=None)
-    planned: list[str] | None = Field(default=None)
-    greenfield: bool = Field(default=False)
+    activity_days: int = Field(
+        default=90,
+        description="Number of days of recent sys_updated_on activity that qualifies a module's primary table as populated. Overridden per-module by registry activity_days_override.",
+    )
+    license_override: list[str] | None = Field(
+        default=None,
+        description="Module domain names to force into active_populated regardless of plugin state. Used when the user has purchased a license but the plugin has not been activated yet.",
+    )
+    planned: list[str] | None = Field(
+        default=None,
+        description="Module domain names to route into declared_only. These will get OOB template copies but no live investigation.",
+    )
+    greenfield: bool = Field(
+        default=False,
+        description="If True, skip plugin-state and activity queries; classify using license_override and planned only. Use for fresh instances with no operational data.",
+    )
 
 
 class DetectActiveModulesResult(BaseModel):
-    active_populated: list[ModuleClassification] = Field(default_factory=list)
-    active_dormant: list[ModuleClassification] = Field(default_factory=list)
-    declared_only: list[ModuleClassification] = Field(default_factory=list)
-    ignored: list[ModuleClassification] = Field(default_factory=list)
-    detection_partial: bool = Field(default=False)
-    errors: list[str] = Field(default_factory=list)
+    active_populated: list[ModuleClassification] = Field(
+        default_factory=list,
+        description="Modules whose plugin is active and whose primary table has recent activity. These get full investigation in the bootstrap flow.",
+    )
+    active_dormant: list[ModuleClassification] = Field(
+        default_factory=list,
+        description="Modules whose plugin is active but whose primary table has no recent activity. These get a template copy (or schema-only investigation when no template exists).",
+    )
+    declared_only: list[ModuleClassification] = Field(
+        default_factory=list,
+        description="Modules declared via the planned list but whose plugin is inactive. These get a template copy if one exists.",
+    )
+    ignored: list[ModuleClassification] = Field(
+        default_factory=list,
+        description="Modules whose plugin is inactive and which the user did not declare. No action taken.",
+    )
+    detection_partial: bool = Field(
+        default=False,
+        description="True if one or more plugin or activity queries failed. Classification is best-effort; see errors for details.",
+    )
+    errors: list[str] = Field(
+        default_factory=list,
+        description="Per-query error messages collected during classification. Does not halt the run.",
+    )
 
 
 def _load_registry(path: Path = REGISTRY_PATH) -> dict[str, dict[str, Any]]:
