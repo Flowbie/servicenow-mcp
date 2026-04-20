@@ -216,6 +216,22 @@ The default `config/tool_packages.yaml` includes the following role-based packag
 
 -   **`list_tool_packages`**: Lists all available tool package names defined in the configuration and shows the currently loaded package. This tool is available in all packages except `none`.
 
+### Module Detection
+
+-   **`detect_active_modules`**: Classify ServiceNow modules as `active_populated`, `active_dormant`, `declared_only`, or `ignored` based on `sys_plugins` state and primary-table activity. Reads `config/module_registry.yaml` for the plugin→tables mapping (31 pre-seeded modules). Supports greenfield mode (license list authoritative), per-module `activity_days_override` for seasonal workflows, and `license_override` / `planned` overrides. Used by the `/bootstrap-architecture` slash command in `servicenow-claude-os`.
+
+    Example usage:
+    ```
+    detect_active_modules(
+      activity_days=90,
+      license_override=["incident_service_desk", "change_management"],
+      planned=["fsm"],
+      greenfield=false
+    )
+    ```
+
+    Returns a 4-bucket dict: `active_populated`, `active_dormant`, `declared_only`, `ignored`, plus `detection_partial` and `errors` fields for failure-mode handling.
+
 ## Available Tools
 
 **Authoritative list:** Tool names and descriptions are registered in `src/servicenow_mcp/utils/tool_utils.py`. The active subset is selected by `MCP_TOOL_PACKAGE` and `config/tool_packages.yaml`. After connecting, call **`list_tool_packages`** to see what is loaded in your session.
