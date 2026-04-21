@@ -86,7 +86,7 @@ WRITE_TOOLS = {
 async def request_approval(
     tool_name: str,
     params: dict,
-    project_id: str,
+    chat_id: str,
     payload: Optional[dict] = None,
     workbench_url: Optional[str] = None,
 ) -> ApprovalDecision:
@@ -108,7 +108,7 @@ async def request_approval(
             json={
                 "tool_name": tool_name,
                 "params": params,
-                "project_id": project_id,
+                "chat_id": chat_id,
                 "payload": payload or {},
             },
             timeout=10.0,
@@ -156,7 +156,7 @@ def wrap_write_tool(tool_name: str, func: Callable) -> Callable:
                     _decision_holder.append(asyncio.run(request_approval(
                         tool_name,
                         raw_params,
-                        os.environ.get("WORKBENCH_PROJECT_ID", ""),
+                        os.environ.get("WORKBENCH_CHAT_ID", ""),
                         payload=payload,
                     )))
                 except Exception as exc:
