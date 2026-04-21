@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 from pydantic import BaseModel, Field
@@ -128,27 +128,6 @@ class PresentPlanParams(BaseModel):
     story_name: str = Field(..., description="Short human-readable story title.")
 
 
-class RequestApprovalParams(BaseModel):
-    """Parameters for workbench_request_approval."""
-
-    plan_id: str = Field(
-        ..., description="The plan_id returned by workbench_present_plan."
-    )
-    scope: Literal["once", "session"] = Field(
-        default="once",
-        description=(
-            "'once' approves this plan only; 'session' keeps the session's "
-            "plan_approved flag set for subsequent writes."
-        ),
-    )
-    timeout_seconds: int = Field(
-        default=600,
-        ge=1,
-        le=3600,
-        description="Max seconds to block waiting for the user to approve or reject.",
-    )
-
-
 class LogExecutionParams(BaseModel):
     """Parameters for workbench_log_execution."""
 
@@ -234,24 +213,6 @@ def present_plan(
         "story_name": params.story_name,
     }
     return _post_json("/api/workbench_mcp/plans", body)
-
-
-def request_approval(
-    config: ServerConfig,  # noqa: ARG001
-    auth_manager: AuthManager,  # noqa: ARG001
-    params: RequestApprovalParams,
-) -> Dict[str, Any]:
-    body = {
-        "project_id": _project_id(),
-        "plan_id": params.plan_id,
-        "scope": params.scope,
-        "timeout_seconds": params.timeout_seconds,
-    }
-    return _post_json(
-        "/api/workbench_mcp/approvals",
-        body,
-        read_timeout=params.timeout_seconds + _NETWORK_BUDGET,
-    )
 
 
 def log_execution(

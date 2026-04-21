@@ -113,7 +113,6 @@ executor:
   - workbench_present_questionnaire
   - workbench_get_answers
   - workbench_present_plan
-  - workbench_request_approval
   - workbench_log_execution
 
 platform_developer:
@@ -476,7 +475,6 @@ full:
   - workbench_present_questionnaire
   - workbench_get_answers
   - workbench_present_plan
-  - workbench_request_approval
   - workbench_log_execution
 
 sdk_developer:

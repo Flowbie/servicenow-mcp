@@ -299,12 +299,10 @@ from servicenow_mcp.tools.workbench_tools import (
     LogExecutionParams,
     PresentPlanParams,
     PresentQuestionnaireParams,
-    RequestApprovalParams,
     get_answers as workbench_get_answers_tool,
     log_execution as workbench_log_execution_tool,
     present_plan as workbench_present_plan_tool,
     present_questionnaire as workbench_present_questionnaire_tool,
-    request_approval as workbench_request_approval_tool,
 )
 from servicenow_mcp.tools.module_detection_tools import (
     DetectActiveModulesParams,
@@ -1403,25 +1401,10 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             (
                 "Persist the implementation plan for the current story as PLAN.md and "
                 "surface it in the Workbench Plan tab. Pass the full markdown content plus "
-                "the story number and story name. On success returns {plan_id}; pass that "
-                "to workbench_request_approval when the plan is ready for user sign-off. "
+                "the story number and story name. On success returns {plan_id}. "
                 "On failure returns only {status: 'error', error}. Calling this tool "
                 "replaces the previous plan content for the project; every call is also "
                 "audit-logged in workbench_plan_revisions."
-            ),
-            "json",
-        ),
-        "workbench_request_approval": (
-            workbench_request_approval_tool,
-            RequestApprovalParams,
-            dict,
-            (
-                "Block until the user approves or rejects the referenced plan via the "
-                "Workbench approval banner, or until timeout_seconds elapses. Returns "
-                "{status: 'approved'|'rejected'|'timeout'|'error', decided_at}. "
-                "decided_at is null on timeout or error. On approval the session "
-                "plan_approved flag is flipped so subsequent ServiceNow write tools pass "
-                "the plan-approval gate."
             ),
             "json",
         ),

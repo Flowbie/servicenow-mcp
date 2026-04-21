@@ -19,7 +19,6 @@ from servicenow_mcp.tools.workbench_tools import (
     PresentQuestionnaireParams,
     QuestionnaireOption,
     QuestionnaireQuestion,
-    RequestApprovalParams,
 )
 
 
@@ -170,36 +169,6 @@ def test_present_plan_posts_story_fields():
     _, kwargs = mock_post.call_args
     assert kwargs["json"]["story_number"] == "STRY0082341"
     assert kwargs["json"]["project_id"] == "proj-42"
-
-
-# ---------------------------------------------------------------------------
-# request_approval
-# ---------------------------------------------------------------------------
-
-
-def test_request_approval_approved_status():
-    params = RequestApprovalParams(plan_id="p-1", scope="session", timeout_seconds=3)
-    mock_post = MagicMock(
-        return_value=_mock_response({"status": "approved", "decided_at": "2026-04-18T00:00:00Z"})
-    )
-    with patch.dict("os.environ", WORKBENCH_ENV, clear=True), \
-         patch("servicenow_mcp.tools.workbench_tools.requests.post", mock_post):
-        result = workbench_tools.request_approval(None, None, params)
-
-    assert result["status"] == "approved"
-    _, kwargs = mock_post.call_args
-    assert kwargs["json"]["scope"] == "session"
-    assert kwargs["timeout"][1] >= 3  # read timeout >= requested
-
-
-def test_request_approval_rejected_status():
-    params = RequestApprovalParams(plan_id="p-1", timeout_seconds=2)
-    mock_post = MagicMock(return_value=_mock_response({"status": "rejected", "decided_at": None}))
-    with patch.dict("os.environ", WORKBENCH_ENV, clear=True), \
-         patch("servicenow_mcp.tools.workbench_tools.requests.post", mock_post):
-        result = workbench_tools.request_approval(None, None, params)
-
-    assert result["status"] == "rejected"
 
 
 # ---------------------------------------------------------------------------
