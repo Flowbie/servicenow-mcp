@@ -363,6 +363,26 @@ Compound and planning tools include `archive_story`, `move_story_state`, `assign
 
 `get_current_user`. For **system properties**, use `query_records` on `sys_properties` (or `get_record` by `sys_id` when known).
 
+### Workbench UI bridge
+
+These tools do NOT call ServiceNow — they proxy to the ServiceNow Workbench backend (when `WORKBENCH_MCP_URL` is set) so Claude can drive the Workbench UI: present questionnaires, save/fetch/list/delete artifacts in the right-rail artifact list, and append structured entries to the execution log. They are gated on `WORKBENCH_MCP_URL`; outside a Workbench session every call raises `RuntimeError`.
+
+| Tool | Purpose |
+|---|---|
+| `workbench_present_questionnaire` | Show a multi-question form in the UI and get back a `questionnaire_id`. |
+| `workbench_get_answers` | Long-poll for the user's answers to a previously-presented questionnaire. |
+| `workbench_present_artifact` | Upsert an artifact (plan, mermaid, code, json, markdown) into the right-rail list. Re-call with the same `(name, type)` to replace content; every call appends a revision. |
+| `workbench_get_artifact` | Fetch the CURRENT content of an artifact by `(name, type)`. Always call this before running or modifying an artifact created earlier in the chat — the user may have edited it in the UI. |
+| `workbench_list_artifacts` | List every artifact in the current chat, optionally filtered by `type`. |
+| `workbench_delete_artifact` | Delete an artifact by `(name, type)`. Revision history is retained. |
+| `workbench_log_execution` | Append a structured entry to the Workbench execution log. |
+
+Example queries:
+
+- "Save this background script as an artifact called `hello.js`." → `workbench_present_artifact(type='code', name='hello.js', content='...')`
+- "Run the `hello.js` script the user just edited." → `workbench_get_artifact(name='hello.js', type='code')` then pass `content` into `run_background_script`.
+- "What artifacts are in this chat?" → `workbench_list_artifacts()`
+
 ### Using the MCP CLI
 
 The ServiceNow MCP server can be installed with the MCP CLI, which provides a convenient way to register the server with Claude.

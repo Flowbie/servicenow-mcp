@@ -13,6 +13,14 @@ service_desk:
   - create_record
   - update_record
   - delete_record
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 catalog_builder:
   # Generic Table API — agents use this for all catalog CRUD; domain-specific wrappers removed
@@ -26,6 +34,14 @@ catalog_builder:
   - move_catalog_items
   # Optimization
   - get_optimization_recommendations
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 request_fulfillment:
   # Service Request lifecycle — sc_request / sc_req_item (RITM) / sc_task
@@ -44,6 +60,14 @@ request_fulfillment:
   - create_record
   - update_record
   - delete_record
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 change_coordinator:
   # Compound approval workflow — multi-step cross-table operations
@@ -56,6 +80,14 @@ change_coordinator:
   - create_record
   - update_record
   - delete_record
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 automation_developer:
   # Generic Table API — agents use this for all automation CRUD; architecture doc is the guide
@@ -64,6 +96,14 @@ automation_developer:
   - create_record
   - update_record
   - delete_record
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 knowledge_author:
   # Generic Table API — agents use this for all KB CRUD; architecture doc is the guide
@@ -72,6 +112,14 @@ knowledge_author:
   - create_record
   - update_record
   - delete_record
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 executor:
   # Minimum required tools for the Executor agent pattern.
@@ -112,8 +160,11 @@ executor:
   # See ADR-0002 in servicenow-workbench/docs/architecture/.
   - workbench_present_questionnaire
   - workbench_get_answers
-  - workbench_present_plan
+  - workbench_present_artifact
   - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 platform_developer:
   # Write Verification and Metadata Discovery
@@ -192,6 +243,14 @@ platform_developer:
   - sdk_scaffold
   - sdk_explain
   - sdk_run_command
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 agile_management:
   # Write Verification and Metadata Discovery
@@ -239,6 +298,14 @@ agile_management:
   - create_record
   - update_record
   - delete_record
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 agile_readonly:
   # Read-only subset — safe for reporting agents and dashboards
@@ -261,6 +328,14 @@ agile_readonly:
   - validate_story_testing
   - query_records
   - get_record
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 risk_manager:
   # Generic Table API — agents use this for all risk CRUD; architecture doc is the guide
@@ -272,6 +347,14 @@ risk_manager:
   # Core lookup tools
   - verify_fields
   - get_field_metadata
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 integration_developer:
   # Integration Platform — compound inspection tools
@@ -288,6 +371,14 @@ integration_developer:
   # Core tools needed alongside integration work
   - verify_fields
   - get_field_metadata
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 system_administrator:
   # Write Verification and Metadata Discovery
@@ -322,6 +413,14 @@ system_administrator:
   - move_records_to_update_set
   - inspect_update_set
   - clone_update_set
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 architecture:
   # Architecture blueprint authoring and module detection.
@@ -333,6 +432,14 @@ architecture:
   - get_field_metadata
   - verify_fields
   - detect_active_modules
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 full:
   # Write Verification and Metadata Discovery
@@ -474,8 +581,11 @@ full:
   # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
   - workbench_present_questionnaire
   - workbench_get_answers
-  - workbench_present_plan
+  - workbench_present_artifact
   - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
 
 sdk_developer:
   # Tier 1 — NowSDK Fluent tooling
@@ -499,3 +609,11 @@ sdk_developer:
   - move_records_to_update_set
   # Tier 3 — fix script fallback
   - run_background_script
+  # Workbench UI tools — see ADR-0002. Gated by WORKBENCH_MCP_URL at runtime.
+  - workbench_present_questionnaire
+  - workbench_get_answers
+  - workbench_present_artifact
+  - workbench_log_execution
+  - workbench_get_artifact
+  - workbench_list_artifacts
+  - workbench_delete_artifact
