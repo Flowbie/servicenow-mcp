@@ -2,8 +2,9 @@
 Workbench-MCP tools.
 
 When `WORKBENCH_MCP_URL` is set (Workbench spawns this MCP with it populated),
-these tools proxy to the Workbench FastAPI backend to present questionnaires/
-plans, collect answers, request plan approval, and append execution-log entries.
+these tools proxy to the Workbench FastAPI backend to present questionnaires
+and artifacts (plans, code, markdown, etc.), collect answers, and append
+execution-log entries.
 
 Note on env vars: the legacy `WORKBENCH_URL` (consumed by approval_client.py
 for MCP-side write-tool approval) is deliberately distinct from
@@ -120,32 +121,81 @@ class GetAnswersParams(BaseModel):
     )
 
 
-class PresentPlanParams(BaseModel):
-    """Parameters for workbench_present_plan."""
-
-    content: str = Field(..., description="Full PLAN.md markdown content.")
-    story_number: str = Field(..., description="Story number, e.g. 'STRY0082341'.")
-    story_name: str = Field(..., description="Short human-readable story title.")
+ArtifactType = Literal["plan", "mermaid", "code", "json", "markdown"]
 
 
-class RequestApprovalParams(BaseModel):
-    """Parameters for workbench_request_approval."""
+class PresentArtifactParams(BaseModel):
+    """Parameters for workbench_present_artifact."""
 
-    plan_id: str = Field(
-        ..., description="The plan_id returned by workbench_present_plan."
-    )
-    scope: Literal["once", "session"] = Field(
-        default="once",
+    type: ArtifactType = Field(
+        ...,
         description=(
-            "'once' approves this plan only; 'session' keeps the session's "
-            "plan_approved flag set for subsequent writes."
+            "Artifact kind. Drives the right-rail icon and the renderer used in the "
+            "Artifact viewer: 'plan' (PLAN.md, rendered as markdown with story header), "
+            "'mermaid' (diagram source), 'code' (syntax-highlighted; pass meta.language), "
+            "'json' (pretty-printed), 'markdown' (freeform docs)."
         ),
     )
-    timeout_seconds: int = Field(
-        default=600,
-        ge=1,
-        le=3600,
-        description="Max seconds to block waiting for the user to approve or reject.",
+    name: str = Field(
+        ...,
+        description=(
+            "Plain filename shown to the user, e.g. 'PLAN.md', 'flow.mmd', "
+            "'backfill.js'. No path separators — the backend rejects names containing "
+            "'/', '\\\\', or '..'."
+        ),
+    )
+    content: str = Field(..., description="Full artifact body as a string.")
+    meta: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Optional renderer hints. For type='plan': {story_number, story_name} "
+            "populate the plan header. For type='code': {language} selects the "
+            "syntax-highlighter grammar."
+        ),
+    )
+
+
+class GetArtifactParams(BaseModel):
+    """Parameters for workbench_get_artifact."""
+
+    name: str = Field(
+        ...,
+        description=(
+            "Exact artifact name as it appears in the right-rail list "
+            "(e.g. 'PLAN.md', 'hello_world_dryrun.js')."
+        ),
+    )
+    type: ArtifactType = Field(
+        ...,
+        description=(
+            "Artifact kind. Must match the type the artifact was created with "
+            "— (chat_id, type, name) is the upsert key."
+        ),
+    )
+
+
+class ListArtifactsParams(BaseModel):
+    """Parameters for workbench_list_artifacts."""
+
+    type_filter: Optional[ArtifactType] = Field(
+        default=None,
+        description=(
+            "Optional: restrict results to one artifact type. Omit to list "
+            "every artifact in the current chat."
+        ),
+    )
+
+
+class DeleteArtifactParams(BaseModel):
+    """Parameters for workbench_delete_artifact."""
+
+    name: str = Field(
+        ...,
+        description="Exact artifact name to delete.",
+    )
+    type: ArtifactType = Field(
+        ...,
+        description="Artifact kind (must match the original create call).",
     )
 
 
@@ -194,6 +244,7 @@ def present_questionnaire(
 ) -> Dict[str, Any]:
     body = {
         "project_id": _project_id(),
+        "chat_id": _chat_id(),
         "external_id": params.id,
         "title": params.title,
         "questions": [q.model_dump(exclude_none=True) for q in params.questions],
@@ -222,36 +273,100 @@ def get_answers(
         return {"status": "error", "answers": None, "error": str(exc)}
 
 
-def present_plan(
+def present_artifact(
     config: ServerConfig,  # noqa: ARG001
     auth_manager: AuthManager,  # noqa: ARG001
-    params: PresentPlanParams,
+    params: PresentArtifactParams,
 ) -> Dict[str, Any]:
-    body = {
+    body: Dict[str, Any] = {
         "project_id": _project_id(),
+        "chat_id": _chat_id(),
+        "type": params.type,
+        "name": params.name,
         "content": params.content,
-        "story_number": params.story_number,
-        "story_name": params.story_name,
     }
-    return _post_json("/api/workbench_mcp/plans", body)
+    if params.meta is not None:
+        body["meta"] = params.meta
+    return _post_json("/api/workbench_mcp/artifacts", body)
 
 
-def request_approval(
+def get_artifact(
+    config: ServerConfig,  # noqa: ARG001 (uniform signature)
+    auth_manager: AuthManager,  # noqa: ARG001
+    params: GetArtifactParams,
+) -> Dict[str, Any]:
+    """Fetch the current content of an artifact by (name, type).
+
+    Returns the latest persisted content — useful when the user has edited
+    the artifact in the Workbench UI and the agent needs the updated version
+    rather than its stale in-memory copy.
+    """
+    url = f"{_workbench_url()}/api/workbench_mcp/artifacts/by-name"
+    try:
+        resp = requests.get(
+            url,
+            params={"chat_id": _chat_id(), "name": params.name, "type": params.type},
+            timeout=(_CONNECT_TIMEOUT, 30.0),
+        )
+        if resp.status_code == 404:
+            return {"status": "not_found", "name": params.name, "type": params.type}
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as exc:
+        logger.error("workbench_get_artifact failed: %s", exc)
+        return {"status": "error", "error": str(exc)}
+
+
+def list_artifacts(
     config: ServerConfig,  # noqa: ARG001
     auth_manager: AuthManager,  # noqa: ARG001
-    params: RequestApprovalParams,
+    params: ListArtifactsParams,
 ) -> Dict[str, Any]:
-    body = {
-        "project_id": _project_id(),
-        "plan_id": params.plan_id,
-        "scope": params.scope,
-        "timeout_seconds": params.timeout_seconds,
-    }
-    return _post_json(
-        "/api/workbench_mcp/approvals",
-        body,
-        read_timeout=params.timeout_seconds + _NETWORK_BUDGET,
-    )
+    """List artifacts in the current chat, optionally filtered by type."""
+    url = f"{_workbench_url()}/api/workbench_mcp/artifacts"
+    try:
+        resp = requests.get(
+            url,
+            params={"chat_id": _chat_id()},
+            timeout=(_CONNECT_TIMEOUT, 30.0),
+        )
+        resp.raise_for_status()
+        items = resp.json()
+    except requests.RequestException as exc:
+        logger.error("workbench_list_artifacts failed: %s", exc)
+        return {"status": "error", "error": str(exc)}
+    if params.type_filter is not None:
+        items = [it for it in items if it.get("artifact_type") == params.type_filter]
+    return {"artifacts": items, "count": len(items)}
+
+
+def delete_artifact(
+    config: ServerConfig,  # noqa: ARG001
+    auth_manager: AuthManager,  # noqa: ARG001
+    params: DeleteArtifactParams,
+) -> Dict[str, Any]:
+    """Delete an artifact by (name, type). Resolves the id server-side."""
+    base = _workbench_url()
+    chat_id = _chat_id()
+    try:
+        lookup = requests.get(
+            f"{base}/api/workbench_mcp/artifacts/by-name",
+            params={"chat_id": chat_id, "name": params.name, "type": params.type},
+            timeout=(_CONNECT_TIMEOUT, 30.0),
+        )
+        if lookup.status_code == 404:
+            return {"status": "not_found", "name": params.name, "type": params.type}
+        lookup.raise_for_status()
+        artifact_id = lookup.json()["artifact_id"]
+        delete_resp = requests.delete(
+            f"{base}/api/workbench_mcp/artifacts/{artifact_id}",
+            timeout=(_CONNECT_TIMEOUT, 30.0),
+        )
+        delete_resp.raise_for_status()
+        return delete_resp.json()
+    except requests.RequestException as exc:
+        logger.error("workbench_delete_artifact failed: %s", exc)
+        return {"status": "error", "error": str(exc)}
 
 
 def log_execution(
@@ -261,6 +376,7 @@ def log_execution(
 ) -> Dict[str, Any]:
     body: Dict[str, Any] = {
         "project_id": _project_id(),
+        "chat_id": _chat_id(),
         "phase": params.phase,
         "summary": params.summary,
     }
@@ -293,14 +409,26 @@ def _workbench_url() -> str:
     return url.rstrip("/")
 
 
-def _project_id() -> str:
+def _project_id() -> Optional[str]:
+    """Return the current project_id, or None for a general chat.
+
+    General chats have no project, so `WORKBENCH_PROJECT_ID` is unset or
+    empty. The workbench tool surface still works in that case — artifacts,
+    questionnaires, and execution-log rows are chat-scoped — so this helper
+    returns None rather than raising. `_chat_id()` is the required key.
+    """
     pid = os.environ.get("WORKBENCH_PROJECT_ID")
-    if not pid:
+    return pid if pid else None
+
+
+def _chat_id() -> str:
+    cid = os.environ.get("WORKBENCH_CHAT_ID")
+    if not cid:
         raise RuntimeError(
-            "WORKBENCH_PROJECT_ID is not set; the workbench tool package requires "
-            "the Workbench backend to spawn this MCP with WORKBENCH_PROJECT_ID in env."
+            "WORKBENCH_CHAT_ID is not set; required for backend broadcasts to reach "
+            "the subscribed WebSocket (which is keyed by chat_id, not project_id)."
         )
-    return pid
+    return cid
 
 
 def _post_json(

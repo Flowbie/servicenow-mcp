@@ -295,16 +295,20 @@ from servicenow_mcp.tools.integration_tools import (
     get_scripted_rest_api as get_scripted_rest_api_tool,
 )
 from servicenow_mcp.tools.workbench_tools import (
+    DeleteArtifactParams,
     GetAnswersParams,
+    GetArtifactParams,
+    ListArtifactsParams,
     LogExecutionParams,
-    PresentPlanParams,
+    PresentArtifactParams,
     PresentQuestionnaireParams,
-    RequestApprovalParams,
+    delete_artifact as workbench_delete_artifact_tool,
     get_answers as workbench_get_answers_tool,
+    get_artifact as workbench_get_artifact_tool,
+    list_artifacts as workbench_list_artifacts_tool,
     log_execution as workbench_log_execution_tool,
-    present_plan as workbench_present_plan_tool,
+    present_artifact as workbench_present_artifact_tool,
     present_questionnaire as workbench_present_questionnaire_tool,
-    request_approval as workbench_request_approval_tool,
 )
 from servicenow_mcp.tools.module_detection_tools import (
     DetectActiveModulesParams,
@@ -1365,10 +1369,10 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
-        # Workbench tools (only usable when WORKBENCH_URL is set; gated by
+        # Workbench tools (only usable when WORKBENCH_MCP_URL is set; gated by
         # the `workbench` tool package in config/tool_packages.yaml). These
         # do NOT call ServiceNow — they proxy to the Workbench FastAPI
-        # backend to drive UI state (questionnaires, plans, approvals, logs).
+        # backend to drive UI state (questionnaires, artifacts, logs).
         "workbench_present_questionnaire": (
             workbench_present_questionnaire_tool,
             PresentQuestionnaireParams,
@@ -1396,32 +1400,19 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
             ),
             "json",
         ),
-        "workbench_present_plan": (
-            workbench_present_plan_tool,
-            PresentPlanParams,
+        "workbench_present_artifact": (
+            workbench_present_artifact_tool,
+            PresentArtifactParams,
             dict,
             (
-                "Persist the implementation plan for the current story as PLAN.md and "
-                "surface it in the Workbench Plan tab. Pass the full markdown content plus "
-                "the story number and story name. On success returns {plan_id}; pass that "
-                "to workbench_request_approval when the plan is ready for user sign-off. "
-                "On failure returns only {status: 'error', error}. Calling this tool "
-                "replaces the previous plan content for the project; every call is also "
-                "audit-logged in workbench_plan_revisions."
-            ),
-            "json",
-        ),
-        "workbench_request_approval": (
-            workbench_request_approval_tool,
-            RequestApprovalParams,
-            dict,
-            (
-                "Block until the user approves or rejects the referenced plan via the "
-                "Workbench approval banner, or until timeout_seconds elapses. Returns "
-                "{status: 'approved'|'rejected'|'timeout'|'error', decided_at}. "
-                "decided_at is null on timeout or error. On approval the session "
-                "plan_approved flag is flipped so subsequent ServiceNow write tools pass "
-                "the plan-approval gate."
+                "Persist an artifact for the current project and surface it in the "
+                "Workbench right-rail artifact list and ArtifactViewer. Supported types: "
+                "'plan' (use name='PLAN.md' and meta={story_number, story_name}), "
+                "'mermaid', 'code' (pass meta.language for highlighting), 'json', "
+                "'markdown'. Returns {artifact_id} on success, {status: 'error', error} "
+                "on failure. Use this instead of writing files to disk — filesystem writes "
+                "are invisible to the UI. Re-call with the same name to replace content; "
+                "the artifact row is upserted."
             ),
             "json",
         ),
@@ -1437,6 +1428,45 @@ def get_tool_definitions() -> Dict[str, ToolDefinition]:
                 "post-execution checks. Pass record for single writes, records for batches. "
                 "Set verified=true only after verify_fields + sys_mod_count confirm the write. "
                 "On success returns {entry_id, logged_at}; on failure {status: 'error', error}."
+            ),
+            "json",
+        ),
+        "workbench_get_artifact": (
+            workbench_get_artifact_tool,
+            GetArtifactParams,
+            dict,
+            (
+                "Fetch the current content of an existing artifact by (name, type). "
+                "Always call this before executing or referencing an artifact created "
+                "earlier in the chat — the user may have edited it in the UI, and the "
+                "latest content lives only in the Workbench DB. Returns the full artifact "
+                "row {artifact_id, artifact_type, name, content, meta, source, created_at, "
+                "updated_at}; returns {status: 'not_found'} if no matching artifact exists."
+            ),
+            "json",
+        ),
+        "workbench_list_artifacts": (
+            workbench_list_artifacts_tool,
+            ListArtifactsParams,
+            dict,
+            (
+                "List every artifact in the current chat (optionally filtered by type). "
+                "Use this to discover what artifacts exist before calling workbench_get_artifact, "
+                "or to present the user a summary of the chat's deliverables. Returns "
+                "{artifacts: [{artifact_id, artifact_type, name, content, meta, source, "
+                "created_at}...], count}."
+            ),
+            "json",
+        ),
+        "workbench_delete_artifact": (
+            workbench_delete_artifact_tool,
+            DeleteArtifactParams,
+            dict,
+            (
+                "Delete an artifact from the current chat by (name, type). Removes the "
+                "live row from the artifact list; revision history is retained. Returns "
+                "{artifact_id, name, deleted: true} on success, {status: 'not_found'} if "
+                "the artifact does not exist."
             ),
             "json",
         ),
